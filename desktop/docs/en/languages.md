@@ -1,80 +1,134 @@
 # Languages
 
-Sova is polyglot — each frame can use a different programming language. The four
-built-in languages offer distinct approaches to musical expression. Pick the one
-that fits how you want to think about your music, or mix them freely.
-
-## Compiled vs interpreted
-
-Sova languages fall into two categories:
-
-- **Compiled languages** (Bob, BaLi) are translated into bytecode for Sova's
-  virtual machine. The VM executes the bytecode each time the frame plays.
-  Compilation happens once when you evaluate; execution is fast and repeatable.
-- **Interpreted languages** (Boinx, Cagire) produce a list of events directly
-  from the source code each time the frame plays. There's no intermediate
-  bytecode step.
-
-From a user perspective, both work the same way: write code, evaluate, hear
-results. The difference matters when you want to understand how your code
-interacts with variables, timing, and repetitions.
-
-## Overview
-
-- **Bob** — Compiled. Imperative, event maps. Best for melodic sequences, precise control.
-- **BaLi** — Compiled. Expression-based, functional. Best for algorithmic patterns, math-heavy.
-- **Boinx** — Interpreted. Pattern notation. Best for quick rhythmic patterns.
-- **Cagire** — Interpreted. Stack-based (Forth-like). Best for audio synthesis, DSP, experimentation.
-
-## Bob
-
-Bob is an imperative language with a concise syntax for generating MIDI and OSC
-events. It uses **event maps** — key-value structures that describe notes,
-control changes, and other messages. Bob has variables, conditionals, loops, and
-functions.
-
-```
->> [note: 60 vel: 100 dur: 0.5]
-WAIT 0.5
->> [note: 64 vel: 80 dur: 0.5]
-```
-
-See the **Bob** tab for the full reference.
-
-## BaLi
-
-BaLi is an expression-based compiled language with a functional flavor. It
-emphasizes composing transformations and works well for algorithmic,
-generative patterns.
-
-See the **BaLi** tab for the full reference.
-
-## Boinx
-
-Boinx is a pattern notation language — its syntax is designed for writing
-rhythmic sequences quickly. Patterns describe when events fire within a beat
-or a bar, making it natural for drum patterns and percussive sequences.
-
-See the **Boinx** tab for the full reference.
+Sova has four built-in languages. Each frame picks one. You can mix them freely
+across frames in the same line -- a Bob melody followed by a Cagire drone
+followed by a Boinx drum break.
 
 ## Cagire
 
-Cagire is a stack-based language inspired by Forth. You push values onto a
-stack and apply words (operations) to them. Cagire is tightly integrated with
-the Doux audio engine for real-time sound synthesis and DSP, but it also works
-for MIDI and OSC output.
+Stack-based, inspired by Forth. You push values onto a stack and apply words
+that consume and produce stack values. `.` emits the current sound command.
 
-See the **Cagire** tab for the full reference.
+A kick drum:
 
-## Switching languages
+```forth
+kick snd .
+```
 
-Each frame has its own language setting. To change a frame's language:
+A chord with reverb:
 
-1. Open the step editor (double-click a frame cell).
-2. Select the language from the dropdown at the top of the editor.
-3. Write or rewrite your code in the new language.
-4. Evaluate.
+```forth
+c4 min7 note 0.4 verb sine snd .
+```
 
-Different frames in the same line can use different languages — Sova doesn't
-care. A line might have a Bob frame generating melodies followed by a Boinx
-frame for a drum break. Mix and match as you see fit.
+A rhythmic pattern using timing offsets and Euclidean distribution:
+
+```forth
+3 8 euclid at hat snd .
+```
+
+Cagire has built-in music theory -- notes, intervals, chords, scales -- plus
+randomness, cycling, variables, and user-defined words. See the **Cagire** tab.
+
+## Bob
+
+Imperative, Polish notation. Operators come before operands: `ADD 2 3` instead
+of `2 + 3`. Events are key-value maps emitted with `>>`. Time advances with
+`WAIT`.
+
+A four-note sequence:
+
+```
+RANGE 0 3 :
+  >> [note: ADD 60 MUL I 4 vel: 100]
+  WAIT 0.25
+END
+```
+
+Euclidean rhythm with ghost notes:
+
+```
+EU 3 8 0.125 :
+  >> [note: 36 vel: 100]
+ELSE :
+  >> [note: 36 vel: 20]
+END
+```
+
+Random note selection from a list:
+
+```
+SET G.NOTES '[60 64 67 72]
+>> [note: PICK G.NOTES vel: RRAND 60 127]
+```
+
+Bob has variables (global, frame, line), conditionals, loops, functions, and
+Euclidean/binary rhythm generators. See the **Bob** tab.
+
+## BaLi
+
+Lisp-like, expression-based. Everything is an S-expression wrapped in
+parentheses. Loops, notes, and effects compose by nesting. Fractions like `1//4`
+express durations directly.
+
+A looping note sequence:
+
+```
+(loop 4
+  (note (+ 60 (* $i 3)) 90)
+  1//4)
+```
+
+A chord on beat:
+
+```
+(note 60 100 dev:1 ch:1)
+(note 64 100 dev:1 ch:1)
+(note 67 100 dev:1 ch:1)
+```
+
+Euclidean rhythm:
+
+```
+(eucloop 3 8
+  (note 36 100)
+  1//8)
+```
+
+BaLi's functional style makes it natural for algorithmic composition and
+generative patterns. See the **bali** tab.
+
+## Boinx
+
+Declarative pattern notation. You describe *what* plays *where* in time using
+brackets and operators. Sequences `[...]` spread items evenly across the frame.
+Simultaneous events use `(...)`. Key-value event data goes in `<...>`.
+
+A kick-hat pattern:
+
+```
+<s: 'kick'> | [. _ . _]
+```
+
+Layered drums with a kick and hi-hat playing simultaneously:
+
+```
+(<s: 'kick'> <s: 'hat'>) | [. _ . _]
+```
+
+Cycling notes through a rhythmic grid:
+
+```
+(C4 E4 G4) ° [. . . .]
+```
+
+Boinx operators (`|`, `°`, `~`, `!`, `#`) control how event data flows into
+pattern slots. The visual layout of the code mirrors the rhythmic structure.
+See the **Boinx** tab.
+
+## Mixing languages
+
+A single line can hold frames in different languages. Frame 1 might be a Cagire
+drone, frame 2 a Bob melody, frame 3 a Boinx drum fill. The sequencer plays
+them in order regardless of language. To switch a frame's language, open the
+editor and pick from the dropdown at the top.

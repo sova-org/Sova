@@ -16,7 +16,6 @@ use renderer::ShaderRenderer;
 
 pub struct VisualsEngine {
     renderer: Option<ShaderRenderer>,
-    hydra_engine: rhai::Engine,
     start_time: Instant,
     error: Option<String>,
     pub open: bool,
@@ -34,7 +33,6 @@ impl VisualsEngine {
         let renderer = gl.map(ShaderRenderer::new);
         let mut engine = Self {
             renderer,
-            hydra_engine: hydra::build_engine(),
             start_time: Instant::now(),
             error: None,
             open: false,
@@ -216,20 +214,20 @@ impl VisualsEngine {
         let Some(renderer) = &mut self.renderer else {
             return;
         };
-        match hydra::eval(&self.hydra_engine, code) {
-            Ok(glsl) => match renderer.compile(&glsl) {
-                Ok(()) => self.error = None,
-                Err(e) => self.error = Some(e),
-            },
+        match hydra::eval(code) {
+            Ok(result) => {
+                renderer.compile_buffers(&result.shaders, result.render_mode);
+                self.error = None;
+            }
             Err(e) => self.error = Some(e),
         }
     }
 
-    pub fn paint_background_central(&self, ctx: &egui::Context, enabled: bool) {
+    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool) {
         if !enabled {
             return;
         }
-        let Some(renderer) = &self.renderer else {
+        let Some(renderer) = &mut self.renderer else {
             return;
         };
 
@@ -237,11 +235,17 @@ impl VisualsEngine {
         let rect = ctx.available_rect();
         let time = self.start_time.elapsed().as_secs_f32();
         let ppp = ctx.pixels_per_point();
-        let resolution = [rect.width() * ppp, rect.height() * ppp];
-        let handles = renderer.handles();
+        let res_w = (rect.width() * ppp) as u32;
+        let res_h = (rect.height() * ppp) as u32;
+
+        renderer.ensure_resolution(res_w, res_h);
+
+        let snap = renderer.snapshot();
+        let ping = renderer.ping().clone();
+        let resolution = [res_w as f32, res_h as f32];
 
         let cb = eframe::egui_glow::CallbackFn::new(move |_info, painter| {
-            renderer::render_with_handles(painter.gl(), &handles, time, resolution);
+            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution);
         });
 
         let painter = ctx.layer_painter(egui::LayerId::background());
@@ -250,5 +254,4 @@ impl VisualsEngine {
             callback: Arc::new(cb),
         });
     }
-
 }

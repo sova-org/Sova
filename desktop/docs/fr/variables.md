@@ -1,93 +1,120 @@
 # Variables
 
-Les variables vous permettent de stocker et de partager des données entre
-scripts. Le système de variables de Sova est organisé par **portée** — l'endroit
-où la variable réside détermine qui peut la voir et combien de temps elle
-persiste.
+Les variables stockent des valeurs qui persistent entre les evenements ou
+entre les frames. On les utilise pour coordonner les scripts, accumuler de
+l'etat, et construire des patterns evolutifs.
 
-## Portées
+## Portees par l'exemple
 
-- **Globale** — Session entière. Visible par tous les scripts de la scène. Pour l'état partagé, paramètres globaux.
-- **Ligne** — Durée de vie de la ligne. Visible par toutes les frames de cette ligne. Pour l'état par piste, compteurs.
-- **Frame** — Durée de vie de la frame. Visible par le script de cette frame. Pour l'état par cellule, données d'itération.
-- **Instance** — Exécution unique. Visible par une exécution du script. Pour les registres temporaires, travail local.
+Quatre portees. La portee determine qui voit la variable et combien de temps
+elle vit.
 
-### Variables globales
+**Instance** -- memoire locale. Se reinitialise a chaque execution du script.
 
-Les variables globales sont partagées dans toute la scène. N'importe quel script
-dans n'importe quelle ligne et frame peut les lire et les écrire. Elles
-persistent tant que la session est en cours.
-
-Utilisez les globales pour les valeurs sur lesquelles plusieurs lignes doivent
-s'accorder : une note fondamentale, une gamme, un seuil de probabilité, une
-transposition globale.
-
-### Variables de ligne
-
-Les variables de ligne appartiennent à une ligne spécifique. Toutes les frames
-de cette ligne peuvent y accéder, mais les scripts des autres lignes ne le
-peuvent pas. Elles persistent lors des changements de frame au sein de la ligne.
-
-Utilisez les variables de ligne pour l'état par piste : un compteur de pas qui
-avance à chaque boucle de la ligne, ou un tableau de mélodie que les frames
-lisent.
-
-### Variables de frame
-
-Les variables de frame appartiennent à une frame spécifique. Elles persistent
-entre les répétitions de cette frame mais se réinitialisent quand la ligne passe
-à la frame suivante.
-
-Utilisez les variables de frame pour un état qui doit survivre aux répétitions
-mais ne doit pas se propager aux autres frames.
-
-### Variables d'instance
-
-Les variables d'instance n'existent que pendant une seule exécution d'un script.
-Elles sont créées à neuf chaque fois que la frame est jouée et supprimées
-ensuite. C'est la portée la plus locale — essentiellement des registres
-temporaires.
-
-Dans les langages compilés, les variables d'instance comme `Instance("0")` et
-`Instance("1")` servent de registres de travail pour la VM.
-
-## Comment les portées se rapportent à la scène
-
-La hiérarchie des portées reflète la hiérarchie de la scène :
-
-```
-Scène ──── Variables globales
- └─ Ligne ──── Variables de ligne
-     └─ Frame ──── Variables de frame
-         └─ Exécution ──── Variables d'instance
+```forth
+10 !x @x      ;; stocker 10, le recuperer
 ```
 
-Les données circulent naturellement : une variable globale définie dans une
-ligne est immédiatement visible dans une autre. Une variable de ligne définie
-dans la frame 1 est visible dans la frame 2 quand la ligne avance. Les variables
-d'instance sont isolées à une seule exécution et disparaissent après.
+**Frame** -- survit aux repetitions. Se reinitialise quand la ligne avance.
+Ideal pour les compteurs.
 
-## Valeurs intégrées en lecture seule
+```forth
+@F.n 1 + !F.n
+@F.n 12 mod note sine snd .   ;; parcourt 12 notes en boucle
+```
 
-Chaque langage expose certaines valeurs intégrées que vous pouvez lire mais pas
-écrire. Elles proviennent de la portée **Environnement** et fournissent le
-contexte de l'exécution en cours :
+```
+SET F.count ADD F.count 1
+>> [note: MOD F.count 12]
+```
 
-- Position actuelle en beats
-- Tempo actuel
-- Génération de nombres aléatoires
-- Index de frame, index de ligne
-- Compteur d'itération (combien de fois la frame actuelle s'est répétée)
+**Ligne** -- partagee entre toutes les frames d'une ligne. Une frame definit,
+une autre lit.
 
-Les noms exacts et la syntaxe d'accès varient selon le langage — consultez la
-référence de chaque langage pour la liste complète.
+```forth
+;; frame A
+c4 !L.root
+;; frame B
+@L.root 7 + note sine snd .
+```
 
-## Astuces
+```
+-- frame A
+SET L.root 60
+-- frame B
+>> [note: ADD L.root 7]
+```
 
-- Minimisez les globales. Si seule une ligne a besoin d'une valeur, utilisez
-  une variable de ligne à la place.
-- Utilisez les variables de frame pour les accumulateurs qui se réinitialisent
-  naturellement quand la ligne passe à la section suivante.
-- Le système de variables est le principal moyen de communication entre scripts.
-  Deux frames dans des lignes différentes peuvent se coordonner en lisant et
-  écrivant la même variable globale.
+**Globale** -- visible par tous les scripts de la session. A utiliser avec
+parcimonie.
+
+```forth
+c4 !G.key
+@G.key note sine snd .
+```
+
+```
+SET G.key 60
+>> [note: G.key]
+```
+
+## Stocker et recuperer (Cagire)
+
+`!nom` stocke le sommet de la pile. `@nom` le recupere. Les variables
+inconnues renvoient 0. `,nom` stocke et garde la valeur sur la pile :
+
+```forth
+440 ,freq sine snd .   ;; stocke 440 ET passe la valeur
+```
+
+Les prefixes de portee se placent entre l'operateur et le nom : `!G.x`,
+`@L.root`, `,F.count`.
+
+## Accumulateurs
+
+Recuperer, modifier, restocker. Pattern classique pour des sequences
+evolutives :
+
+```forth
+@F.n 1 + !F.n
+( 0 !F.n ) @F.n 16 > ?    ;; repart a zero apres 16
+```
+
+Bob :
+
+```
+SET F.n ADD F.n 1
+IF GT F.n 16 : SET F.n 0 END
+>> [note: ADD 48 MOD F.n 12]
+```
+
+## Nommer les sons
+
+Stocker un nom de son, le reutiliser entre les frames :
+
+```forth
+;; frame A
+"sine" !L.synth
+;; frame B, C, D...
+c4 note @L.synth snd .
+```
+
+Changez une frame, toutes les frames de la ligne suivent.
+
+## Valeurs d'environnement
+
+Valeurs en lecture seule depuis le runtime. Les plus utiles :
+
+- Position en beats, tempo, nombre aleatoire
+- Index de frame, index de ligne, compteur d'iteration
+
+Cagire : `iter` empile le compteur d'iteration, `rand` empile une valeur
+aleatoire. Bob : `R` est un aleatoire 0-127, `I` l'index de boucle, `T`
+le tempo.
+
+## Visibilite temporelle
+
+Dans une meme frame, vous relisez ce que vous venez d'ecrire. Les
+modifications ne deviennent visibles pour les autres frames qu'apres la fin
+d'execution de la frame courante. Si la frame A ecrit `10 !G.x` et la
+frame B lit `@G.x` dans la meme passe, B voit l'ancienne valeur.

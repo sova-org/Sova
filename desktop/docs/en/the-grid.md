@@ -1,93 +1,106 @@
 # The Grid
 
-The scene grid is the main workspace in Sova. Lines are displayed as columns
-and frames as rows within each column. You navigate, edit, and organize your
-musical material here.
+The grid is where you work. Lines are columns, frames are rows. You write code
+here, rearrange parts, and steer the music during a performance.
 
 ## Layout
 
-Each column is a **line**. The column header shows the line number and controls
-(looping, trailing, speed). Below the header, each cell is a **frame** — it
-displays the frame's name (if any), duration, repetitions, and a preview of the
-script code.
+Each column is a line. The header shows the line number and controls for
+looping, trailing, and speed. Below the header, each cell is a frame showing
+its name, duration, repetitions, and a preview of the code.
 
-The currently playing frame is highlighted. If other players are editing a
-frame, you'll see their cursor indicator on the cell.
+The currently playing frame is highlighted. In multiplayer, you see other
+players' cursors on the cells they are editing.
 
 ## Navigation
 
-- **Arrow Up / Down** — Move cursor between frames in the current line
-- **Arrow Left / Right** — Move cursor between lines (same frame index)
-- **Click** — Select a cell
-- **Shift + Click** — Extend selection from anchor to clicked cell
-- **Shift + Arrow Up/Down** — Extend selection vertically
-- **Double-click** — Open the step editor for a cell
-- **Escape** — Clear selection
+Move around with arrow keys or the mouse.
+
+- Arrow Up / Down -- move between frames in the current line
+- Arrow Left / Right -- move between lines
+- Click -- select a cell
+- Shift + Click -- extend selection from anchor to clicked cell
+- Shift + Arrow Up/Down -- extend selection vertically
+- Double-click -- open the code editor for a frame
+- Escape -- clear selection
 
 ## Editing frame properties
 
-With a cell selected, press a key to start editing a property inline:
+Select a cell, then press a key to edit a property inline:
 
-- **Enter or D** — Duration
-- **R** — Repetitions
-- **N** — Name
+- Enter or D -- duration
+- R -- repetitions
+- N -- name
 
-Inside an edit field:
+Inside the edit field:
 
-- **Enter** — Commit the edit
-- **Tab** — Commit and move to the next field
-- **Shift+Tab** — Commit and move to the previous field
-- **Escape** — Cancel the edit
+- Enter -- commit
+- Tab -- commit and move to the next field
+- Shift+Tab -- commit and move to the previous field
+- Escape -- cancel
 
-To edit the **code** inside a frame, double-click the cell or press Enter when
-the step editor is configured to open that way. The step editor is a full code
-editor with syntax highlighting for the frame's language.
+To edit the code, double-click the cell. The code editor opens with syntax
+highlighting for the frame's language.
 
 ## Line controls
 
-- **S** — Edit the line's speed factor
-- **L** — Toggle looping
-- **T** — Toggle trailing
+- S -- edit the line's speed factor
+- L -- toggle looping
+- T -- toggle trailing
 
-You can also adjust start frame and end frame from the line header. Tab moves
-between Start Frame and End Frame fields.
+Tab moves between the Start Frame and End Frame fields in the line header.
 
 ## Frame operations
 
-- **Delete / Backspace** — Delete selected frame(s)
-- **Cmd+D** — Duplicate selected frame(s)
-- **Cmd+C** — Copy selected frame(s)
-- **Cmd+X** — Cut selected frame(s)
-- **Cmd+V** — Paste frames after cursor
-- **Alt+Up** — Move selected frame(s) up
-- **Alt+Down** — Move selected frame(s) down
+- Delete / Backspace -- delete selected frame(s)
+- Cmd+D -- duplicate selected frame(s)
+- Cmd+C -- copy
+- Cmd+X -- cut
+- Cmd+V -- paste after cursor
+- Alt+Up -- move selected frame(s) up
+- Alt+Down -- move selected frame(s) down
 
 ## Line operations
 
-- **Cmd+Shift+D** — Duplicate the current line
-- **Cmd+Delete** — Remove the current line
-- **Alt+Left** — Move line one position left
-- **Alt+Right** — Move line one position right
+- Cmd+Shift+D -- duplicate the current line
+- Cmd+Delete -- remove the current line
+- Alt+Left -- move line left
+- Alt+Right -- move line right
 
 ## Selection
 
-- **Cmd+A** — Select all frames in the current line
-- **Escape** — Clear selection
+- Cmd+A -- select all frames in the current line
+- Escape -- clear selection
 
-You can select multiple frames and apply operations (delete, duplicate, copy,
-cut, move) to all of them at once.
+Multi-select works with all operations: delete, duplicate, copy, cut, move.
 
 ## Context menu
 
-Right-click on a frame cell to access additional options: adding frames,
-inserting lines, toggling panel visibility, and more.
+Right-click on a cell for additional options: adding frames, inserting lines,
+toggling panels, enabling or disabling frames.
 
-## Tips
+## Workflow tips
 
-- Use **Name** (N) to label sections of your arrangement — it makes the grid
-  much easier to read at a glance.
-- **Duplicate** (Cmd+D) is the fastest way to build variations: copy a frame,
-  then tweak the code.
-- **Alt+Up/Down** lets you reorder frames on the fly during a performance.
-- Disabled frames (toggle via context menu) stay visible but don't play — handy
-  for keeping alternate ideas around.
+Name your frames (N). A grid full of unnamed cells becomes unreadable fast.
+Label your sections: "intro", "drop", "breakdown". During a performance you
+need to find things at a glance.
+
+Duplicate before you modify (Cmd+D). Copy a working frame, then change one
+thing. This keeps the original intact and gives you a fallback if the edit
+doesn't land.
+
+Reorder on the fly (Alt+Up/Down). Mid-performance, you can shuffle the
+sequence of frames in a line without stopping playback. Move a fill before
+the drop, push a transition earlier.
+
+Disable frames instead of deleting them. Right-click a cell and toggle it off.
+The code stays visible but the frame is skipped during playback. Bring it back
+when you need it.
+
+Use start/end frame ranges to isolate a section. Set a line to loop over just
+frames 2-4 while you build frame 5. When it's ready, widen the range.
+
+Keep lines focused. One line per musical role: drums, bass, melody, effects.
+It is easier to mute, solo, or rearrange a line when it does one thing.
+
+See **The Scene** for how lines, frames, and execution modes work.

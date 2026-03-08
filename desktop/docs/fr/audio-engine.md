@@ -1,90 +1,101 @@
 # Moteur audio
 
-Sova inclut un moteur audio intégré appelé **Doux**. Il fournit la synthèse et
-le traitement audio directement à l'intérieur du serveur, vous permettant de
-produire du son sans logiciel ou matériel externe.
+Doux est le synthetiseur integre de Sova. Il tourne dans le serveur, produit
+l'audio directement, sans logiciel ni materiel externe. Si le serveur a ete
+lance avec le support audio (c'est le cas par defaut), Doux est disponible des
+le demarrage.
 
-## Qu'est-ce que Doux
+## Ce que Doux sait faire
 
-Doux est un moteur audio temps réel qui fonctionne aux côtés du serveur Sova.
-Il occupe un slot de périphérique (généralement le slot 2) et répond aux
-événements comme le ferait une sortie MIDI — mais au lieu d'envoyer du MIDI à
-un synthé externe, il génère l'audio en interne.
-
-Doux est particulièrement bien intégré au langage **Cagire**, qui dispose de
-mots dédiés pour la synthèse audio, la lecture d'échantillons et le traitement
-du signal. Les autres langages peuvent envoyer des événements au slot de Doux
-pour un déclenchement basique.
+Oscillateurs (sinus, dent de scie, carre, triangle, bruit), lecture
+d'echantillons, filtres (passe-bas, passe-haut, passe-bande, variantes
+ladder), reverb, delay, distorsion, chorus, phaser, synthese FM, compression,
+et enregistrement en direct vers des echantillons reutilisables. La liste
+complete des parametres se trouve dans la **Language Reference** de Cagire.
 
 ## Panneau Audio
 
 Ouvrez le panneau Audio pour configurer le moteur :
 
-- **Périphérique de sortie** — sélectionnez l'interface audio à utiliser pour la
-  lecture.
-- **Dossiers d'échantillons** — répertoires où Doux cherche les fichiers
-  d'échantillons audio.
-- **Voix** — le nombre de voix de synthèse simultanées disponibles.
+- Peripherique de sortie -- quelle interface audio utiliser.
+- Dossiers d'echantillons -- repertoires ou Doux charge ses samples.
+- Voix -- nombre de voix de synthese simultanees.
 
-Le panneau Audio affiche aussi l'état du moteur (en cours ou arrêté).
+Le panneau indique si le moteur tourne.
 
-## Panneaux de visualisation
+## Oscilloscope, Spectre, VU-metre
 
-Plusieurs panneaux vous permettent de surveiller la sortie audio en temps réel :
+Trois panneaux de visualisation surveillent la sortie audio :
 
-- **Oscilloscope** — affichage de la forme d'onde. Montre le signal audio
-  pendant la lecture. Peut être détaché dans une fenêtre séparée.
-- **Spectre** — analyseur de spectre fréquentiel. Montre le contenu fréquentiel
-  de l'audio. Peut aussi être détaché.
-- **VU-mètre** — indicateur de niveau montrant l'amplitude du signal.
-- **Barre oscilloscope** — un affichage compact de la forme d'onde qui
-  s'intègre dans une barre d'outils.
+- L'oscilloscope affiche la forme d'onde. Detachable dans une fenetre separee.
+- Le spectre affiche le contenu frequentiel. Aussi detachable.
+- Le VU-metre affiche le niveau du signal.
 
-Ces panneaux reçoivent les données du serveur et se mettent à jour en temps
-réel. Ils sont utiles tant pour le monitoring que comme élément visuel pendant
-la performance.
+Ils se mettent a jour en temps reel depuis le serveur. Utiles pour le sound
+design et comme element visuel en performance.
 
-## Utiliser Doux depuis le code
+## Utiliser Doux depuis Cagire
 
-Le moyen principal d'utiliser Doux est à travers **Cagire**, le langage à pile.
-Cagire fournit des mots pour :
+Cagire est le langage principal pour piloter Doux. Un sample :
 
-- Les oscillateurs (sinus, dent de scie, carré, triangle, bruit)
-- La lecture d'échantillons
-- Les filtres et effets
-- Les enveloppes d'amplitude
-- Le routage du signal
+```forth
+"kick" snd .
+```
 
-Consultez l'onglet **Cagire** dans la documentation pour la référence complète
-des mots de synthèse audio.
+Un son en dent de scie filtre avec reverb :
 
-Depuis les autres langages (Bob, Boinx, BaLi), vous pouvez envoyer des
-événements de notes au slot de Doux. Doux répond aux messages MIDI note on/off
-avec sa voix par défaut, vous offrant une synthèse basique sans écrire de code
-Cagire.
+```forth
+"saw" snd c4 note 0.5 gain 800 lpf 0.3 verb .
+```
 
-## Installation
+Synthese FM avec enveloppe :
 
-Doux est activé par défaut quand le serveur est compilé avec la fonctionnalité
-`audio` (ce qui est le cas dans les builds standards). Quand vous démarrez le
-serveur intégré depuis l'application de bureau, le moteur audio est disponible
-automatiquement.
+```forth
+"sine" snd c4 note 200 fm 2 fmh 0.01 att 0.3 dec .
+```
 
-Pour utiliser Doux :
+Enregistrement en direct, puis lecture avec effets :
 
-1. Ouvrez le panneau Audio et sélectionnez votre périphérique de sortie.
-2. Vérifiez que le moteur Doux est en cours d'exécution.
-3. Le moteur est assigné à un slot de périphérique (vérifiez le panneau
-   Périphériques).
-4. Routez vos événements vers ce slot et jouez.
+```forth
+"loop" rec              ;; demarrer l'enregistrement
+```
 
-## Astuces
+```forth
+"loop" rec              ;; arreter, le sample est enregistre
+loop snd 0.5 speed 800 lpf 0.4 verb .
+```
 
-- Doux s'exécute côté serveur. Dans une session multijoueur, tous les musiciens
-  partagent le même moteur audio — les événements de n'importe quel client
-  peuvent déclencher du son.
-- Utilisez les panneaux Oscilloscope et Spectre pendant le sound design pour
-  voir ce que votre code de synthèse produit réellement.
-- Si vous n'avez pas besoin d'audio intégré (par ex. vous routez du MIDI vers du
-  matériel externe), vous pouvez ignorer Doux complètement. Il ne consomme pas
-  de ressources si aucun événement ne lui est routé.
+Compression sidechain entre orbites :
+
+```forth
+0 orbit "kick" snd .                 ;; kick sur l'orbite 0
+1 orbit "saw" snd c3 note 0.8 comp 0 corbit .  ;; ducker le synthe depuis l'orbite 0
+```
+
+## Utiliser Doux depuis d'autres langages
+
+Bob, Boinx et BaLi peuvent envoyer des evenements de notes au slot de Doux.
+Doux repond aux messages MIDI note on/off avec sa voix par defaut :
+
+```
+DEV 2
+>> [note: 60 vel: 100]
+WAIT 1
+>> [note: 64 vel: 80]
+```
+
+Pour un controle complet de la synthese (filtres, effets, FM), utilisez Cagire.
+
+## Mise en route
+
+Doux est active par defaut. Quand vous demarrez le serveur integre depuis
+l'application, le moteur audio demarre automatiquement et occupe un slot de
+peripherique (verifiez le panneau Peripheriques pour savoir lequel).
+
+1. Ouvrez le panneau Audio, selectionnez votre peripherique de sortie.
+2. Verifiez que le moteur tourne.
+3. Routez vos evenements vers le slot de Doux.
+
+En session multijoueur, tous les musiciens partagent le meme moteur -- chaque
+client peut declencher du son. Si vous n'utilisez que du materiel MIDI externe,
+ignorez Doux. Il ne consomme rien quand il est inactif.

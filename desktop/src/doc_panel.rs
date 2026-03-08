@@ -26,6 +26,7 @@ const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[
     ("Events", include_str!("../docs/en/events.md")),
     ("Multiplayer", include_str!("../docs/en/multiplayer.md")),
     ("Audio Engine", include_str!("../docs/en/audio-engine.md")),
+    ("Visuals (Hydra)", include_str!("../docs/en/visuals.md")),
 ];
 fn general_articles() -> &'static [(&'static str, &'static str)] {
     let locale = rust_i18n::locale();
@@ -41,6 +42,7 @@ fn general_articles() -> &'static [(&'static str, &'static str)] {
             ("Événements", include_str!("../docs/fr/events.md")),
             ("Multijoueur", include_str!("../docs/fr/multiplayer.md")),
             ("Moteur audio", include_str!("../docs/fr/audio-engine.md")),
+            ("Visuels (Hydra)", include_str!("../docs/fr/visuals.md")),
         ],
         _ => GENERAL_ARTICLES_EN,
     }
@@ -338,14 +340,18 @@ impl DocPanel {
         match &self.view {
             Some(DocView::GeneralArticle(idx)) => {
                 if let Some((title, content)) = articles.get(*idx) {
-                    ui.heading(*title);
+                    if *idx == 0 {
+                        show_welcome_header(ui);
+                    } else {
+                        ui.heading(*title);
+                    }
                     ui.add_space(4.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
                 }
             }
             _ => {
-                if let Some((title, content)) = articles.first() {
-                    ui.heading(*title);
+                if let Some((_title, content)) = articles.first() {
+                    show_welcome_header(ui);
                     ui.add_space(4.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
                 }
@@ -353,6 +359,25 @@ impl DocPanel {
         }
     }
 
+}
+
+fn show_welcome_header(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::Image::new(egui::include_image!("../assets/icon.png"))
+                .fit_to_exact_size(egui::vec2(48.0, 48.0)),
+        );
+        ui.vertical(|ui| {
+            ui.heading(egui::RichText::new("Sova").size(24.0).strong());
+            ui.label(
+                egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak(),
+            );
+        });
+    });
+    ui.add_space(8.0);
+}
+
+impl DocPanel {
     fn show_lang_toc(&mut self, ui: &mut egui::Ui, doc: &LanguageDocumentation, needle: &str) {
         if !doc.articles.is_empty() {
             ui.strong(t!("doc.articles").as_ref());

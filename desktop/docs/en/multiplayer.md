@@ -1,77 +1,84 @@
 # Multiplayer
 
-Sova is built for collaborative live coding. Multiple players can connect to
-the same server, see each other's code in real time, and perform together on a
-shared scene.
+Connect to a server, see where other players are in the grid, edit code
+simultaneously, chat, perform. Sova sessions are multiplayer by default.
 
-## Starting a server
+## Hosting a session
 
-There are two ways to host a session:
+Two options.
 
-- **Built-in server**: Launch the Sova desktop app, open the Server panel, and
-  click Start. The app runs a server internally and connects to it. Other
-  players can connect to your machine's IP address and port.
-- **Standalone server**: Run `sova-server` from the command line with a port
-  number. This is useful for dedicated hosting on a machine that doesn't need
-  a GUI.
+The built-in server: open the Server panel, click Start. The app runs a server
+internally and connects to it. Other players connect to your IP and port.
 
-The server manages the scene, the clock, and all device connections. Clients
-are lightweight — they send edits and receive updates.
+The standalone server: run `sova-server` from the command line.
 
-## Connecting
+```
+sova-server -p 8080
+```
 
-To join a session:
+This is better for dedicated hosting or headless machines. Same server, no GUI.
 
-1. Open the Server panel.
-2. Enter the server's IP address and port.
-3. Choose a username (must be unique in the session).
-4. Click Connect.
+The server owns the scene, the clock, and all device routing. Clients are thin:
+they send edits and receive state.
 
-Once connected, you receive the full scene, device configuration, and clock
-state. You're immediately in sync with everyone else.
+## Joining
 
-If the username is already taken or the connection is refused, you'll see an
-error message. Pick a different name and try again.
+Open the Server panel. Enter the host address, port, and a username. Click
+Connect.
+
+You receive the full scene, device map, and clock state immediately. Your
+transport syncs via Ableton Link -- the beat is already locked by the time you
+see the grid.
+
+Usernames must be unique in the session. If yours is taken, pick another.
+
+## What syncs
+
+Everything scene-related goes through the server:
+
+- Scene structure: lines, frames, durations, repetitions, scripts
+- Transport state: play, stop, tempo, quantum
+- Device assignments: which slot maps to which output
+- Code evaluation: when you evaluate a frame, the server compiles and schedules it
+
+When you disconnect and reconnect, you get the current scene. There is no local
+state memory.
+
+## What doesn't sync
+
+- Your panel layout and editor preferences stay local
+- MIDI and OSC device connections are per-machine (each player configures their
+  own outputs in the **Devices** panel)
+- Visual scripts (Hydra) run client-side
 
 ## Peer editing
 
-When multiple players are connected:
+Each player's position in the grid is visible to everyone. You see colored
+indicators on the cells other players are viewing or editing.
 
-- You can see where each player's cursor is in the grid. Each player gets a
-  distinct indicator on the cell they're viewing or editing.
-- When someone starts editing a frame (opens the step editor), other players
-  see that the frame is being edited. This helps avoid conflicting edits.
-- All scene changes — adding lines, modifying frames, changing durations — are
-  broadcast to every connected client in real time.
+When someone opens a frame's editor, the grid shows it. This gives you a natural
+sense of who is working where.
 
-There is no locking: two players can edit different frames simultaneously
+There is no locking. Two players can edit different frames at the same time
 without conflict. If two players edit the same frame, the last evaluation wins.
 
 ## Chat
 
-The Chat panel lets you send text messages to everyone in the session. Open it
-from the panel menu or the context menu on the grid. Messages show the sender's
-username.
+The Chat panel sends text messages to everyone in the session. Good for
+coordinating transitions mid-performance: "dropping bass next quantum",
+"switching to noise on line 3".
 
-## Scene synchronization
+## Jamming tips
 
-The server is the source of truth. When you evaluate code, add a frame, or
-change a property, your edit is sent to the server, which applies it and
-broadcasts the result to all clients. This means:
+Claim your own lines. If you stay on lines 1-2 and your partner stays on 3-4,
+you avoid stepping on each other's code.
 
-- Everyone always sees the same scene state.
-- If you disconnect and reconnect, you get the current scene, not your last
-  local state.
-- The server's clock (via Ableton Link) keeps everyone time-aligned.
+Agree on device slots before you start. Slot 1 is synth, slot 3 is drums,
+whatever works. If someone reassigns a shared slot mid-set, everything routed
+there changes.
 
-## Tips
+Ableton Link keeps the beat tight across machines on the same network. Tempo
+changes propagate to all Link-enabled apps, not just Sova clients.
 
-- Agree on device slot assignments with your collaborators. If player A uses
-  slot 1 for synth and player B reassigns slot 1 to drums, things will get
-  confusing.
-- Use different lines for different players to avoid stepping on each other's
-  code.
-- The chat is handy for coordinating transitions — "I'll drop the bass on the
-  next quantum" — without breaking the flow of performance.
-- Ableton Link synchronization works across the network, so even if players
-  are on different machines, the beat stays locked.
+Use the quantum setting to coordinate transitions. A 4-beat quantum means
+changes land on the next bar. An 8-beat quantum gives you more breathing room.

@@ -1,81 +1,99 @@
 # Audio Engine
 
-Sova includes a built-in audio engine called **Doux**. It provides synthesis
-and audio processing directly inside the server, so you can produce sound
-without any external software or hardware.
+Doux is Sova's built-in synthesizer. It runs inside the server, produces audio
+directly, and needs no external software or hardware. If the server has audio
+enabled (the default), Doux is available as soon as you start.
 
-## What is Doux
+## What Doux can do
 
-Doux is a real-time audio engine that runs alongside the Sova server. It
-occupies a device slot (typically slot 2) and responds to events just like a
-MIDI output would — but instead of sending MIDI to an external synth, it
-generates audio internally.
-
-Doux is especially tightly integrated with the **Cagire** language, which has
-dedicated words for audio synthesis, sample playback, and signal processing.
-Other languages can send events to the Doux device slot for basic triggering.
+Oscillators (sine, saw, square, triangle, noise), sample playback, filters
+(lowpass, highpass, bandpass, ladder variants), reverb, delay, distortion,
+chorus, phaser, FM synthesis, compression, and live recording into reusable
+samples. The full parameter list is in the Cagire **Language Reference**.
 
 ## Audio panel
 
 Open the Audio panel to configure the engine:
 
-- **Output device** — select which audio interface to use for playback.
-- **Sample paths** — directories where Doux looks for audio sample files.
-- **Voices** — the number of simultaneous synthesis voices available.
+- Output device -- which audio interface to use.
+- Sample paths -- directories where Doux loads samples from.
+- Voices -- simultaneous synthesis voices.
 
-The Audio panel also shows the engine's status (running or stopped).
+The panel shows whether the engine is running.
 
-## Visualization panels
+## Scope, Spectrum, VU Meter
 
-Several panels let you monitor the audio output in real time:
+Three visualization panels monitor the audio output:
 
-- **Scope** — waveform display. Shows the audio signal as it plays. Can be
-  detached as a separate window.
-- **Spectrum** — frequency spectrum analyzer. Shows the frequency content of
-  the audio. Can also be detached.
-- **VU Meter** — level meter showing signal amplitude.
-- **Scope Bar** — a compact waveform display that fits in a toolbar.
+- Scope shows the waveform. Detachable as a separate window.
+- Spectrum shows frequency content. Also detachable.
+- VU Meter shows signal level.
 
-These panels receive data from the server and update in real time. They're
-useful both for monitoring and as a visual element during performance.
+They update in real time from the server. Useful during sound design and as
+visuals during performance.
 
-## Using Doux from code
+## Using Doux from Cagire
 
-The primary way to use Doux is through **Cagire**, the stack-based language.
-Cagire provides words for:
+Cagire is the primary language for Doux. A sample:
 
-- Oscillators (sine, saw, square, triangle, noise)
-- Sample playback
-- Filters and effects
-- Amplitude envelopes
-- Signal routing
+```forth
+"kick" snd .
+```
 
-See the **Cagire** tab in the documentation for the full reference of audio
-synthesis words.
+A filtered sawtooth with reverb:
 
-From other languages (Bob, Boinx, BaLi), you can send note events to the Doux
-device slot. Doux responds to MIDI-style note on/off messages with its default
-voice, giving you basic synthesis without writing Cagire code.
+```forth
+"saw" snd c4 note 0.5 gain 800 lpf 0.3 verb .
+```
+
+FM synthesis with envelope:
+
+```forth
+"sine" snd c4 note 200 fm 2 fmh 0.01 att 0.3 dec .
+```
+
+Live recording, then playback with effects:
+
+```forth
+"loop" rec              ;; start recording
+```
+
+```forth
+"loop" rec              ;; stop, sample is registered
+loop snd 0.5 speed 800 lpf 0.4 verb .
+```
+
+Sidechain compression between orbits:
+
+```forth
+0 orbit "kick" snd .                 ;; kick on orbit 0
+1 orbit "saw" snd c3 note 0.8 comp 0 corbit .  ;; duck synth from orbit 0
+```
+
+## Using Doux from other languages
+
+Bob, Boinx, and BaLi can send note events to the Doux device slot. Doux
+responds to MIDI-style note on/off with its default voice:
+
+```
+DEV 2
+>> [note: 60 vel: 100]
+WAIT 1
+>> [note: 64 vel: 80]
+```
+
+For full synthesis control (filters, effects, FM), use Cagire.
 
 ## Setup
 
-Doux is enabled by default when the server is compiled with the `audio` feature
-(which it is in standard builds). When you start the built-in server from the
-desktop app, the audio engine is available automatically.
+Doux is enabled by default. When you start the built-in server from the desktop
+app, the audio engine starts automatically and occupies a device slot (check the
+Devices panel to see which one).
 
-To use Doux:
+1. Open the Audio panel, select your output device.
+2. Confirm the engine is running.
+3. Route events to the Doux slot.
 
-1. Open the Audio panel and select your output device.
-2. Check that the Doux engine is running.
-3. The engine is assigned to a device slot (check the Devices panel).
-4. Route your events to that slot and play.
-
-## Tips
-
-- Doux runs on the server side. In a multiplayer session, all players share the
-  same audio engine — events from any client can trigger sound.
-- Use the Scope and Spectrum panels during sound design to see what your
-  synthesis code is actually producing.
-- If you don't need built-in audio (e.g. you're routing MIDI to external
-  hardware), you can ignore Doux entirely. It doesn't consume resources if no
-  events are routed to it.
+In a multiplayer session, all players share the same engine -- any client can
+trigger sound. If you only use external MIDI hardware, you can ignore Doux
+entirely. It consumes no resources when idle.

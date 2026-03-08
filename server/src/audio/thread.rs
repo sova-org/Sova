@@ -196,6 +196,12 @@ pub fn spawn_audio_thread(
                     cache.schedule_depth =
                         engine.metrics.schedule_depth.load(Ordering::Relaxed) as usize;
                     cache.sample_pool_mb = engine.metrics.sample_pool_mb();
+
+                    let msg = ServerMessage::AudioEngineState(cache.clone());
+                    drop(cache);
+                    if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                        let _ = scope_sender.send(BroadcastItem::Raw(Arc::new(bytes)));
+                    }
                 }
             }
         }

@@ -1,4 +1,19 @@
-use rhai::{CustomType, Dynamic, Engine, TypeBuilder};
+use std::sync::{Arc, Mutex};
+
+use rhai::{CustomType, Dynamic, Engine, Scope, TypeBuilder};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum RenderMode {
+    #[default]
+    Single0,
+    Single(usize),
+    All,
+}
+
+pub struct EvalResult {
+    pub shaders: [Option<String>; 4],
+    pub render_mode: RenderMode,
+}
 
 #[derive(Debug, Clone, CustomType)]
 pub struct Node {
@@ -47,14 +62,12 @@ struct FnMeta {
 }
 
 const FUNCTIONS: &[FnMeta] = &[
-    // Sources: fn(vec2 st, ...floats) -> vec4
     FnMeta { name: "osc", kind: OpKind::Source, defaults: &[60.0, 0.1, 0.0] },
     FnMeta { name: "noise", kind: OpKind::Source, defaults: &[10.0, 0.1] },
     FnMeta { name: "voronoi", kind: OpKind::Source, defaults: &[5.0, 0.3, 0.3] },
     FnMeta { name: "shape", kind: OpKind::Source, defaults: &[3.0, 0.3, 0.01] },
     FnMeta { name: "gradient", kind: OpKind::Source, defaults: &[0.0] },
     FnMeta { name: "solid", kind: OpKind::Source, defaults: &[0.0, 0.0, 0.0, 1.0] },
-    // Geometry: fn(vec2 st, ...floats) -> vec2
     FnMeta { name: "rotate", kind: OpKind::Geo, defaults: &[10.0, 0.0] },
     FnMeta { name: "scale", kind: OpKind::Geo, defaults: &[1.5, 1.0, 1.0, 0.5, 0.5] },
     FnMeta { name: "scroll", kind: OpKind::Geo, defaults: &[0.5, 0.5, 0.0, 0.0] },
@@ -65,7 +78,6 @@ const FUNCTIONS: &[FnMeta] = &[
     FnMeta { name: "scrollY", kind: OpKind::Geo, defaults: &[0.5, 0.0] },
     FnMeta { name: "repeatX", kind: OpKind::Geo, defaults: &[3.0, 0.0] },
     FnMeta { name: "repeatY", kind: OpKind::Geo, defaults: &[3.0, 0.0] },
-    // Color: fn(vec4, ...floats) -> vec4
     FnMeta { name: "color", kind: OpKind::Color, defaults: &[1.0, 1.0, 1.0, 1.0] },
     FnMeta { name: "invert", kind: OpKind::Color, defaults: &[1.0] },
     FnMeta { name: "contrast", kind: OpKind::Color, defaults: &[1.6] },
@@ -80,7 +92,6 @@ const FUNCTIONS: &[FnMeta] = &[
     FnMeta { name: "r", kind: OpKind::Color, defaults: &[1.0, 0.0] },
     FnMeta { name: "g", kind: OpKind::Color, defaults: &[1.0, 0.0] },
     FnMeta { name: "b", kind: OpKind::Color, defaults: &[1.0, 0.0] },
-    // Blend: fn(vec4, vec4, ...floats) -> vec4
     FnMeta { name: "add", kind: OpKind::Blend, defaults: &[1.0] },
     FnMeta { name: "mult", kind: OpKind::Blend, defaults: &[1.0] },
     FnMeta { name: "blend", kind: OpKind::Blend, defaults: &[0.5] },
@@ -88,7 +99,6 @@ const FUNCTIONS: &[FnMeta] = &[
     FnMeta { name: "layer", kind: OpKind::Blend, defaults: &[] },
     FnMeta { name: "mask", kind: OpKind::Blend, defaults: &[] },
     FnMeta { name: "sub", kind: OpKind::Blend, defaults: &[1.0] },
-    // Modulate: fn(vec2, vec4, ...floats) -> vec2
     FnMeta { name: "modulate", kind: OpKind::Modulate, defaults: &[0.1] },
     FnMeta { name: "modulateScale", kind: OpKind::Modulate, defaults: &[1.0, 1.0] },
     FnMeta { name: "modulateRotate", kind: OpKind::Modulate, defaults: &[1.0, 0.0] },
@@ -199,9 +209,8 @@ impl Emitter {
             }
         }
 
-        let source = source.ok_or("chain must start with a source (osc, noise, etc.)")?;
+        let source = source.ok_or("chain must start with a source (osc, noise, src, etc.)")?;
 
-        // Emit st transforms in reverse order
         let mut current_st = "st".to_string();
         for op in geo_mods.iter().rev() {
             match op {
@@ -228,16 +237,22 @@ impl Emitter {
             }
         }
 
-        // Emit source
         let Op::Source { func, args } = source else { unreachable!() };
         let current_var = self.next_var();
-        let a = fmt_args(args);
-        let sep = if a.is_empty() { "" } else { ", " };
-        self.lines.push(format!(
-            "  vec4 {current_var} = {func}({current_st}{sep}{a});"
-        ));
 
-        // Emit color/blend chain
+        if *func == "src" {
+            let buf_idx = args.first().map(|a| *a as usize).unwrap_or(0).min(3);
+            self.lines.push(format!(
+                "  vec4 {current_var} = texture(iBuffer{buf_idx}, {current_st});"
+            ));
+        } else {
+            let a = fmt_args(args);
+            let sep = if a.is_empty() { "" } else { ", " };
+            self.lines.push(format!(
+                "  vec4 {current_var} = {func}({current_st}{sep}{a});"
+            ));
+        }
+
         let mut prev_var = current_var;
         for op in &colors {
             match op {
@@ -278,24 +293,103 @@ fn compile_node(node: &Node) -> Result<String, String> {
     ))
 }
 
-pub fn build_engine() -> Engine {
-    let mut engine = Engine::new();
-    engine.build_type::<Node>();
+struct PatchState {
+    buffers: [Option<Node>; 4],
+    render_mode: RenderMode,
+}
 
-    // .out() terminal — returns node unchanged
-    engine.register_fn("out", |node: Node| -> Node { node });
-
+fn register_functions(engine: &mut Engine) {
     for meta in FUNCTIONS {
         match meta.kind {
-            OpKind::Source => register_source(&mut engine, meta),
-            OpKind::Geo => register_geo(&mut engine, meta),
-            OpKind::Color => register_color(&mut engine, meta),
-            OpKind::Blend => register_blend(&mut engine, meta),
-            OpKind::Modulate => register_modulate(&mut engine, meta),
+            OpKind::Source => register_source(engine, meta),
+            OpKind::Geo => register_geo(engine, meta),
+            OpKind::Color => register_color(engine, meta),
+            OpKind::Blend => register_blend(engine, meta),
+            OpKind::Modulate => register_modulate(engine, meta),
+        }
+    }
+}
+
+pub const DEFAULT_SCRIPT: &str = "\
+osc(60.0, 0.1).rotate(0.0, 0.1)
+    .add(voronoi(8.0, 0.3, 0.3), 0.5)
+    .colorama(0.05)
+    .out()";
+
+pub fn eval(code: &str) -> Result<EvalResult, String> {
+    let state = Arc::new(Mutex::new(PatchState {
+        buffers: [None, None, None, None],
+        render_mode: RenderMode::default(),
+    }));
+
+    let mut engine = Engine::new();
+    engine.build_type::<Node>();
+    register_functions(&mut engine);
+
+    // .out() → buffer 0
+    {
+        let s = state.clone();
+        engine.register_fn("out", move |node: Node| {
+            s.lock().unwrap().buffers[0] = Some(node);
+        });
+    }
+    // .out(oN) → buffer N
+    {
+        let s = state.clone();
+        engine.register_fn("out", move |node: Node, idx: i64| {
+            let i = idx as usize;
+            if i < 4 {
+                s.lock().unwrap().buffers[i] = Some(node);
+            }
+        });
+    }
+    // src(oN) → texture read from buffer N
+    engine.register_fn("src", |idx: i64| -> Node {
+        Node::source("src", vec![idx as f64])
+    });
+    // render() → 2x2 grid
+    {
+        let s = state.clone();
+        engine.register_fn("render", move || {
+            s.lock().unwrap().render_mode = RenderMode::All;
+        });
+    }
+    // render(oN) → display buffer N
+    {
+        let s = state.clone();
+        engine.register_fn("render", move |idx: i64| {
+            s.lock().unwrap().render_mode = RenderMode::Single(idx as usize);
+        });
+    }
+
+    let mut scope = Scope::new();
+    scope.push_constant("o0", 0_i64);
+    scope.push_constant("o1", 1_i64);
+    scope.push_constant("o2", 2_i64);
+    scope.push_constant("o3", 3_i64);
+
+    let result = engine
+        .eval_with_scope::<Dynamic>(&mut scope, code)
+        .map_err(|e| e.to_string())?;
+
+    let mut patch = state.lock().unwrap();
+
+    // Backward compat: if no .out() was called, try result as Node → buffer 0
+    if patch.buffers.iter().all(|b| b.is_none()) && result.is::<Node>() {
+        patch.buffers[0] = result.try_cast::<Node>();
+    }
+
+    let mut shaders: [Option<String>; 4] = [None, None, None, None];
+    for (i, buf) in patch.buffers.iter().enumerate() {
+        if let Some(node) = buf {
+            shaders[i] = Some(compile_node(node)?);
         }
     }
 
-    engine
+    Ok(EvalResult {
+        shaders,
+        render_mode: patch.render_mode,
+    })
 }
 
 fn register_source(engine: &mut Engine, meta: &FnMeta) {
@@ -459,15 +553,4 @@ fn register_modulate(engine: &mut Engine, meta: &FnMeta) {
             },
         );
     }
-}
-
-pub const DEFAULT_SCRIPT: &str = "\
-osc(60.0, 0.1).rotate(0.0, 0.1)
-    .add(voronoi(8.0, 0.3, 0.3), 0.5)
-    .colorama(0.05)
-    .out()";
-
-pub fn eval(engine: &Engine, code: &str) -> Result<String, String> {
-    let node = engine.eval::<Node>(code).map_err(|e| e.to_string())?;
-    compile_node(&node)
 }

@@ -1,102 +1,97 @@
 # Timing
 
-Tout dans Sova fonctionne sur une horloge partagée. Le tempo, les beats et
-la synchronisation sont gérés par Ableton Link, qui maintient toutes les
-applications et tous les appareils connectés alignés sur la même timeline.
+Sova mesure le temps en beats. Un beat a 120 BPM dure 500ms. A 60 BPM, une
+seconde entiere. Durees de frames, attentes, longueurs de notes : tout est
+en beats. Changez le tempo, vos patterns suivent -- rien a recalculer.
 
-## Beats et tempo
+## Tempo et synchronisation
 
-Sova mesure le temps en **beats**. Un beat est une pulsation musicale
-dont la durée réelle dépend du tempo (BPM). À 120 BPM, un beat dure
-500 millisecondes. À 60 BPM, un beat dure une seconde entière.
+L'horloge tourne sur Ableton Link. Toutes les applications Link du reseau
+partagent le meme tempo et la meme position. Changez le BPM dans Sova,
+Ableton Live le voit. Changez-le dans Live, Sova suit. Si rien d'autre
+n'est sur le reseau, Sova tourne sur sa propre horloge. Aucune configuration
+necessaire.
 
-Les durées des frames, les commandes d'attente et les longueurs de notes sont
-toutes exprimées en beats. Cela signifie que vos patterns accélèrent ou
-ralentissent automatiquement quand le tempo change — vous n'avez rien à
-recalculer.
+Link partage aussi l'etat lecture/arret. Lancez la lecture dans Sova, les
+autres pairs Link peuvent demarrer avec vous.
 
-## Ableton Link
+## Mesures et phrases
 
-Ableton Link est un protocole de synchronisation du tempo, des beats et de
-la phase entre applications et appareils sur le même réseau. Sova utilise Link
-comme horloge maîtresse.
+Le **quantum** definit combien de beats forment une mesure. Par defaut, 4 --
+une mesure 4/4 standard. La **phase** indique ou vous etes dans cette
+mesure : beat 0, 1, 2 ou 3.
 
-Quand vous changez le tempo dans Sova, toute application compatible Link
-(Ableton Live, d'autres instances de Sova, des applications mobiles, etc.) voit
-le changement instantanément. Inversement, si une autre application change le
-tempo, Sova suit.
-
-Link synchronise aussi l'état **lecture/arrêt**. Quand vous lancez la lecture
-dans Sova, les autres pairs Link peuvent démarrer aussi (s'ils activent la
-synchronisation lecture/arrêt).
-
-Vous n'avez pas besoin de configurer Link — il fonctionne automatiquement sur
-votre réseau local. Si aucun autre pair Link n'est présent, Sova utilise
-simplement sa propre horloge.
-
-## Quantum et phase
-
-Le **quantum** définit combien de beats composent une phrase ou une mesure.
-Avec un quantum de 4 (la valeur par défaut), la timeline est divisée en groupes
-de 4 beats. La **phase** indique où vous vous trouvez dans le quantum
-courant — beat 0, 1, 2 ou 3.
-
-Le quantum est important pour la synchronisation :
-
-- En mode d'exécution **AtQuantum**, les lignes attendent la prochaine limite de
-  quantum (le prochain « beat 0 » d'une mesure) avant de démarrer.
-- Vous pouvez planifier des événements pour qu'ils se déclenchent à la prochaine
-  réinitialisation de phase grâce aux contrôles de timing dans votre code.
-
-Changer le quantum ne change pas le tempo — cela change la façon dont la grille
-de beats est regroupée.
+C'est important pour le lancement des lignes. En mode **AtQuantum**, les
+lignes attendent le premier temps (phase 0) avant de demarrer. Vous editez
+du code en pleine mesure, le changement tombe sur le prochain "un". En mode
+**Free**, les lignes demarrent immediatement -- utile pour l'independance
+polyrythmique.
 
 ## La barre de transport
 
-La barre de transport en haut de l'écran affiche :
+En haut de l'ecran : lecture/arret, BPM, quantum, position actuelle en
+beats. Cliquez sur le BPM pour taper une nouvelle valeur. Minimum 20 BPM.
 
-- **Lecture / Arrêt** — démarrer ou arrêter la lecture. Synchronisé via Link.
-- **Tempo** (BPM) — cliquez pour modifier. Minimum 20 BPM. Partagé entre tous
-  les pairs Link.
-- **Quantum** — la valeur de beats par phrase.
-- **Compteur de beats** — la position actuelle en beats et en phase.
+## Espacer les evenements dans le code
 
-## Timing dans le code
+Sans timing explicite, tous les evenements d'un script se declenchent en
+meme temps -- au beat zero de la frame. On les espace avec des attentes.
 
-Vos scripts peuvent contrôler quand les événements se produisent au sein d'une
+En Cagire, `at` definit des offsets de timing en fractions de la duree de
 frame :
 
-- **Attente** — mettre l'exécution en pause pendant un nombre de beats
-  avant de continuer. C'est ainsi que vous espacez les événements dans le temps.
-- **Durée de frame** — le temps total de lecture d'une frame. Une frame avec une
-  durée de 2 donne à votre script 2 beats à remplir d'événements.
-- **Répétitions** — combien de fois le script s'exécute durant la durée de la
-  frame. Une durée de 4 avec 4 répétitions signifie que le script s'exécute
-  4 fois, une fois par beat.
+```forth
+0 0.5 at kick snd .       ;; kick au debut et a la moitie
+0 0.25 0.5 0.75 at hat snd .  ;; quatre hats, espaces regulierement
+```
 
-La syntaxe exacte pour les attentes et le timing varie selon le langage —
-consultez la référence de chaque langage pour les détails.
+En Bob, `WAIT` avance le temps en beats :
 
-## Garanties de timing
+```
+>> [note: 60 vel: 100]
+WAIT 0.5
+>> [note: 64 vel: 80]
+WAIT 0.5
+>> [note: 67 vel: 100]
+```
 
-L'architecture à deux threads de Sova est conçue pour un timing précis :
+## Frames, duree et repetitions
 
-- Le **planificateur** s'exécute ~30 ms en avance sur le temps réel, compilant
-  et préparant les événements à l'avance.
-- Le **thread monde** s'exécute en priorité temps réel, envoyant les événements
-  vers MIDI (2 ms d'anticipation) et OSC (20 ms d'anticipation) avec une
-  précision inférieure à la milliseconde.
+Chaque frame a une duree en beats. Une frame de 2 beats donne a votre script
+2 beats a remplir d'evenements.
 
-Cela signifie que vos événements arrivent à temps même sous charge CPU, tant que
-le planificateur peut suivre.
+Les repetitions subdivisent cette duree. Une frame de 4 beats avec 4
+repetitions execute le script 4 fois, une fois par beat. Ca cree des boucles
+rythmiques sans code de boucle explicite :
 
-## Astuces
+```
+-- Bob : un kick par beat pendant 4 beats (duree frame=4, reps=4)
+>> [note: 36 vel: 100]
+```
 
-- Durée de frame × répétitions = durée totale de la frame. Utilisez les
-  répétitions pour créer des subdivisions rythmiques sans écrire de boucles
-  explicites.
-- La vitesse d'une ligne multiplie son tempo par rapport au BPM global. Une
-  ligne à vitesse 2.0 joue en double-temps ; 0.5 joue à mi-vitesse.
-- Utilisez le mode d'exécution **AtQuantum** quand vous voulez que toutes les
-  lignes restent alignées sur la phrase après des modifications. Utilisez
-  **Free** quand vous voulez une indépendance polyrythmique.
+```forth
+;; Cagire : meme idee
+36 note 100 vel .
+```
+
+Une ligne de code, quatre kicks. Le sequenceur gere la repetition.
+
+## Vitesse de ligne
+
+Le facteur de vitesse d'une ligne multiplie le tempo par rapport au BPM
+global. A 2.0, double-temps. A 0.5, mi-temps. Combinez avec des valeurs
+de quantum differentes entre les lignes pour des structures polymetriques.
+
+## Modes d'execution
+
+Trois modes controlent comment les lignes demarrent apres une modification
+ou un changement de scene :
+
+- **Free** -- les lignes demarrent immediatement. Timing independant.
+- **AtQuantum** -- les lignes attendent le prochain premier temps de mesure.
+  Tout reste aligne sur la phrase.
+- **LongestLine** -- attend que la ligne la plus longue en cours finisse son
+  cycle avant de redemarrer.
+
+Choisissez **AtQuantum** pour des arrangements serres. Choisissez **Free**
+quand vous voulez que les choses derivent et se superposent.
