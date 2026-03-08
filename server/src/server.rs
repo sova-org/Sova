@@ -990,13 +990,10 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
             let mut message_buf = vec![0u8; length as usize];
             reader.read_exact(&mut message_buf).await?;
 
-            let final_bytes = if is_compressed {
-                decompress_message(&message_buf, client_id_for_logging)?
-            } else {
-                message_buf
-            };
+            // Compression disabled — treat all payloads as raw MessagePack
+            let _ = is_compressed;
 
-            let msg = ClientMessage::deserialize(&final_bytes);
+            let msg = ClientMessage::deserialize(&message_buf);
             if msg.is_err() {
                 eprintln!(
                     "Failed to deserialize MessagePack from {}",
@@ -1022,12 +1019,3 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     }
 }
 
-fn decompress_message(message_buf: &[u8], client_id: &str) -> io::Result<Vec<u8>> {
-    zstd::decode_all(message_buf).map_err(|e| {
-        eprintln!("Failed to decompress Zstd data from {}: {}", client_id, e);
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Zstd decompression error: {}", e),
-        )
-    })
-}

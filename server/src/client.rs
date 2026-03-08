@@ -10,9 +10,6 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
-pub(crate) const COMPRESSION_MIN_SIZE: usize = 64;
-pub(crate) const COMPRESSION_ADAPTIVE_THRESHOLD: usize = 256;
-pub(crate) const HIGH_COMPRESSION_CUTOFF: usize = 1024;
 pub(crate) const COMPRESSION_FLAG: u32 = 0x80000000;
 pub(crate) const LENGTH_MASK: u32 = 0x7FFFFFFF;
 
@@ -25,41 +22,9 @@ pub enum CompressionStrategy {
 
 impl CompressionStrategy {
     pub fn compress(&self, msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
-        match self {
-            CompressionStrategy::Never => Ok((msgpack_bytes.to_vec(), false)),
-            CompressionStrategy::Always => {
-                if msgpack_bytes.len() > COMPRESSION_MIN_SIZE {
-                    let level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
-                        1
-                    } else {
-                        3
-                    };
-                    let compressed = zstd::encode_all(msgpack_bytes, level)
-                        .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
-                    if compressed.len() < msgpack_bytes.len() {
-                        Ok((compressed, true))
-                    } else {
-                        Ok((msgpack_bytes.to_vec(), false))
-                    }
-                } else {
-                    Ok((msgpack_bytes.to_vec(), false))
-                }
-            }
-            CompressionStrategy::Adaptive => {
-                if msgpack_bytes.len() < COMPRESSION_ADAPTIVE_THRESHOLD {
-                    Ok((msgpack_bytes.to_vec(), false))
-                } else {
-                    let level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
-                        1
-                    } else {
-                        3
-                    };
-                    let compressed = zstd::encode_all(msgpack_bytes, level)
-                        .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
-                    Ok((compressed, true))
-                }
-            }
-        }
+        // Compression disabled — investigating network jamming issues
+        let _ = self;
+        Ok((msgpack_bytes.to_vec(), false))
     }
 }
 
@@ -286,31 +251,16 @@ impl SovaClient {
             return Err(e);
         }
 
-        let final_bytes = if is_compressed {
-            match zstd::decode_all(message_buf.as_slice()) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    log_eprintln!(
-                        "Zstd decompression failed (len={}, first 32 bytes: {:02x?}): {}",
-                        message_buf.len(),
-                        &message_buf[..message_buf.len().min(32)],
-                        e
-                    );
-                    return Ok(None);
-                }
-            }
-        } else {
-            message_buf
-        };
+        // Compression disabled — treat all payloads as raw MessagePack
+        let _ = is_compressed;
 
-        match rmp_serde::from_slice::<ServerMessage>(&final_bytes) {
+        match rmp_serde::from_slice::<ServerMessage>(&message_buf) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => {
                 log_eprintln!(
-                    "MessagePack deserialization failed (compressed={}, payload_len={}, first 32 bytes: {:02x?}): {}",
-                    is_compressed,
-                    final_bytes.len(),
-                    &final_bytes[..final_bytes.len().min(32)],
+                    "MessagePack deserialization failed (payload_len={}, first 32 bytes: {:02x?}): {}",
+                    message_buf.len(),
+                    &message_buf[..message_buf.len().min(32)],
                     e
                 );
                 Ok(None)
