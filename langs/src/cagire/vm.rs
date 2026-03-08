@@ -681,22 +681,39 @@ impl CagireVM {
                     self.vars.insert("__speed__".to_string(), Value::Float(clamped));
                 }
 
-                Op::Chain => {
-                    let pattern = pop_int(stack)? - 1;
-                    let bank = pop_int(stack)? - 1;
-                    if bank < 0 || pattern < 0 { return Err("chain: bank and pattern must be >= 1".into()); }
-                    use std::fmt::Write;
-                    let mut val = String::with_capacity(8);
-                    let _ = write!(&mut val, "{bank}:{pattern}");
-                    self.vars.insert("__chain__".to_string(), Value::Str(Arc::from(val)));
-                }
-
                 Op::Loop => {
-                    let beats = pop_float(stack)?;
-                    if ctx.tempo == 0.0 || ctx.speed == 0.0 { return Err("tempo and speed must be non-zero".into()); }
-                    let dur = beats * 60.0 / ctx.tempo / ctx.speed;
+                    let steps = pop_float(stack)?;
+                    let dur = steps * ctx.step_duration;
                     cmd.set_param("fit", Value::Float(dur));
                     cmd.set_param("dur", Value::Float(dur));
+                }
+
+                Op::LinMap => {
+                    let out_hi = pop_float(stack)?;
+                    let out_lo = pop_float(stack)?;
+                    let in_hi = pop_float(stack)?;
+                    let in_lo = pop_float(stack)?;
+                    let val = pop_float(stack)?;
+                    let t = if (in_hi - in_lo).abs() < f64::EPSILON { 0.0 }
+                            else { (val - in_lo) / (in_hi - in_lo) };
+                    stack.push(Value::Float(out_lo + t * (out_hi - out_lo)));
+                }
+
+                Op::ExpMap => {
+                    let hi = pop_float(stack)?;
+                    let lo = pop_float(stack)?;
+                    let val = pop_float(stack)?;
+                    if lo <= 0.0 || hi <= 0.0 { return Err("expmap requires positive bounds".into()); }
+                    stack.push(Value::Float(lo * (hi / lo).powf(val)));
+                }
+
+                Op::Map => {
+                    let quot = pop(stack)?;
+                    let items = std::mem::take(stack);
+                    for item in items {
+                        stack.push(item);
+                        run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
                 }
 
                 Op::At => {
@@ -1629,8 +1646,8 @@ mod tests {
     }
 
     #[test]
-    fn test_paren_comments_skipped() {
-        let events = eval("60 (ignored) note .");
+    fn test_curly_braces_ignored() {
+        let events = eval("60 {} note .");
         assert_eq!(events.len(), 1);
     }
 
@@ -1706,7 +1723,7 @@ mod tests {
     fn test_quotation_stays_local() {
         let mut vm = CagireVM::new();
         let mut tctx = TestCtx::new();
-        eval_vm(&mut vm, &mut tctx, "{ 60 note . } !myquot");
+        eval_vm(&mut vm, &mut tctx, "( 60 note . ) !myquot");
         assert!(vm.vars.contains_key("myquot"));
         assert!(tctx.instance.get("myquot").is_none());
     }

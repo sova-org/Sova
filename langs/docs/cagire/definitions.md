@@ -25,7 +25,7 @@ When you define a word in any frame, it becomes available to all frames across a
 
 Frame A:
 ```forth
-: bass "saw" s 0.8 gain 800 lpf ;
+: bass "saw" snd 0.8 gain 800 lpf ;
 ```
 
 Frame B:
@@ -76,7 +76,7 @@ This only affects words you defined with `:` ... `;`. Built-in words cannot be f
 **Synth definitions** save you from repeating sound design:
 
 ```forth
-: pad "sine" s 0.3 gain 2 attack 0.5 verb ;
+: pad "sine" snd 0.3 gain 2 attack 0.5 verb ;
 ```
 
 **Transpositions** and musical helpers:
@@ -91,8 +91,8 @@ This only affects words you defined with `:` ... `;`. Built-in words cannot be f
 A word can contain `.` to emit sounds directly:
 
 ```forth
-: kick "kick" s . ;
-: hat "hat" s 0.4 gain . ;
+: kick "kick" snd . ;
+: hat "hat" snd 0.4 gain . ;
 ```
 
 Then a frame becomes trivial:

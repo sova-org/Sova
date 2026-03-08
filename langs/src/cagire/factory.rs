@@ -93,10 +93,10 @@ impl Language for CagireInterpreterFactory {
         };
 
         let mut rules = vec![
-            SyntaxRule::new(Comment, r";;[^\n]*|\([^)]*\)"),
+            SyntaxRule::new(Comment, r";;[^\n]*"),
             SyntaxRule::new(Keyword, r"\b:\b|;\b"),
             SyntaxRule::new(Keyword, r"\b(?:if|else|then|case|of|endof|endcase|times)\b"),
-            SyntaxRule::new(Keyword, r"\{|\}"),
+            SyntaxRule::new(Keyword, r"\(|\)"),
             SyntaxRule::new(Special, r"\bgeom\.\.|\.\.|\.,"),
             SyntaxRule::new(Special, r"\b(?:tempo|speed)!"),
         ];
@@ -164,7 +164,7 @@ mod tests {
     fn syntax_highlights_all_categories() {
         use TokenCategory::*;
         let tokens = categories_for(
-            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n{ 2 distort } sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter"
+            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n( 2 distort ) sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter"
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn syntax_emit_dot() {
         use TokenCategory::*;
-        let tokens = categories_for("\"kick\" s . 0.5 gain");
+        let tokens = categories_for("\"kick\" snd . 0.5 gain");
         let dots: Vec<_> = tokens.iter().filter(|(t, _)| t == ".").collect();
         assert_eq!(dots.len(), 1);
         assert_eq!(dots[0].1, Special, "emit dot should be Special");

@@ -53,11 +53,11 @@ Four basic types of values can live on the stack:
 - **Integers**: `42`, `-7`, `0`
 - **Floats**: `0.5`, `3.14`, `-1.0`
 - **Strings**: `"kick"`, `"hello"`
-- **Quotations**: `{ dup + }` (code as data)
+- **Quotations**: `( dup + )` (code as data)
 
 Floats can omit the leading zero: `.25` is the same as `0.25`, and `-.5` is `-0.5`.
 
-Any word that is not recognized as a built-in or a user definition becomes a string on the stack. This means `kick s` and `"kick" s` are equivalent. You only need quotes when the string contains spaces or conflicts with an existing word name.
+Any word that is not recognized as a built-in or a user definition becomes a string on the stack. This means `kick snd` and `"kick" snd` are equivalent. You only need quotes when the string contains spaces or conflicts with an existing word name.
 
 Quotations are special. They let you pass code around as a value. This is how conditionals and loops work. Don't worry about them for now — you'll learn how to use them later.
 
@@ -75,7 +75,7 @@ kick sound      ;; sets the sound name
 .               ;; emits the command and clears the register
 ```
 
-The word `sound` (or its shorthand `s`) sets what sound to play. Parameter words like `gain`, `freq`, `decay`, or `verb` add key-value pairs to the register. Nothing happens until you emit with `.` (dot). At that moment, the register is packaged into a command and sent out.
+The word `sound` (or its shorthand `snd`) sets what sound to play. Parameter words like `gain`, `freq`, `decay`, or `verb` add key-value pairs to the register. Nothing happens until you emit with `.` (dot). At that moment, the register is packaged into a command and sent out.
 
 This design lets you build sounds incrementally:
 
@@ -91,14 +91,14 @@ c4 note
 Each line adds something to the register. The final `.` triggers the sound. You can also write it all on one line:
 
 ```forth
-"sine" s c4 note 0.5 gain 0.3 decay 0.4 verb .
+"sine" snd c4 note 0.5 gain 0.3 decay 0.4 verb .
 ```
 
 The order of parameters does not matter. You can even emit multiple times in a single frame. If you need to discard the register without emitting, use `clear`:
 
 ```forth
-"kick" s 0.5 gain clear    ;; nothing plays, register is emptied
-"hat" s .                  ;; only the hat plays
+"kick" snd 0.5 gain clear    ;; nothing plays, register is emptied
+"hat" snd .                  ;; only the hat plays
 ```
 
 This is useful when conditionals might cancel a sound before it emits.
@@ -116,19 +116,19 @@ Using Cagire doesn't feel like programming at all. It feels more like juggling w
 Play a sample:
 
 ```forth
-"kick" s .
+"kick" snd .
 ```
 
 Play a MIDI note with a sine oscillator:
 
 ```forth
-c4 note "sine" s .
+c4 note "sine" snd .
 ```
 
 A sawtooth wave with lowpass filter and reverb:
 
 ```forth
-"saw" s c4 note 0.5 gain 800 lpf 0.4 verb .
+"saw" snd c4 note 0.5 gain 800 lpf 0.4 verb .
 ```
 
 Chain multiple events:
