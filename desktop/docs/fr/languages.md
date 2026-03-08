@@ -1,86 +1,139 @@
 # Langages
 
-Sova est polyglotte — chaque frame peut utiliser un langage de programmation
-différent. Les quatre langages intégrés offrent des approches distinctes de
-l'expression musicale. Choisissez celui qui correspond à votre façon de penser
-la musique, ou mélangez-les librement.
-
-## Compilé vs interprété
-
-Les langages de Sova se divisent en deux catégories :
-
-- **Langages compilés** (Bob, BaLi) sont traduits en bytecode pour la machine
-  virtuelle de Sova. La VM exécute le bytecode à chaque lecture de la frame. La
-  compilation a lieu une seule fois à l'évaluation ; l'exécution est rapide et
-  reproductible.
-- **Langages interprétés** (Boinx, Cagire) produisent directement une liste
-  d'événements à partir du code source à chaque lecture de la frame. Il n'y a
-  pas d'étape intermédiaire de bytecode.
-
-Du point de vue utilisateur, les deux fonctionnent de la même manière : écrire
-du code, évaluer, écouter le résultat. La différence compte quand vous voulez
-comprendre comment votre code interagit avec les variables, le timing et les
-répétitions.
-
-## Vue d'ensemble
-
-- **Bob** — Compilé. Impératif, event maps. Idéal pour séquences mélodiques, contrôle précis.
-- **BaLi** — Compilé. À base d'expressions, fonctionnel. Idéal pour patterns algorithmiques, approche mathématique.
-- **Boinx** — Interprété. Notation de patterns. Idéal pour patterns rythmiques rapides.
-- **Cagire** — Interprété. À pile (style Forth). Idéal pour synthèse audio, DSP, expérimentation.
-
-## Bob
-
-Bob est un langage impératif avec une syntaxe concise pour générer des
-événements MIDI et OSC. Il utilise des **event maps** — des structures
-clé-valeur qui décrivent les notes, les changements de contrôle et d'autres
-messages. Bob dispose de variables, de conditionnelles, de boucles et de
-fonctions.
-
-```
->> [note: 60 vel: 100 dur: 0.5]
-WAIT 0.5
->> [note: 64 vel: 80 dur: 0.5]
-```
-
-Consultez l'onglet **Bob** pour la référence complète.
-
-## BaLi
-
-BaLi est un langage compilé à base d'expressions avec une saveur fonctionnelle.
-Il met l'accent sur la composition de transformations et convient bien aux
-patterns algorithmiques et génératifs.
-
-Consultez l'onglet **BaLi** pour la référence complète.
-
-## Boinx
-
-Boinx est un langage de notation de patterns — sa syntaxe est conçue pour
-écrire rapidement des séquences rythmiques. Les patterns décrivent quand les
-événements se déclenchent au sein d'un beat ou d'une mesure, ce qui le rend
-naturel pour les patterns de batterie et les séquences percussives.
-
-Consultez l'onglet **Boinx** pour la référence complète.
+Sova dispose de quatre langages integres. Chaque frame en choisit un. Vous
+pouvez les melanger librement au sein d'une meme ligne -- une melodie Bob suivie
+d'un drone Cagire suivie d'un break Boinx.
 
 ## Cagire
 
-Cagire est un langage à pile inspiré de Forth. Vous empilez des valeurs sur une
-pile et appliquez des mots (opérations) dessus. Cagire est étroitement intégré
-au moteur audio Doux pour la synthèse sonore en temps réel et le DSP, mais il
-fonctionne aussi pour la sortie MIDI et OSC.
+A pile, inspire de Forth. Vous empilez des valeurs et appliquez des mots qui
+consomment et produisent des valeurs sur la pile. `.` emet la commande sonore
+courante.
 
-Consultez l'onglet **Cagire** pour la référence complète.
+Un kick :
 
-## Changer de langage
+```forth
+kick snd .
+```
 
-Chaque frame a son propre réglage de langage. Pour changer le langage d'une frame :
+Un accord avec reverb :
 
-1. Ouvrez l'éditeur de code (double-clic sur une cellule de frame).
-2. Sélectionnez le langage dans le menu déroulant en haut de l'éditeur.
-3. Écrivez ou réécrivez votre code dans le nouveau langage.
-4. Évaluez.
+```forth
+c4 min7 note 0.4 verb sine snd .
+```
 
-Différentes frames dans la même ligne peuvent utiliser des langages différents —
-Sova s'en accommode parfaitement. Une ligne peut avoir une frame Bob générant des
-mélodies suivie d'une frame Boinx pour un break de batterie. Mélangez et
-combinez comme bon vous semble.
+Un pattern rythmique avec distribution euclidienne :
+
+```forth
+3 8 euclid at hat snd .
+```
+
+Cagire integre de la theorie musicale -- notes, intervalles, accords, gammes --
+plus de l'aleatoire, du cycling, des variables et des definitions utilisateur.
+Voir l'onglet **Cagire**.
+
+## Bob
+
+Imperatif, notation polonaise. Les operateurs precedent les operandes :
+`ADD 2 3` au lieu de `2 + 3`. Les evenements sont des maps cle-valeur emis avec
+`>>`. Le temps avance avec `WAIT`.
+
+Une sequence de quatre notes :
+
+```
+RANGE 0 3 :
+  >> [note: ADD 60 MUL I 4 vel: 100]
+  WAIT 0.25
+END
+```
+
+Rythme euclidien avec notes fantomes :
+
+```
+EU 3 8 0.125 :
+  >> [note: 36 vel: 100]
+ELSE :
+  >> [note: 36 vel: 20]
+END
+```
+
+Selection aleatoire dans une liste :
+
+```
+SET G.NOTES '[60 64 67 72]
+>> [note: PICK G.NOTES vel: RRAND 60 127]
+```
+
+Bob a des variables (globales, frame, ligne), des conditionnelles, des boucles,
+des fonctions et des generateurs de rythme euclidien/binaire. Voir l'onglet
+**Bob**.
+
+## BaLi
+
+Style Lisp, a base d'expressions. Tout est une S-expression entre parentheses.
+Boucles, notes et effets se composent par imbrication. Les fractions comme
+`1//4` expriment les durees directement.
+
+Une sequence de notes en boucle :
+
+```
+(loop 4
+  (note (+ 60 (* $i 3)) 90)
+  1//4)
+```
+
+Un accord sur le temps :
+
+```
+(note 60 100 dev:1 ch:1)
+(note 64 100 dev:1 ch:1)
+(note 67 100 dev:1 ch:1)
+```
+
+Rythme euclidien :
+
+```
+(eucloop 3 8
+  (note 36 100)
+  1//8)
+```
+
+Le style fonctionnel de BaLi le rend naturel pour la composition algorithmique
+et les patterns generatifs. Voir l'onglet **bali**.
+
+## Boinx
+
+Notation de patterns declarative. Vous decrivez *quoi* joue *ou* dans le temps
+avec des crochets et des operateurs. Les sequences `[...]` repartissent les
+elements regulierement dans la frame. Les evenements simultanes utilisent
+`(...)`. Les donnees d'evenement cle-valeur vont dans `<...>`.
+
+Un pattern kick-hat :
+
+```
+<s: 'kick'> | [. _ . _]
+```
+
+Batterie en couches avec kick et hat simultanes :
+
+```
+(<s: 'kick'> <s: 'hat'>) | [. _ . _]
+```
+
+Notes cycliques sur une grille rythmique :
+
+```
+(C4 E4 G4) ° [. . . .]
+```
+
+Les operateurs Boinx (`|`, `°`, `~`, `!`, `#`) controlent comment les donnees
+d'evenement circulent dans les slots du pattern. La disposition visuelle du code
+reflete la structure rythmique. Voir l'onglet **Boinx**.
+
+## Melanger les langages
+
+Une seule ligne peut contenir des frames dans differents langages. La frame 1
+peut etre un drone Cagire, la frame 2 une melodie Bob, la frame 3 un fill Boinx.
+Le sequenceur les joue dans l'ordre quel que soit le langage. Pour changer le
+langage d'une frame, ouvrez l'editeur et choisissez dans le menu deroulant en
+haut.

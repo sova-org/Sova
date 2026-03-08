@@ -1,84 +1,92 @@
 # Multijoueur
 
-Sova est conçu pour le live coding collaboratif. Plusieurs musiciens peuvent se
-connecter au même serveur, voir le code des autres en temps réel et jouer
-ensemble sur une scène partagée.
+Se connecter a un serveur, voir ou sont les autres dans la grille, editer du
+code en meme temps, chatter, jouer. Les sessions Sova sont multijoueur par
+defaut.
 
-## Démarrer un serveur
+## Heberger une session
 
-Il y a deux façons d'héberger une session :
+Deux options.
 
-- **Serveur intégré** : Lancez l'application Sova, ouvrez le panneau Serveur et
-  cliquez sur Démarrer. L'application exécute un serveur en interne et s'y
-  connecte. Les autres musiciens peuvent se connecter à l'adresse IP et au port
-  de votre machine.
-- **Serveur autonome** : Exécutez `sova-server` depuis la ligne de commande avec
-  un numéro de port. C'est utile pour un hébergement dédié sur une machine qui
-  n'a pas besoin d'interface graphique.
+Le serveur integre : ouvrez le panneau Serveur, cliquez Demarrer. L'application
+lance un serveur en interne et s'y connecte. Les autres joueurs se connectent a
+votre IP et votre port.
 
-Le serveur gère la scène, l'horloge et toutes les connexions de périphériques.
-Les clients sont légers — ils envoient des modifications et reçoivent des mises
-à jour.
+Le serveur autonome : lancez `sova-server` en ligne de commande.
 
-## Se connecter
+```
+sova-server -p 8080
+```
 
-Pour rejoindre une session :
+Preferable pour un hebergement dedie ou une machine sans ecran. Meme serveur,
+pas d'interface graphique.
 
-1. Ouvrez le panneau Serveur.
-2. Entrez l'adresse IP et le port du serveur.
-3. Choisissez un nom d'utilisateur (il doit être unique dans la session).
-4. Cliquez sur Connecter.
+Le serveur possede la scene, l'horloge et le routage des peripheriques. Les
+clients sont legers : ils envoient des modifications et recoivent l'etat.
 
-Une fois connecté, vous recevez la scène complète, la configuration des
-périphériques et l'état de l'horloge. Vous êtes immédiatement synchronisé avec
-tout le monde.
+## Rejoindre
 
-Si le nom d'utilisateur est déjà pris ou si la connexion est refusée, vous
-verrez un message d'erreur. Choisissez un autre nom et réessayez.
+Ouvrez le panneau Serveur. Entrez l'adresse, le port et un nom d'utilisateur.
+Cliquez Connecter.
 
-## Édition collaborative
+Vous recevez la scene complete, la configuration des peripheriques et l'etat de
+l'horloge immediatement. Le transport se synchronise via Ableton Link -- le beat
+est deja cale quand la grille s'affiche.
 
-Quand plusieurs musiciens sont connectés :
+Les noms d'utilisateur doivent etre uniques dans la session. Si le votre est
+pris, choisissez-en un autre.
 
-- Vous pouvez voir où se trouve le curseur de chaque musicien dans la grille.
-  Chaque musicien a un indicateur distinct sur la cellule qu'il consulte ou
-  édite.
-- Quand quelqu'un commence à éditer une frame (ouvre l'éditeur de code), les
-  autres musiciens voient que la frame est en cours d'édition. Cela aide à éviter
-  les modifications conflictuelles.
-- Tous les changements de scène — ajout de lignes, modification de frames,
-  changement de durées — sont diffusés à chaque client connecté en temps réel.
+## Ce qui se synchronise
 
-Il n'y a pas de verrouillage : deux musiciens peuvent éditer des frames
-différentes simultanément sans conflit. Si deux musiciens éditent la même frame,
-la dernière évaluation l'emporte.
+Tout ce qui touche a la scene passe par le serveur :
+
+- Structure de la scene : lignes, frames, durees, repetitions, scripts
+- Etat du transport : lecture, arret, tempo, quantum
+- Assignation des peripheriques : quel slot correspond a quelle sortie
+- Evaluation du code : quand vous evaluez une frame, le serveur compile et planifie
+
+Quand vous vous deconnectez puis reconnectez, vous recevez la scene en cours.
+Pas de memoire d'etat local.
+
+## Ce qui ne se synchronise pas
+
+- La disposition de vos panneaux et vos preferences d'editeur restent locales
+- Les connexions MIDI et OSC sont propres a chaque machine (chaque joueur
+  configure ses sorties dans le panneau **Peripheriques**)
+- Les scripts visuels (Hydra) tournent cote client
+
+## Edition collaborative
+
+La position de chaque joueur dans la grille est visible par tous. Des
+indicateurs colores apparaissent sur les cellules que les autres consultent ou
+editent.
+
+Quand quelqu'un ouvre l'editeur d'une frame, la grille le signale. Ca donne une
+vision naturelle de qui travaille ou.
+
+Pas de verrouillage. Deux joueurs peuvent editer des frames differentes en meme
+temps sans conflit. Si deux joueurs editent la meme frame, la derniere
+evaluation l'emporte.
 
 ## Chat
 
-Le panneau Chat vous permet d'envoyer des messages texte à tous les participants
-de la session. Ouvrez-le depuis le menu de panneau ou le menu contextuel de la
-grille. Les messages affichent le nom de l'expéditeur.
+Le panneau Chat envoie des messages texte a toute la session. Pratique pour
+coordonner les transitions en plein set : "je lache la basse au prochain
+quantum", "je passe en noise sur la ligne 3".
 
-## Synchronisation de la scène
+## Conseils pour le jeu collectif
 
-Le serveur est la source de vérité. Quand vous évaluez du code, ajoutez une
-frame ou changez une propriété, votre modification est envoyée au serveur, qui
-l'applique et diffuse le résultat à tous les clients. Cela signifie :
+Revendiquez vos propres lignes. Si vous restez sur les lignes 1-2 et votre
+partenaire sur 3-4, vous evitez de vous marcher dessus.
 
-- Tout le monde voit toujours le même état de la scène.
-- Si vous vous déconnectez puis vous reconnectez, vous obtenez la scène
-  actuelle, pas votre dernier état local.
-- L'horloge du serveur (via Ableton Link) maintient tout le monde aligné
-  temporellement.
+Convenez des slots de peripheriques avant de commencer. Le slot 1 pour le
+synthe, le slot 3 pour les drums, ce qui vous convient. Si quelqu'un reassigne
+un slot partage en plein set, tout ce qui y transite change.
 
-## Astuces
+Ableton Link maintient le beat serre entre les machines du meme reseau. Les
+changements de tempo se propagent a toutes les applications Link, pas seulement
+aux clients Sova.
 
-- Convenez des assignations de slots avec vos collaborateurs. Si le musicien A
-  utilise le slot 1 pour le synthé et que le musicien B réassigne le slot 1 à la
-  batterie, la confusion est garantie.
-- Utilisez des lignes différentes pour différents musiciens afin d'éviter de
-  marcher sur le code des autres.
-- Le chat est pratique pour coordonner les transitions — « je lâche la basse au
-  prochain quantum » — sans interrompre le flux de la performance.
-- La synchronisation Ableton Link fonctionne à travers le réseau, donc même si
-  les musiciens sont sur des machines différentes, le beat reste verrouillé.
+Utilisez le reglage de quantum pour coordonner les transitions. Un quantum de
+4 beats fait atterrir les changements sur la mesure suivante. Un quantum de
+8 beats donne plus de marge.

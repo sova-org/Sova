@@ -1,95 +1,131 @@
 # Events
 
-Events are the messages your code produces — MIDI notes, control changes, OSC
-messages, and more. Understanding how events work helps you write code that does
-exactly what you intend.
+Your code produces events. Events are MIDI messages, OSC messages, or audio
+commands sent to devices.
 
-## MIDI note events
+## MIDI notes
 
-The most common event is a MIDI note. A note event has these parameters:
+A note event fires a Note On, then a Note Off after the duration elapses.
+You never send note-offs yourself.
 
-- **Note** (0–127) — the pitch. 60 = middle C.
-- **Velocity** (0–127) — how hard the note is struck. 0 usually means note-off.
-- **Channel** (1–16) — the MIDI channel. Default: 1.
-- **Duration** (beats) — how long the note rings before a note-off is sent.
-- **Device** (1–16) — which device slot receives the event. Default: 1.
+Bob:
 
-When a note event fires, Sova sends a MIDI Note On immediately and schedules a
-corresponding Note Off after the specified duration. You don't need to manage
-note-offs manually.
+```
+>> [note: 60 vel: 100 dur: 0.5]
+```
 
-## MIDI control events
+Cagire:
 
-Beyond notes, MIDI offers several control messages:
+```forth
+60 note 100 vel 0.5 dur .
+```
 
-- **CC (Control Change)** — continuous controllers (mod wheel, expression,
-  custom knobs). Specify a CC number (0–127) and a value (0–127).
-- **Program Change** — switch patches/presets on a synthesizer. Specify a
-  program number (0–127).
-- **Aftertouch** — pressure-sensitive expression. Can be per-channel or
-  per-note (polyphonic aftertouch).
-- **Pitch Bend** — pitch wheel position. Range depends on the receiving synth.
+Parameters: pitch (0-127), velocity (0-127), duration (beats), channel
+(1-16), device (1-16). Defaults: velocity 100, duration 0.5, channel 1,
+device 1.
 
-All MIDI control events take a channel and device slot, just like notes.
+## Control Change
+
+CC messages control knobs, faders, and parameters on external synths.
+
+Bob:
+
+```
+>> [cc: 74 val: 100]
+```
+
+Cagire:
+
+```forth
+74 ccnum 100 ccout .
+```
+
+## Pitch bend
+
+Range: -1.0 (full down) to 1.0 (full up), center 0.0.
+
+```forth
+0.5 bend .
+```
+
+## Program Change
+
+```
+>> [pc: 12]
+```
+
+```forth
+12 program .
+```
 
 ## OSC messages
 
-OSC (Open Sound Control) events send messages to external software over UDP.
-An OSC event has:
+OSC sends messages over UDP to SuperCollider, Max/MSP, Pure Data, or anything
+that speaks OSC.
 
-- **Address** — an OSC address pattern (e.g. `/synth/freq`).
-- **Arguments** — a list of values (integers, floats, strings).
-- **Device** — the device slot of an OSC output endpoint.
+Bob:
 
-OSC is useful for communicating with SuperCollider, Max/MSP, Pure Data, visual
-software, or any application that speaks OSC.
+```
+>> [addr: "/synth" freq: 440 amp: 0.5]
+```
 
-## How events are emitted
+`addr` sets the OSC address. Every other key becomes an argument. Route to
+an OSC device slot with `dev`.
 
-The exact syntax for creating events differs by language, but the general
-pattern is:
+## Device and channel routing
 
-1. **Set context**: choose a device slot and MIDI channel. These become the
-   default for subsequent events until changed.
-2. **Emit the event**: use the language's event syntax to fire a note, CC, or
-   OSC message.
-3. **Wait**: pause for a number of beats before the next event. Without waits,
-   all events fire simultaneously at the start of the frame.
+Every event carries a device slot and a MIDI channel.
 
-Each language has its own syntax — see the per-language tabs for details:
+Bob:
 
-- **Bob** uses event maps: `>> [note: 60 vel: 100 dur: 0.5]`
-- **Boinx** uses pattern notation for rhythmic sequences.
-- **Cagire** uses stack-based words to push and emit events.
-- **BaLi** uses expression-based event construction.
+```
+DEV 1
+>> [note: 60 chan: 0]
+DEV 2
+>> [note: 48 chan: 2]
+```
 
-## Channel and device routing
+Cagire:
 
-Every event carries a channel and device value. You set these before emitting:
+```forth
+1 dev 60 note .
+2 dev 48 note 3 chan .
+```
 
-- **Device** selects the output slot (1–16). Slot 0 is the log console.
-- **Channel** selects the MIDI channel (1–16). Ignored for OSC events.
+Device selects the output slot (1-16). Channel selects the MIDI channel.
+Slot 0 is the log console -- use it to inspect events before routing to a
+real output. You can switch device and channel mid-script.
 
-You can change device and channel mid-script to route different events to
-different outputs within a single frame. For example, you might send melody
-notes to device 1 / channel 1 and bass notes to device 2 / channel 3.
+## Chords and sequences
 
-## Event timing
+Without waits, events fire simultaneously -- chords:
 
-Events are dispatched with precise timing by the world thread:
+```
+>> [note: 60] >> [note: 64] >> [note: 67]
+```
 
-- MIDI events are sent with a 2ms lookahead for tight synchronization.
-- OSC events are sent with a 20ms lookahead.
+Add waits for a sequence:
 
-The scheduler prepares events ~30ms ahead of real time. This means events are
-queued and dispatched at exactly the right moment, not fired and hoped for.
+```
+>> [note: 60] WAIT 0.5 >> [note: 64] WAIT 0.5 >> [note: 67]
+```
 
-## Tips
+In Cagire, `at` with `arp` places one note per time slot:
 
-- Use the **Log** device (slot 0) to inspect what events your code produces
-  before routing them to a real output.
-- A note with velocity 0 is treated as note-off by most synths.
-- OSC lets you control anything — lights, visuals, other software — not just
-  sound.
-- Keep duration in mind: overlapping notes (long durations + short waits) can
-  produce chords. Non-overlapping notes (duration ≤ wait) produce staccato.
+```forth
+0 0.33 0.66 at
+c4 e4 g4 arp note sine snd .
+```
+
+See the **Timing** article for details on `at` and `arp`.
+
+## Reading MIDI input
+
+Cagire reads incoming CC values from hardware controllers:
+
+```forth
+74 1 ccval 127 / 200 2740 range lpf
+```
+
+Reads CC 74 on channel 1, normalizes to 0.0-1.0, scales to 200-2740, applies
+as lowpass cutoff. See each language's reference for the full input API.

@@ -1,86 +1,112 @@
 # Variables
 
-Variables let you store and share data between scripts. Sova's variable system
-is organized by **scope** — where the variable lives determines who can see it
-and how long it persists.
+Variables store values that persist between events or between frames. Use
+them to coordinate scripts, accumulate state, and build evolving patterns.
 
-## Scopes
+## Scopes by example
 
-- **Global** — Entire session. Visible to all scripts in the scene. Use for shared state, master parameters.
-- **Line** — Line lifetime. Visible to all frames in that line. Use for per-track state, counters.
-- **Frame** — Frame lifetime. Visible to the script in that frame. Use for per-cell state, iteration data.
-- **Instance** — Single execution. Visible to one run of the script. Use for temporary registers, local work.
+Four scopes. The scope determines who sees the variable and how long it lives.
 
-### Global variables
+**Instance** -- local scratch. Resets every time the script runs.
 
-Global variables are shared across the entire scene. Any script in any line and
-frame can read and write them. They persist as long as the session is running.
-
-Use globals for values that multiple lines need to agree on: a root note, a
-scale, a probability threshold, a global transposition.
-
-### Line variables
-
-Line variables belong to a specific line. All frames within that line can access
-them, but scripts in other lines cannot. They persist across frame changes
-within the line.
-
-Use line variables for per-track state: a step counter that advances each time
-the line loops, or a melody array that frames read from.
-
-### Frame variables
-
-Frame variables belong to a specific frame. They persist across repetitions of
-that frame but reset when the line moves to the next frame.
-
-Use frame variables for state that should survive repetitions but not leak into
-other frames.
-
-### Instance variables
-
-Instance variables exist only during a single execution of a script. They are
-created fresh each time the frame plays and discarded afterward. These are the
-most local scope — essentially temporary registers.
-
-In compiled languages, instance variables like `Instance("0")` and
-`Instance("1")` serve as working registers for the VM.
-
-## How scopes relate to the scene
-
-The scope hierarchy mirrors the scene hierarchy:
-
-```
-Scene ──── Global variables
- └─ Line ──── Line variables
-     └─ Frame ──── Frame variables
-         └─ Execution ──── Instance variables
+```forth
+10 !x @x      ;; store 10, fetch it back
 ```
 
-Data flows naturally: a global variable set in one line is immediately visible
-in another. A line variable set in frame 1 is visible in frame 2 when the line
-advances. Instance variables are isolated to one execution and vanish after.
+**Frame** -- survives repetitions. Resets when the line advances. Good for
+counters.
 
-## Built-in read-only values
+```forth
+@F.n 1 + !F.n
+@F.n 12 mod note sine snd .   ;; cycles through 12 notes
+```
 
-Each language exposes certain built-in values that you can read but not write.
-These come from the **Environment** scope and provide context about the current
-execution:
+```
+SET F.count ADD F.count 1
+>> [note: MOD F.count 12]
+```
 
-- Current beat position
-- Current tempo
-- Random number generation
-- Frame index, line index
-- Iteration counter (how many times the current frame has repeated)
+**Line** -- shared across all frames in a line. One frame sets, another reads.
 
-The exact names and access syntax vary by language — check each language's
-reference for the full list.
+```forth
+;; frame A
+c4 !L.root
+;; frame B
+@L.root 7 + note sine snd .
+```
 
-## Tips
+```
+-- frame A
+SET L.root 60
+-- frame B
+>> [note: ADD L.root 7]
+```
 
-- Keep globals to a minimum. If only one line needs a value, use a line
-  variable instead.
-- Use frame variables for accumulators that reset naturally when the line
-  advances to the next section.
-- The variable system is the primary way scripts communicate. Two frames in
-  different lines can coordinate by reading and writing the same global
-  variable.
+**Global** -- visible to every script in the session. Use sparingly.
+
+```forth
+c4 !G.key
+@G.key note sine snd .
+```
+
+```
+SET G.key 60
+>> [note: G.key]
+```
+
+## Store and fetch (Cagire)
+
+`!name` stores the top of the stack. `@name` fetches it. Unknown variables
+return 0. `,name` stores and keeps the value on the stack:
+
+```forth
+440 ,freq sine snd .   ;; stores 440 AND passes it along
+```
+
+Scope prefixes go between operator and name: `!G.x`, `@L.root`, `,F.count`.
+
+## Accumulators
+
+Fetch, modify, store back. Classic pattern for evolving sequences:
+
+```forth
+@F.n 1 + !F.n
+( 0 !F.n ) @F.n 16 > ?    ;; reset after 16
+```
+
+Bob:
+
+```
+SET F.n ADD F.n 1
+IF GT F.n 16 : SET F.n 0 END
+>> [note: ADD 48 MOD F.n 12]
+```
+
+## Naming sounds
+
+Store a sound name, reuse across frames:
+
+```forth
+;; frame A
+"sine" !L.synth
+;; frame B, C, D...
+c4 note @L.synth snd .
+```
+
+Change one frame, all frames in the line follow.
+
+## Environment values
+
+Read-only values from the runtime. The most useful:
+
+- Beat position, tempo, random number
+- Frame index, line index, iteration counter
+
+Cagire: `iter` pushes iteration count, `rand` pushes a random value.
+Bob: `R` is random 0-127, `I` is loop index, `T` is tempo.
+
+## Visibility timing
+
+Within a frame, you read back what you just wrote. Changes become visible to
+other frames only after the current frame finishes. If frame A writes
+`10 !G.x` and frame B reads `@G.x` in the same pass, B sees the old value.

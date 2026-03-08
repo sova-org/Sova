@@ -1,85 +1,97 @@
-# Périphériques
+# Peripheriques
 
-Les périphériques sont les sorties qui transmettent votre musique au monde
-extérieur. Chaque événement produit par votre code est routé vers un
-périphérique — un port MIDI, un point d'accès OSC, le moteur audio intégré ou
-la console de journaux.
+Vous voulez du son. Chaque evenement produit par votre code arrive dans un slot.
+Le peripherique qui occupe ce slot le transmet en MIDI, OSC ou audio. Pas de
+peripherique, pas de son.
 
-## La carte des périphériques
+## Mise en route rapide
 
-Sova utilise une **carte de périphériques** avec 16 slots numérotés :
+Ouvrez le panneau Peripheriques. Trois possibilites :
 
-- **Slot 0** — le périphérique Log. Toujours présent, non assignable par
-  l'utilisateur. Les événements envoyés ici apparaissent dans le panneau
-  Journaux. Utile pour le débogage.
-- **Slots 1–16** — assignables par l'utilisateur. Vous y placez vos ports MIDI,
-  points d'accès OSC et connexions au moteur audio.
+1. Connecter une sortie MIDI (port materiel ou virtuel).
+2. Creer un point d'acces OSC (IP + port, pour SuperCollider, Max, etc.).
+3. Utiliser le moteur audio integre (Doux) si le serveur a ete lance avec le
+   support audio.
 
-Quand votre code émet un événement, il cible un **numéro de slot**. Le
-périphérique qui occupe ce slot reçoit l'événement. Si le slot est vide,
-l'événement est silencieusement ignoré.
+Chaque connexion est assignee a un slot (1--16). Le slot 1 est celui par
+defaut -- si votre code ne precise pas de peripherique, les evenements vont la.
 
-Le **slot par défaut est 1** — si votre code ne spécifie pas de périphérique,
-les événements vont vers le slot 1.
+## Sortie MIDI
 
-## Types de périphériques
+Cliquez sur "Connecter MIDI" dans le panneau Peripheriques. Les ports
+disponibles sur votre systeme s'affichent. Cliquez pour connecter et assigner
+a un slot.
 
-- **Sortie MIDI** — Un port MIDI matériel ou logiciel de votre système
-- **Sortie MIDI virtuelle** — Un port MIDI virtuel créé par Sova (visible dans les autres applications)
-- **Sortie OSC** — Un point d'accès UDP (adresse IP + port) pour Open Sound Control
-- **Moteur audio** — Le synthétiseur intégré Doux (voir l'article Moteur audio)
-- **Log** — La console de débogage (slot 0, toujours présent)
+Pour creer un port MIDI virtuel visible par d'autres applications (pratique
+pour router Sova vers un DAW sur la meme machine), cliquez sur "Creer un MIDI
+virtuel".
 
-Les périphériques d'entrée MIDI peuvent aussi être connectés pour recevoir du
-MIDI externe, mais ils n'occupent pas de slots — ils alimentent le système
-différemment.
+En Cagire, envoyer une note vers un slot precis :
 
-## Le panneau Périphériques
+```forth
+2 dev c4 note 100 vel .
+```
 
-Ouvrez le panneau Périphériques pour gérer vos connexions :
+En Bob :
 
-- **Connecter MIDI** : liste les ports MIDI disponibles sur votre système.
-  Cliquez pour connecter.
-- **Créer un MIDI virtuel** : crée un nouveau port MIDI virtuel que les autres
-  applications peuvent voir et recevoir.
-- **Créer une sortie OSC** : spécifiez un nom, une adresse IP cible et un
-  numéro de port.
-- **Assigner à un slot** : assignez les périphériques connectés aux slots 1–16.
-- **Désassigner** : retirez un périphérique de son slot sans le déconnecter.
+```
+DEV 2
+>> [note: 60 vel: 100]
+```
 
-## Routage des événements depuis le code
+## Sortie OSC
 
-Dans vos scripts, vous contrôlez quel périphérique reçoit les événements en
-définissant la variable de périphérique. La syntaxe exacte dépend du langage —
-consultez la référence de chaque langage pour les détails. L'idée générale :
+Cliquez sur "Creer une sortie OSC" dans le panneau Peripheriques. Entrez un
+nom, une adresse IP cible et un port. Le point d'acces apparait dans la liste,
+pret a etre assigne a un slot.
 
-- Définissez le périphérique sur un numéro de slot (1–16) avant d'émettre des
-  événements.
-- Les événements héritent du réglage de périphérique courant.
-- Vous pouvez changer de périphérique en cours de script pour router différents
-  événements vers différentes sorties.
+Les evenements OSC portent les memes parametres que les evenements MIDI.
+L'application receptrice (SuperCollider, Max, Pure Data) les interprete comme
+elle l'entend.
 
-Par exemple, le slot 1 pourrait être votre synthé, le slot 2 votre boîte à
-rythmes, et le slot 3 une connexion OSC vers un programme visuel. Un seul
-script peut adresser les trois.
+## Slots
+
+Sova dispose de 16 slots utilisateur (1--16) et d'un slot fixe :
+
+- Le slot 0 est le peripherique Log. Toujours present. Les evenements envoyes
+  ici s'affichent dans le panneau Journaux. Utile pour le debogage.
+- Les slots 1--16 accueillent vos ports MIDI, points d'acces OSC et le moteur
+  audio.
+
+Le slot 1 est le peripherique par defaut. Les assignations persistent pour la
+session, gardez-les coherentes -- votre code fait reference aux numeros de slot
+directement.
+
+Un seul script peut adresser plusieurs slots :
+
+```forth
+1 dev "kick" snd .        ;; batterie sur le slot 1
+2 dev c4 note "saw" snd . ;; synthe sur le slot 2
+```
+
+Si un slot est vide, les evenements qui lui sont destines sont ignores
+silencieusement.
 
 ## Canaux MIDI
 
-Les canaux MIDI sont **indexés à partir de 1** dans l'interface et le code de
-Sova (1–16), conformément à la convention MIDI standard. Le canal par défaut
-est 1.
+Les canaux MIDI dans Sova vont de 1 a 16, conformement a la convention
+standard. Le canal par defaut est 1. Un seul port MIDI (un slot) peut adresser
+les 16 canaux :
 
-Chaque événement peut cibler un canal spécifique indépendamment du slot de
-périphérique. Cela signifie qu'un port MIDI (un slot de périphérique) peut
-adresser les 16 canaux MIDI.
+```forth
+1 chan 60 note .     ;; canal 1
+10 chan 36 note .    ;; batterie sur le canal 10
+```
 
-## Astuces
+## Entree MIDI
 
-- Gardez les assignations de slots cohérentes entre les sessions — votre code
-  fait référence aux numéros de slot, donc réorganiser les périphériques entre
-  les slots cassera le routage.
-- Utilisez le périphérique Log (slot 0) pendant le développement pour voir
-  exactement quels événements votre code produit avant de les envoyer vers une
-  vraie sortie.
-- Les sorties MIDI virtuelles sont le moyen le plus simple de router Sova vers
-  un DAW sur la même machine.
+Les peripheriques d'entree MIDI se connectent dans le panneau Peripheriques
+mais n'occupent pas de slot. Ils alimentent le systeme en donnees entrantes. En
+Cagire, lire une valeur CC :
+
+```forth
+1 1 ccval    ;; CC 1 (molette de modulation), canal 1
+```
+
+Consultez l'article **MIDI** dans la documentation Cagire pour le detail
+complet de l'envoi et de la reception MIDI.

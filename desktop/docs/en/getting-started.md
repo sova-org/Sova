@@ -1,53 +1,144 @@
-# Getting Started with Sova
+Sova is a live coding sequencer. You write code, Sova turns it into MIDI notes,
+OSC messages, and audio -- all synchronized to a shared clock via Ableton Link.
+Four built-in languages, each with its own way of thinking about music. Multiple
+players can connect and perform on the same scene simultaneously.
 
-Sova is a polyglot live coding sequencer for real-time musical improvisation.
-You write code that generates musical events — MIDI notes, control changes, OSC
-messages — and Sova plays them back on a shared timeline synchronized via
-Ableton Link. Multiple languages, multiple players, one beat.
+## Connect
 
-## Running the app
+Open the Server panel and click Start. The app runs a local server and connects
+to it. You're in.
 
-When you launch Sova, you can either start a **built-in server** or connect to
-a **remote server** that someone else is hosting.
+## First sound
 
-- **Built-in server**: Open the Server panel and click Start. The app creates a
-  local server and connects to it automatically. This is the simplest way to get
-  going solo.
-- **Remote server**: Enter the host address and port in the Server panel and
-  click Connect. You'll join an existing session with other players.
+Double-click any frame cell in the grid to open the code editor. The default
+language is Cagire. Type:
 
-Once connected, you'll see the scene grid — the heart of the interface.
+```forth
+kick snd .
+```
 
-## The interface at a glance
+Press Cmd+Enter (Ctrl+Enter on Linux/Windows) to evaluate. You hear a kick on
+every beat.
 
-Sova's interface is built around panels that you can show, hide, and rearrange:
+Try a melody:
 
-- **Scene grid** — the main workspace. Lines run left to right as columns,
-  frames stack top to bottom as rows. This is where you write and organize code.
-- **Transport bar** — play/stop, tempo, and quantum controls at the top.
-- **Server panel** — connection settings and server status.
-- **Devices panel** — manage MIDI ports, OSC endpoints, and audio outputs.
-- **Audio panel** — configure the built-in audio engine (Doux).
-- **Scope / Spectrum / VU Meter** — visualize audio output in real time.
-- **Log panel** — see event output and debug messages.
-- **Chat panel** — talk to other players in a multiplayer session.
-- **Visuals panel** — write Hydra-style visual code rendered as a background shader.
-- **Options panel** — editor theme, font size, and other preferences.
-- **Documentation panel** — the panel you're reading right now.
+```forth
+0 0.25 0.5 0.75 at
+c4 e4 g4 c5 arp note sine snd .
+```
 
-Right-click on empty space in the grid to toggle panels on and off.
+Four notes, evenly spaced across the frame. Change `sine` to `saw`, re-evaluate.
+Instant difference.
 
-## Hearing sound
+## The grid
 
-To hear anything, you need at least one output device:
+The scene grid is your workspace. Each column is a **line** (plays in parallel).
+Each row in a column is a **frame** (plays in sequence). A line loops through its
+frames top to bottom, then starts over.
 
-- **MIDI output**: Open the Devices panel, connect a hardware MIDI port or
-  create a virtual MIDI output. Assign it to a device slot (1–16). Your code
-  sends events to a slot number, and the device in that slot plays them.
-- **Audio engine**: If the server was started with audio support, the built-in
-  synthesizer (Doux) is available on a device slot. Open the Audio panel to
-  configure it.
-- **OSC output**: Create an OSC endpoint in the Devices panel to send messages
-  to external software (SuperCollider, Max/MSP, etc.).
+You can have a drum pattern in line 1, a bass in line 2, and chords in line 3,
+all running at the same time. See the **The Grid** article for navigation and
+editing.
 
-See the **Devices** article for full setup details.
+## Four languages
+
+Every frame has its own language. Pick the one that fits what you're doing.
+
+**Cagire** -- stack-based, Forth-like. Push values, apply words, emit with `.`.
+Best for sound design and quick experimentation.
+
+```forth
+c4 min7 arp note 0.5 decay 0.4 verb sine snd .
+```
+
+**Bob** -- imperative, Polish notation. Event maps, loops, explicit timing with
+WAIT. Best for precise melodic sequences.
+
+```
+RANGE 0 3 :
+  >> [note: ADD 60 MUL I 4 vel: 100]
+  WAIT 0.25
+END
+```
+
+**BaLi** -- Lisp-like, expression-based. Nested S-expressions, loops and
+transforms compose naturally. Best for algorithmic and generative patterns.
+
+```
+(loop 4
+  (note (+ 60 (* $i 3)) 90)
+  1//4)
+```
+
+**Boinx** -- declarative pattern notation. Sequences and simultaneity expressed
+visually with brackets. Best for rhythmic patterns you can see at a glance.
+
+```
+<s: 'kick'> | [. _ . _]
+```
+
+To change a frame's language, open the editor and select from the dropdown at the
+top, or press Cmd+L (Ctrl+L). See the **Languages** article for more on each
+one, and click the language tabs (Bob, bali, Boinx, Cagire) for full references.
+
+## Timing
+
+Each frame has a duration in beats. The sequencer plays the frame's script once
+per duration, then moves to the next frame. A 1-beat frame at 120 BPM runs every
+half second.
+
+Inside a frame, you can subdivide time. In Cagire, `at` places sounds at
+fractional positions within the beat. In Bob, `WAIT` advances the clock
+explicitly.
+
+Set tempo and quantum in the transport bar at the top. See the **Timing**
+article.
+
+## Your gear
+
+Sova sends events to device slots numbered 1 to 16. Open the Devices panel to
+connect MIDI ports, create OSC endpoints, or enable the built-in audio engine
+(Doux). Slot 1 is the default. In your code, use `dev` to target a slot:
+
+```forth
+2 dev c4 note 100 vel .
+```
+
+See the **Devices** article.
+
+## Playing together
+
+Start a server. Other players connect to your IP and port. Everyone sees the same
+scene, edits in real time, and stays in sync via Ableton Link. Use different
+lines to avoid stepping on each other's code. Chat is built in. See the
+**Multiplayer** article.
+
+## Visuals
+
+Sova has a built-in shader engine inspired by Hydra. Write visual pipelines --
+oscillators, noise, kaleidoscopes, feedback loops -- and they render behind the
+interface in real time.
+
+```
+osc(60, 0.1).rotate(0, 0.1).kaleid(4).out()
+```
+
+See the **Visuals (Hydra)** article.
+
+## Shortcuts
+
+| Action | macOS | Linux/Windows |
+|--------|-------|---------------|
+| Evaluate code | Cmd+Enter | Ctrl+Enter |
+| Command palette | Cmd+K | Ctrl+K |
+| Play / Stop | Cmd+Shift+Space | Ctrl+Shift+Space |
+| Save scene | Cmd+S | Ctrl+S |
+| Load scene | Cmd+O | Ctrl+O |
+| Toggle server | Cmd+Shift+S | Ctrl+Shift+S |
+| Toggle devices | Cmd+Shift+I | Ctrl+Shift+I |
+| Toggle docs | Cmd+Shift+H | Ctrl+Shift+H |
+| Toggle visuals | Cmd+Shift+V | Ctrl+Shift+V |
+| Change language | Cmd+L | Ctrl+L |
+
+Press F1 to see all keybindings. The command palette (Cmd+K) lists every action
+with its shortcut.
