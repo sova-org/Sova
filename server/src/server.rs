@@ -48,7 +48,6 @@ pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 const POSITION_BROADCAST_INTERVAL_MS: u64 = 33;
 const CLIENT_CHANNEL_CAPACITY: usize = 512;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
-const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 pub enum BroadcastItem {
@@ -1083,81 +1082,21 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     reader: &mut R,
     client_id_for_logging: &str,
 ) -> io::Result<Option<ClientMessage>> {
-    use crate::client::MAGIC;
+    use crate::client::read_wire_frame;
 
-    let mut magic_buf = [0u8; 2];
-    match reader.read_exact(&mut magic_buf).await {
-        Ok(_) => {}
+    let payload = match read_wire_frame(reader).await {
+        Ok(Some(buf)) => buf,
+        Ok(None) => return Ok(None),
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
             println!(
-                "Connection closed by {} (EOF before header).",
+                "Connection closed by {} (EOF).",
                 client_id_for_logging
             );
             return Ok(None);
         }
-        Err(e) => {
-            eprintln!(
-                "Error reading message header from {}: {}",
-                client_id_for_logging, e
-            );
-            return Err(e);
-        }
-    }
+        Err(e) => return Err(e),
+    };
 
-    if magic_buf != MAGIC {
-        eprintln!("Magic mismatch from {}, attempting resync", client_id_for_logging);
-        let mut scanned = 0u32;
-        let mut prev = magic_buf[1];
-        loop {
-            if scanned >= MAX_MESSAGE_SIZE {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Resync failed for {}: no magic found", client_id_for_logging),
-                ));
-            }
-            let mut byte = [0u8; 1];
-            reader.read_exact(&mut byte).await?;
-            scanned += 1;
-            if prev == MAGIC[0] && byte[0] == MAGIC[1] {
-                eprintln!("Resynced {} after {} bytes", client_id_for_logging, scanned);
-                break;
-            }
-            prev = byte[0];
-        }
-    }
-
-    let mut header_buf = [0u8; 8];
-    reader.read_exact(&mut header_buf).await?;
-
-    let length = u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]);
-    let expected_crc = u32::from_be_bytes([header_buf[4], header_buf[5], header_buf[6], header_buf[7]]);
-
-    if length == 0 || length > MAX_MESSAGE_SIZE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Invalid message length from {}: {} bytes", client_id_for_logging, length),
-        ));
-    }
-
-    let mut message_buf = vec![0u8; length as usize];
-    reader.read_exact(&mut message_buf).await?;
-
-    let actual_crc = crc32fast::hash(&message_buf);
-    if actual_crc != expected_crc {
-        eprintln!(
-            "CRC mismatch from {}: expected {:08x}, got {:08x} (len={})",
-            client_id_for_logging, expected_crc, actual_crc, length
-        );
-        return Ok(None);
-    }
-
-    let msg = ClientMessage::deserialize(&message_buf);
-    if msg.is_err() {
-        eprintln!(
-            "Deserialization failed from {} (CRC valid, schema mismatch)",
-            client_id_for_logging
-        );
-    }
-    msg
+    ClientMessage::deserialize(&payload)
 }
 
