@@ -225,7 +225,7 @@ impl ClientBridge {
                                 ctx.request_repaint();
                             }
                             Ok(None) => {
-                                // Deserialization failed but stream is healthy — skip
+                                // CRC failure — frame corrupted, skip this message
                                 continue;
                             }
                             Err(e) => {

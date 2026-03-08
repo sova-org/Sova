@@ -76,7 +76,7 @@ mod tests {
     };
 
     fn roundtrip(msg: &ServerMessage) {
-        let bytes = rmp_serde::to_vec(msg)
+        let bytes = rmp_serde::to_vec_named(msg)
             .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
         rmp_serde::from_slice::<ServerMessage>(&bytes)
             .unwrap_or_else(|e| {
