@@ -561,14 +561,14 @@ impl eframe::App for SovaApp {
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.engine_menu"));
                 }
-                let r = ui.menu_button(t!("menu.view"), |ui| {
-                    let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
-                    let (mod_sym, shift_sym) = if is_mac {
-                        ("⌘", "⇧")
-                    } else {
-                        ("Ctrl+", "Shift+")
-                    };
+                let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
+                let (mod_sym, shift_sym) = if is_mac {
+                    ("⌘", "⇧")
+                } else {
+                    ("Ctrl+", "Shift+")
+                };
 
+                let r = ui.menu_button(t!("menu.audio"), |ui| {
                     let menu_checkbox = |ui: &mut egui::Ui,
                                          checked: &mut bool,
                                          label: std::borrow::Cow<'_, str>,
@@ -577,13 +577,6 @@ impl eframe::App for SovaApp {
                         ui.checkbox(checked, label).on_hover_text(text);
                     };
 
-                    menu_checkbox(
-                        ui,
-                        &mut self.server.open,
-                        t!("server.title"),
-                        &format!("{mod_sym}{shift_sym}S"),
-                    );
-                    ui.separator();
                     menu_checkbox(
                         ui,
                         &mut self.audio.open,
@@ -596,6 +589,7 @@ impl eframe::App for SovaApp {
                         t!("devices.title"),
                         &format!("{mod_sym}{shift_sym}I"),
                     );
+                    ui.separator();
                     menu_checkbox(
                         ui,
                         &mut self.scope_panel.open,
@@ -619,6 +613,25 @@ impl eframe::App for SovaApp {
                         &mut self.scope_bar_panel.open,
                         t!("cmd.scope_bar"),
                         &format!("{mod_sym}{shift_sym}W"),
+                    );
+                });
+                if r.response.hovered() {
+                    widgets::hint::set(ctx, t!("hint.audio_menu"));
+                }
+                let r = ui.menu_button(t!("menu.view"), |ui| {
+                    let menu_checkbox = |ui: &mut egui::Ui,
+                                         checked: &mut bool,
+                                         label: std::borrow::Cow<'_, str>,
+                                         shortcut: &str| {
+                        let text = egui::RichText::new(shortcut).weak();
+                        ui.checkbox(checked, label).on_hover_text(text);
+                    };
+
+                    menu_checkbox(
+                        ui,
+                        &mut self.server.open,
+                        t!("server.title"),
+                        &format!("{mod_sym}{shift_sym}S"),
                     );
                     menu_checkbox(
                         ui,

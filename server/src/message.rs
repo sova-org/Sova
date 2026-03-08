@@ -76,9 +76,9 @@ mod tests {
     };
 
     fn roundtrip(msg: &ServerMessage) {
-        let bytes = postcard::to_allocvec(msg)
+        let bytes = rmp_serde::to_vec(msg)
             .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        postcard::from_bytes::<ServerMessage>(&bytes)
+        rmp_serde::from_slice::<ServerMessage>(&bytes)
             .unwrap_or_else(|e| {
                 panic!(
                     "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",

@@ -11,7 +11,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
 pub fn serialize_to_wire_frame(msg: &ServerMessage) -> io::Result<Vec<u8>> {
-    let payload = postcard::to_allocvec(msg).map_err(|e| {
+    let payload = rmp_serde::to_vec(msg).map_err(|e| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize ServerMessage: {}", e),
@@ -77,11 +77,11 @@ pub enum ClientMessage {
 
 impl ClientMessage {
     pub fn deserialize(bytes: &[u8]) -> io::Result<Option<Self>> {
-        match postcard::from_bytes::<ClientMessage>(bytes) {
+        match rmp_serde::from_slice::<ClientMessage>(bytes) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Postcard deserialization error: {}", e),
+                format!("MessagePack deserialization error: {}", e),
             )),
         }
     }
@@ -122,7 +122,7 @@ impl SovaClient {
     }
 
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let payload = postcard::to_allocvec(&message).map_err(|e| {
+        let payload = rmp_serde::to_vec(&message).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Failed to serialize ClientMessage: {}", e),
@@ -202,7 +202,7 @@ impl SovaClient {
             return Err(e);
         }
 
-        match postcard::from_bytes::<ServerMessage>(&message_buf) {
+        match rmp_serde::from_slice::<ServerMessage>(&message_buf) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => {
                 log_eprintln!(
@@ -229,9 +229,9 @@ mod tests {
     };
 
     fn roundtrip(msg: &ClientMessage) {
-        let bytes = postcard::to_allocvec(msg)
+        let bytes = rmp_serde::to_vec(msg)
             .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        postcard::from_bytes::<ClientMessage>(&bytes)
+        rmp_serde::from_slice::<ClientMessage>(&bytes)
             .unwrap_or_else(|e| {
                 panic!(
                     "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
