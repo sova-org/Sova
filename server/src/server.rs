@@ -665,7 +665,7 @@ impl SovaCoreServer {
                     println!("\n[!] Ctrl+C received, shutting down server...");
                     break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(10)) => {
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {
                     self.state
                         .client_registry
                         .broadcast(BroadcastItem::Filtered(SovaNotification::Tick));
@@ -1083,51 +1083,81 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     reader: &mut R,
     client_id_for_logging: &str,
 ) -> io::Result<Option<ClientMessage>> {
-    let mut len_buf = [0u8; 4];
-    match reader.read_exact(&mut len_buf).await {
-        Ok(_) => {
-            let length = u32::from_be_bytes(len_buf);
+    use crate::client::MAGIC;
 
-            if length == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Received zero-length message header",
-                ));
-            }
-
-            if length > MAX_MESSAGE_SIZE {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Message too large: {} bytes", length),
-                ));
-            }
-
-            let mut message_buf = vec![0u8; length as usize];
-            reader.read_exact(&mut message_buf).await?;
-
-            let msg = ClientMessage::deserialize(&message_buf);
-            if msg.is_err() {
-                eprintln!(
-                    "Failed to deserialize message from {}",
-                    client_id_for_logging
-                );
-            }
-            msg
-        }
+    let mut magic_buf = [0u8; 2];
+    match reader.read_exact(&mut magic_buf).await {
+        Ok(_) => {}
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
             println!(
                 "Connection closed by {} (EOF before header).",
                 client_id_for_logging
             );
-            Ok(None)
+            return Ok(None);
         }
         Err(e) => {
             eprintln!(
                 "Error reading message header from {}: {}",
                 client_id_for_logging, e
             );
-            Err(e)
+            return Err(e);
         }
     }
+
+    if magic_buf != MAGIC {
+        eprintln!("Magic mismatch from {}, attempting resync", client_id_for_logging);
+        let mut scanned = 0u32;
+        let mut prev = magic_buf[1];
+        loop {
+            if scanned >= MAX_MESSAGE_SIZE {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Resync failed for {}: no magic found", client_id_for_logging),
+                ));
+            }
+            let mut byte = [0u8; 1];
+            reader.read_exact(&mut byte).await?;
+            scanned += 1;
+            if prev == MAGIC[0] && byte[0] == MAGIC[1] {
+                eprintln!("Resynced {} after {} bytes", client_id_for_logging, scanned);
+                break;
+            }
+            prev = byte[0];
+        }
+    }
+
+    let mut header_buf = [0u8; 8];
+    reader.read_exact(&mut header_buf).await?;
+
+    let length = u32::from_be_bytes([header_buf[0], header_buf[1], header_buf[2], header_buf[3]]);
+    let expected_crc = u32::from_be_bytes([header_buf[4], header_buf[5], header_buf[6], header_buf[7]]);
+
+    if length == 0 || length > MAX_MESSAGE_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Invalid message length from {}: {} bytes", client_id_for_logging, length),
+        ));
+    }
+
+    let mut message_buf = vec![0u8; length as usize];
+    reader.read_exact(&mut message_buf).await?;
+
+    let actual_crc = crc32fast::hash(&message_buf);
+    if actual_crc != expected_crc {
+        eprintln!(
+            "CRC mismatch from {}: expected {:08x}, got {:08x} (len={})",
+            client_id_for_logging, expected_crc, actual_crc, length
+        );
+        return Ok(None);
+    }
+
+    let msg = ClientMessage::deserialize(&message_buf);
+    if msg.is_err() {
+        eprintln!(
+            "Deserialization failed from {} (CRC valid, schema mismatch)",
+            client_id_for_logging
+        );
+    }
+    msg
 }
 
