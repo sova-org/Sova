@@ -665,7 +665,7 @@ impl SovaCoreServer {
                     println!("\n[!] Ctrl+C received, shutting down server...");
                     break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {
                     self.state
                         .client_registry
                         .broadcast(BroadcastItem::Filtered(SovaNotification::Tick));
