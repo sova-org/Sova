@@ -55,7 +55,7 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "nand" => Op::Nand,
         "nor" => Op::Nor,
         "ifelse" => Op::IfElse,
-        "pick" => Op::Pick,
+        "select" => Op::Pick,
         "sound" => Op::NewCmd,
         "." => Op::Emit,
         "rand" => Op::Rand,

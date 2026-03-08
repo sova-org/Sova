@@ -46,7 +46,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "sub", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator level", example: "0.5 sub", compile: Param, varargs: true },
     Word { name: "suboct", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator octave", example: "2 suboct", compile: Param, varargs: true },
     Word { name: "subwave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator waveform", example: "1 subwave", compile: Param, varargs: true },
-    Word { name: "wave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set oscillator waveform", example: "1 wave", compile: Param, varargs: true },
+    Word { name: "wave", aliases: &["waveform"], category: "Oscillator", stack: "(v.. --)", desc: "Set oscillator waveform", example: "1 wave", compile: Param, varargs: true },
     Word { name: "note", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set MIDI note", example: "60 note", compile: Param, varargs: true },
     // Wavetable
     Word { name: "scan", aliases: &[], category: "Wavetable", stack: "(v.. --)", desc: "Set wavetable scan position", example: "0.5 scan", compile: Param, varargs: true },

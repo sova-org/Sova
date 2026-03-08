@@ -52,7 +52,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "nand", aliases: &[], category: "Logic", stack: "(a b -- bool)", desc: "Not and", example: "1 1 nand => 0", compile: Simple, varargs: false },
     Word { name: "nor", aliases: &[], category: "Logic", stack: "(a b -- bool)", desc: "Not or", example: "0 0 nor => 1", compile: Simple, varargs: false },
     Word { name: "ifelse", aliases: &[], category: "Logic", stack: "(true-quot false-quot bool --)", desc: "Execute true-quot if true, else false-quot", example: "( 1 ) ( 2 ) coin ifelse", compile: Simple, varargs: false },
-    Word { name: "pick", aliases: &[], category: "Logic", stack: "(..quots n --)", desc: "Execute nth quotation (0-indexed)", example: "( 1 ) ( 2 ) ( 3 ) 2 pick => 3", compile: Simple, varargs: true },
+    Word { name: "select", aliases: &[], category: "Logic", stack: "(..quots n --)", desc: "Execute nth quotation (0-indexed)", example: "( 1 ) ( 2 ) ( 3 ) 2 select => 3", compile: Simple, varargs: true },
     Word { name: "?", aliases: &[], category: "Logic", stack: "(quot bool --)", desc: "Execute quotation if true", example: "( 2 distort ) 0.5 chance ?", compile: Simple, varargs: false },
     Word { name: "!?", aliases: &[], category: "Logic", stack: "(quot bool --)", desc: "Execute quotation if false", example: "( 1 distort ) 0.5 chance !?", compile: Simple, varargs: false },
     Word { name: "apply", aliases: &[], category: "Logic", stack: "(quot --)", desc: "Execute quotation unconditionally", example: "( 2 * ) apply", compile: Simple, varargs: false },

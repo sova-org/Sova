@@ -3,8 +3,14 @@ use crate::server_panel::ServerInfo;
 use crate::widgets::COLOR_OK;
 use eframe::egui;
 
-pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -> bool {
+pub struct BottomBarResponse {
+    pub disconnect: bool,
+    pub open_palette: bool,
+}
+
+pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -> BottomBarResponse {
     let mut disconnect = false;
+    let mut open_palette = false;
     ui.horizontal(|ui| {
         if server.running {
             ui.colored_label(COLOR_OK, crate::icons::CIRCLE_FILLED);
@@ -37,11 +43,20 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
             ui.label(t!("bottom.disconnected"));
         }
 
-        if let Some(hint) = super::hint::current(ui.ctx()) {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let shortcut = if cfg!(target_os = "macos") { "\u{2318}K" } else { "Ctrl+K" };
+            let btn = ui.weak(shortcut);
+            if btn.clicked() {
+                open_palette = true;
+            }
+            if btn.hovered() {
+                super::hint::set(ui.ctx(), t!("bottom.command_palette").to_string());
+            }
+
+            if let Some(hint) = super::hint::current(ui.ctx()) {
                 ui.weak(hint);
-            });
-        }
+            }
+        });
     });
-    disconnect
+    BottomBarResponse { disconnect, open_palette }
 }
