@@ -16,7 +16,7 @@ pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorSettings};
 pub use syntax_highlight::SyntaxThemePref;
-pub use command_palette::{CommandId, CommandPalette, PaletteAction};
+pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
 pub use scene_grid::{
     HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid,
@@ -114,12 +114,13 @@ pub fn show_detached_viewport(
     );
 }
 
-pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<i32> {
+pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<(i32, Vec<usize>)> {
     let needle: Vec<char> = needle.to_lowercase().chars().collect();
     let hay: Vec<char> = haystack.to_lowercase().chars().collect();
     let mut score: i32 = 0;
     let mut hi = 0;
     let mut prev_match = false;
+    let mut indices = Vec::with_capacity(needle.len());
 
     for (ni, &nc) in needle.iter().enumerate() {
         let mut found = false;
@@ -135,6 +136,7 @@ pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<i32> {
                     score += 8;
                 }
                 score += 1;
+                indices.push(hi);
                 hi += 1;
                 prev_match = true;
                 found = true;
@@ -148,5 +150,5 @@ pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<i32> {
         }
     }
 
-    Some(score)
+    Some((score, indices))
 }

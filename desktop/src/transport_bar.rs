@@ -33,36 +33,43 @@ impl TransportBar {
             let accent = ui.visuals().selection.bg_fill;
 
             ui.horizontal(|ui| {
-                let (label, msg) = if clock.playing {
-                    (
-                        crate::icons::PAUSE,
-                        ClientMessage::TransportStop(ActionTiming::Immediate),
-                    )
+                // Play/Pause
+                if clock.playing {
+                    let msg = ClientMessage::TransportStop(ActionTiming::Immediate);
+                    egui::Frame::NONE
+                        .fill(egui::Color32::from_rgba_unmultiplied(
+                            accent.r(),
+                            accent.g(),
+                            accent.b(),
+                            30,
+                        ))
+                        .inner_margin(egui::Margin::symmetric(2, 1))
+                        .show(ui, |ui| {
+                            let r = ui.button(crate::icons::PAUSE);
+                            if r.hovered() {
+                                crate::widgets::hint::set(ctx, t!("transport.hint.stop"));
+                            }
+                            if r.clicked() {
+                                bridge.send(msg);
+                            }
+                        });
                 } else {
-                    (
-                        crate::icons::PLAY,
-                        ClientMessage::TransportStart(ActionTiming::Immediate),
-                    )
-                };
-                let r = ui.button(label);
-                if r.hovered() {
-                    crate::widgets::hint::set(
-                        ctx,
-                        if clock.playing {
-                            t!("transport.hint.stop")
-                        } else {
-                            t!("transport.hint.play")
-                        },
-                    );
-                }
-                if r.clicked() {
-                    bridge.send(msg);
+                    let r = ui.button(crate::icons::PLAY);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ctx, t!("transport.hint.play"));
+                    }
+                    if r.clicked() {
+                        bridge.send(ClientMessage::TransportStart(
+                            ActionTiming::Immediate,
+                        ));
+                    }
                 }
 
                 ui.separator();
 
                 let r = ui.monospace(
-                    t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string(),
+                    t!("transport.beat_value", val = format!("{:.2}", clock.beat))
+                        .to_string(),
                 );
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.beat"));
@@ -84,14 +91,20 @@ impl TransportBar {
                             && let Ok(t) = self.tempo_buf.parse::<f64>()
                         {
                             let t = t.clamp(20.0, 300.0);
-                            bridge.send(ClientMessage::SetTempo(t, ActionTiming::Immediate));
+                            bridge.send(ClientMessage::SetTempo(
+                                t,
+                                ActionTiming::Immediate,
+                            ));
                         }
                         self.editing_tempo = false;
                     }
                 } else {
                     let resp = ui.monospace(
-                        t!("transport.tempo_value", val = format!("{:.1}", clock.tempo))
-                            .to_string(),
+                        t!(
+                            "transport.tempo_value",
+                            val = format!("{:.1}", clock.tempo)
+                        )
+                        .to_string(),
                     );
                     if resp.hovered() {
                         crate::widgets::hint::set(ctx, t!("transport.hint.tempo"));
@@ -105,33 +118,87 @@ impl TransportBar {
 
                 ui.separator();
 
-                let phase_frac = if clock.quantum > 0.0 {
-                    (clock.phase / clock.quantum) as f32
-                } else {
-                    0.0
-                };
+                // Segmented phase bar — fills remaining center space
+                let right_reserve = 120.0;
+                let bar_width = (ui.available_width() - right_reserve).max(40.0);
+                let bar_height = ui.text_style_height(&egui::TextStyle::Body);
                 let bar_color = if clock.playing {
                     accent
                 } else {
                     ui.visuals().widgets.inactive.bg_fill
                 };
-                let (rect, phase_r) = ui.allocate_exact_size(
-                    egui::vec2(80.0, ui.text_style_height(&egui::TextStyle::Body)),
-                    egui::Sense::hover(),
-                );
-                if phase_r.hovered() {
-                    crate::widgets::hint::set(ctx, t!("transport.hint.phase"));
+
+                let quantum_int = clock.quantum as u32;
+                let use_segments = (1..=16).contains(&quantum_int)
+                    && (clock.quantum - quantum_int as f64).abs() < 0.001;
+
+                if use_segments {
+                    let gap: f32 = 2.0;
+                    let seg_w =
+                        (bar_width - (quantum_int.saturating_sub(1)) as f32 * gap)
+                            / quantum_int as f32;
+
+                    let (rect, phase_r) = ui.allocate_exact_size(
+                        egui::vec2(bar_width, bar_height),
+                        egui::Sense::hover(),
+                    );
+                    if phase_r.hovered() {
+                        crate::widgets::hint::set(ctx, t!("transport.hint.phase"));
+                    }
+                    let painter = ui.painter_at(rect);
+                    let bg_color = ui.visuals().extreme_bg_color;
+                    let current_beat = clock.phase.floor() as u32;
+                    let beat_frac = clock.phase.fract() as f32;
+                    let pulse = (1.0 - clock.phase.fract() as f32).powi(3);
+
+                    for i in 0..quantum_int {
+                        let x = rect.left() + i as f32 * (seg_w + gap);
+                        let seg = egui::Rect::from_min_size(
+                            egui::pos2(x, rect.top()),
+                            egui::vec2(seg_w, bar_height),
+                        );
+                        painter.rect_filled(seg, 0.0, bg_color);
+
+                        if i < current_beat {
+                            painter.rect_filled(seg, 0.0, bar_color);
+                        } else if i == current_beat {
+                            let mut fill = seg;
+                            fill.set_right(seg.left() + seg_w * beat_frac);
+                            let boost =
+                                if i == 0 { pulse * 80.0 } else { pulse * 50.0 };
+                            let pulsed = egui::Color32::from_rgb(
+                                bar_color.r().saturating_add(boost as u8),
+                                bar_color.g().saturating_add(boost as u8),
+                                bar_color.b().saturating_add(boost as u8),
+                            );
+                            painter.rect_filled(fill, 0.0, pulsed);
+                        }
+                    }
+                } else {
+                    let phase_frac = if clock.quantum > 0.0 {
+                        (clock.phase / clock.quantum) as f32
+                    } else {
+                        0.0
+                    };
+                    let (rect, phase_r) = ui.allocate_exact_size(
+                        egui::vec2(bar_width, bar_height),
+                        egui::Sense::hover(),
+                    );
+                    if phase_r.hovered() {
+                        crate::widgets::hint::set(ctx, t!("transport.hint.phase"));
+                    }
+                    let painter = ui.painter_at(rect);
+                    painter.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
+                    let mut fill = rect;
+                    fill.set_right(rect.left() + rect.width() * phase_frac);
+                    painter.rect_filled(fill, 0.0, bar_color);
                 }
-                let painter = ui.painter_at(rect);
-                painter.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
-                let mut fill = rect;
-                fill.set_right(rect.left() + rect.width() * phase_frac);
-                painter.rect_filled(fill, 0.0, bar_color);
 
                 ui.separator();
 
                 let r = ui.monospace(
-                    t!("transport.quantum_value", val = clock.quantum as u32).to_string(),
+                    t!("transport.quantum_value", val = clock.quantum as u32)
+                        .to_string(),
                 );
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
@@ -139,13 +206,9 @@ impl TransportBar {
 
                 ui.separator();
 
+                // Execution mode — selectable label so it looks interactive
                 let mode = bridge.scene().map(|s| s.mode).unwrap_or_default();
-                let mode_color = if mode.is_free() {
-                    ui.visuals().text_color()
-                } else {
-                    accent
-                };
-                let resp = ui.colored_label(mode_color, format!("{mode}"));
+                let resp = ui.selectable_label(!mode.is_free(), format!("{mode}"));
                 if resp.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.mode"));
                 }
@@ -155,9 +218,11 @@ impl TransportBar {
                         ExecutionMode::AtQuantum => ExecutionMode::LongestLine,
                         ExecutionMode::LongestLine => ExecutionMode::Free,
                     };
-                    bridge.send(ClientMessage::SetSceneMode(next, ActionTiming::Immediate));
+                    bridge.send(ClientMessage::SetSceneMode(
+                        next,
+                        ActionTiming::Immediate,
+                    ));
                 }
-                resp.on_hover_cursor(egui::CursorIcon::PointingHand);
             });
 
             if clock.playing {

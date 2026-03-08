@@ -137,8 +137,8 @@ Crossfade between two sounds:
 
 ```forth
 1 1 ccval 127 /    ;; normalize to 0.0-1.0
-dup saw s swap gain .
-1 swap - tri s swap gain .
+dup saw snd swap gain .
+1 swap - tri snd swap gain .
 ```
 
 ## Real-Time Messages

@@ -40,15 +40,15 @@ That gives you 110, 220, 440, 880, 1760 (reversed), ready to feed into `freq`.
 `gen` executes a quotation n times and collects all results. The quotation must push exactly one value per call:
 
 ```forth
-{ 1 6 rand } 4 gen       ;; 4 random values between 1 and 6
-{ coin } 8 gen            ;; 8 random 0s and 1s
+( 1 6 rand ) 4 gen       ;; 4 random values between 1 and 6
+( coin ) 8 gen            ;; 8 random 0s and 1s
 ```
 
 Contrast with `times`, which executes for side effects and does not collect. `times` sets `@i` to the current index:
 
 ```forth
-4 { @i } times            ;; 0 1 2 3 (pushes @i each iteration)
-4 { @i 60 + note sine s . } times   ;; plays 4 notes, collects nothing
+4 ( @i ) times            ;; 0 1 2 3 (pushes @i each iteration)
+4 ( @i 60 + note sine snd . ) times   ;; plays 4 notes, collects nothing
 ```
 
 The distinction: `gen` is for building data. `times` is for doing things.
@@ -109,7 +109,7 @@ c4 e4 g4 b4 4 shuffle   ;; random permutation each time
 Useful for computing averages or accumulating values:
 
 ```forth
-{ 1 6 rand } 4 gen 4 sum   ;; sum of 4 dice rolls
+( 1 6 rand ) 4 gen 4 sum   ;; sum of 4 dice rolls
 ```
 
 ## Replication
@@ -124,9 +124,9 @@ c4 4 dupn         ;; c4 c4 c4 c4
 Build a drone chord — same note, different octaves:
 
 ```forth
-c3 note 0.5 gain sine s .
-c3 note 12 + 0.5 gain sine s .
-c3 note 24 + 0.3 gain sine s .
+c3 note 0.5 gain sine snd .
+c3 note 12 + 0.5 gain sine snd .
+c3 note 24 + 0.3 gain sine snd .
 ```
 
 Or replicate a value for batch processing:

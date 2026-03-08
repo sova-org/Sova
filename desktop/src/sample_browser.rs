@@ -537,7 +537,7 @@ impl SampleBrowserState {
                 }
             }
             SampleNode::Folder { name, .. } => {
-                if let Some(score) = crate::widgets::fuzzy_score(query, name) {
+                if let Some((score, _)) = crate::widgets::fuzzy_score(query, name) {
                     out.push((score, name.clone()));
                 }
             }

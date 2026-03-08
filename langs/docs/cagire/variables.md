@@ -17,13 +17,13 @@ Variables let you name values and share data between frames. They are global —
 `,name` stores just like `!name` but keeps the value on the stack. Useful when you want to name something and keep using it:
 
 ```forth
-440 ,freq sine s .   ;; stores 440 in freq AND passes it to the pipeline
+440 ,freq sine snd .   ;; stores 440 in freq AND passes it to the pipeline
 ```
 
 Without `,`, you'd need `dup`:
 
 ```forth
-440 dup !freq sine s .   ;; equivalent, but noisier
+440 dup !freq sine snd .   ;; equivalent, but noisier
 ```
 
 ## Sharing Between Frames
@@ -35,7 +35,7 @@ Variables are shared across all frames in all lines. One frame can store a value
 c4 iter 7 mod + !root
 
 ;; frame B: read it
-@root 7 + note sine s .
+@root 7 + note sine snd .
 ```
 
 Every time the line loops, frame A picks a new root. Frame B always harmonizes with it.
@@ -46,14 +46,14 @@ Fetch, modify, store back. A classic pattern for evolving values:
 
 ```forth
 @n 1 + !n              ;; increment n each time this frame runs
-@n 12 mod note sine s . ;; cycle through 12 notes
+@n 12 mod note sine snd . ;; cycle through 12 notes
 ```
 
 Reset on some condition:
 
 ```forth
 @n 1 + !n
-{ 0 !n } @n 16 > ?    ;; reset after 16
+( 0 !n ) @n 16 > ?    ;; reset after 16
 ```
 
 ## When Changes Take Effect
@@ -69,7 +69,7 @@ Store a sound name in a variable, reuse it across frames:
 "sine" !synth
 
 ;; frame B, C, D...
-c4 note @synth s .
+c4 note @synth snd .
 ```
 
 Change one frame, all frames follow.

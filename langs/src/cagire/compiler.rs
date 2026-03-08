@@ -30,13 +30,9 @@ fn tokenize(input: &str) -> Vec<Token> {
             continue;
         }
 
-        // Parenthesized comments
-        if c == '(' {
+        // Curly braces silently ignored (legacy syntax)
+        if c == '{' || c == '}' {
             chars.next();
-            while let Some(&(_, ch)) = chars.peek() {
-                chars.next();
-                if ch == ')' { break; }
-            }
             continue;
         }
 
@@ -120,12 +116,12 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<Vec<Op>, String> {
             Token::Str(s) => ops.push(Op::PushStr(Arc::from(s.as_str()))),
             Token::Word(w) => {
                 let word = w.as_str();
-                if word == "{" {
+                if word == "(" {
                     let (quote_ops, consumed) = compile_quotation(&tokens[i + 1..], dict)?;
                     i += consumed;
                     ops.push(Op::Quotation(Arc::from(quote_ops)));
-                } else if word == "}" {
-                    return Err("unexpected }".into());
+                } else if word == ")" {
+                    return Err("unexpected )".into());
                 } else if word == "[" {
                     let (bracket_ops, consumed) = compile_bracket(&tokens[i + 1..], dict)?;
                     i += consumed;
@@ -179,8 +175,8 @@ fn compile_quotation(
     for (i, tok) in tokens.iter().enumerate() {
         if let Token::Word(w) = tok {
             match w.as_str() {
-                "{" => depth += 1,
-                "}" => {
+                "(" => depth += 1,
+                ")" => {
                     depth -= 1;
                     if depth == 0 {
                         end_idx = Some(i);
@@ -192,7 +188,7 @@ fn compile_quotation(
         }
     }
 
-    let end_idx = end_idx.ok_or("missing }")?;
+    let end_idx = end_idx.ok_or("missing )")?;
     let quote_ops = compile(&tokens[..end_idx], dict)?;
     Ok((quote_ops, end_idx + 1))
 }
@@ -395,17 +391,17 @@ mod tests {
     }
 
     #[test]
-    fn test_paren_comment() {
-        let mut dict = Dictionary::new();
-        let ops = compile_script("3 (this is a comment) 4 +", &mut dict).unwrap();
-        assert_eq!(ops.len(), 3);
+    fn test_curly_braces_ignored() {
+        let tokens = tokenize("{hello world} 5");
+        assert_eq!(tokens.len(), 3);
+        assert!(matches!(&tokens[2], Token::Int(5)));
     }
 
     #[test]
-    fn test_paren_comment_nested_words() {
-        let tokens = tokenize("(hello world) 5");
-        assert_eq!(tokens.len(), 1);
-        assert!(matches!(&tokens[0], Token::Int(5)));
+    fn test_paren_quotation() {
+        let mut dict = Dictionary::new();
+        let ops = compile_script("( 2 3 + ) apply", &mut dict).unwrap();
+        assert!(matches!(ops[0], Op::Quotation(_)));
     }
 
     #[test]

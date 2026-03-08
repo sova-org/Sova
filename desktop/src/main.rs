@@ -701,12 +701,15 @@ impl eframe::App for SovaApp {
         // Transport bar
         self.transport_bar.show(ctx, &self.bridge);
 
-        let disconnect = egui::TopBottomPanel::bottom("bottom_bar")
+        let bar = egui::TopBottomPanel::bottom("bottom_bar")
             .show(ctx, |ui| {
                 widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge))
             })
             .inner;
-        if disconnect {
+        if bar.open_palette {
+            self.command_palette.open();
+        }
+        if bar.disconnect {
             self.bridge.disconnect();
             self.step_editors.close_all();
         }
@@ -845,6 +848,24 @@ impl eframe::App for SovaApp {
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
 
+        self.command_palette.update_states(&widgets::PanelStates {
+            server: self.server.open,
+            audio: self.audio.open,
+            devices: self.devices.open,
+            scope: self.scope_panel.open,
+            spectrum: self.spectrum_panel.open,
+            vu_meter: self.vu_meter_panel.open,
+            scope_bar: self.scope_bar_panel.open,
+            chat: self.chat_panel.open,
+            logs: !self.logs.collapsed,
+            options: self.options.open,
+            debug: self.debug_open,
+            keybindings: self.keybindings_open,
+            about: self.about_open,
+            sample_browser: self.sample_browser_panel.open,
+            documentation: !self.doc_panel.settings.collapsed,
+            visuals: self.visuals.open,
+        });
         match self.command_palette.show(ctx) {
             widgets::PaletteAction::Execute(cmd) => self.execute_command(cmd),
             widgets::PaletteAction::None => {}
@@ -905,6 +926,36 @@ impl SovaApp {
                 }
             }
             Visuals => self.visuals.open = !self.visuals.open,
+            PlayPause => {
+                if self.bridge.is_connected() {
+                    let clock = self.bridge.clock();
+                    let msg = if clock.playing {
+                        ClientMessage::TransportStop(ActionTiming::Immediate)
+                    } else {
+                        ClientMessage::TransportStart(ActionTiming::Immediate)
+                    };
+                    self.bridge.send(msg);
+                }
+            }
+            SaveScene => {
+                if self.bridge.is_connected() {
+                    self.save_scene();
+                }
+            }
+            LoadScene => {
+                if self.bridge.is_connected() {
+                    self.load_scene(ActionTiming::Immediate);
+                }
+            }
+            ZoomIn => {
+                self.appearance.zoom = (self.appearance.zoom + 0.1).min(3.0);
+            }
+            ZoomOut => {
+                self.appearance.zoom = (self.appearance.zoom - 0.1).max(0.5);
+            }
+            ZoomReset => {
+                self.appearance.zoom = 1.0;
+            }
         }
     }
 }

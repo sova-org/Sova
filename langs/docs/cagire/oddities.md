@@ -4,28 +4,24 @@ Cagire is not a classic Forth. It borrows the core ideas (stack-based evaluation
 
 ## Comments
 
-Classic Forth uses parentheses for comments:
+Classic Forth uses parentheses for comments. In Cagire, parentheses are quotation syntax (see below), so they cannot be used for comments.
 
-```forth
-( this is a comment )
-```
-
-Cagire also uses double semicolons:
+Cagire uses double semicolons for comments:
 
 ```forth
 ;; this is a comment
 ```
 
-Everything after `;;` until the end of the line is ignored.
+Everything after `;;` until the end of the line is ignored. Curly braces `{ }` are silently ignored — they have no effect and can be used as visual separators if you like, but they carry no semantic meaning.
 
 ## Quotations
 
 Classic Forth has no quotations. Code is not a value you can pass around.
 
-Cagire has first-class quotations using curly braces:
+Cagire has first-class quotations using parentheses:
 
 ```forth
-{ dup + }
+( dup + )
 ```
 
 This pushes a block of code onto the stack. You can store it, pass it to other words, and execute it later. Quotations enable conditionals, probability, and cycling.
@@ -41,14 +37,14 @@ x 0 > IF 1 ELSE -1 THEN
 Cagire supports this syntax but also provides quotation-based conditionals:
 
 ```forth
-{ 1 } { -1 } x 0 > ifelse
+( 1 ) ( -1 ) x 0 > ifelse
 ```
 
 The words `?` and `!?` execute a quotation based on a condition:
 
 ```forth
-{ "kick" s . } coin ?     ;; execute if coin is 1
-{ "snare" s . } coin !?   ;; execute if coin is 0
+( "kick" snd . ) coin ?     ;; execute if coin is 1
+( "snare" snd . ) coin !?   ;; execute if coin is 0
 ```
 
 ## Strings
@@ -62,7 +58,7 @@ Classic Forth has limited string support. Cagire has first-class strings:
 This pushes a string value onto the stack. Strings are used for sound names, sample names, and variable keys. You often do not need quotes at all. Any unrecognized word becomes a string automatically:
 
 ```forth
-kick s .       ;; "kick" is not a word, so it becomes the string "kick"
+kick snd .       ;; "kick" is not a word, so it becomes the string "kick"
 myweirdname    ;; pushes "myweirdname" onto the stack
 ```
 
@@ -110,21 +106,21 @@ Classic Forth has `DO ... LOOP`:
 Cagire uses a quotation-based loop with `times`:
 
 ```forth
-4 { @i . } times    ;; prints 0 1 2 3
+4 ( @i . ) times    ;; prints 0 1 2 3
 ```
 
 The loop counter is stored in the variable `i`, accessed with `@i`.
 
 ```forth
-4 { @i 4 / at hat s . } times    ;; hat at 0, 0.25, 0.5, 0.75
-4 { c4 @i + note sine s . } times ;; ascending notes
+4 ( @i 4 / at hat snd . ) times    ;; hat at 0, 0.25, 0.5, 0.75
+4 ( c4 @i + note sine snd . ) times ;; ascending notes
 ```
 
 For generating sequences without side effects, use `..` or `gen`:
 
 ```forth
 1 5 ..          ;; pushes 1 2 3 4 5
-{ dup * } 4 gen ;; pushes 0 1 4 9 (squares)
+( dup * ) 4 gen ;; pushes 0 1 4 9 (squares)
 ```
 
 ## The Command Register
@@ -165,11 +161,11 @@ These have no equivalent in classic Forth. They connect your script to the seque
 Classic Forth is deterministic. Cagire has built-in randomness:
 
 ```forth
-{ "snare" s . } 50 prob       ;; 50% chance
-{ "clap" s . } 0.25 chance    ;; 25% chance
-{ "hat" s . } often           ;; 75% chance
-{ "rim" s . } sometimes       ;; 50% chance
-{ "tom" s . } rarely          ;; 25% chance
+( "snare" snd . ) 50 prob       ;; 50% chance
+( "clap" snd . ) 0.25 chance    ;; 25% chance
+( "hat" snd . ) often           ;; 75% chance
+( "rim" snd . ) sometimes       ;; 50% chance
+( "tom" snd . ) rarely          ;; 25% chance
 ```
 
 These words take a quotation and execute it probabilistically.
@@ -179,9 +175,9 @@ These words take a quotation and execute it probabilistically.
 Execute a quotation on specific iterations:
 
 ```forth
-{ "snare" s . } 4 every        ;; every 4th line iteration
-{ "hat" s . } 3 8 bjork        ;; Euclidean: 3 hits across 8 frame triggers
-{ "hat" s . } 5 8 pbjork       ;; Euclidean: 5 hits across 8 line iterations
+( "snare" snd . ) 4 every        ;; every 4th line iteration
+( "hat" snd . ) 3 8 bjork        ;; Euclidean: 3 hits across 8 frame triggers
+( "hat" snd . ) 5 8 pbjork       ;; Euclidean: 5 hits across 8 line iterations
 ```
 
 `every` checks the line iteration count. `bjork` and `pbjork` use Bjorklund's algorithm to distribute k hits as evenly as possible across n positions. `bjork` counts by frame triggers, `pbjork` counts by line iterations.
@@ -208,13 +204,13 @@ When the selected value is a quotation, it gets executed. When it is a plain val
 Parameter words like `note`, `freq`, and `gain` consume the entire stack. If you push multiple values before a param word, you get polyphony:
 
 ```forth
-60 64 67 note sine s .    ;; emits 3 voices with notes 60, 64, 67
+60 64 67 note sine snd .    ;; emits 3 voices with notes 60, 64, 67
 ```
 
 This works for any parameter and for the sound word itself:
 
 ```forth
-440 880 freq sine tri s .    ;; 2 voices: sine at 440, tri at 880
+440 880 freq sine tri snd .    ;; 2 voices: sine at 440, tri at 880
 ```
 
 When parameters have different lengths, shorter lists cycle:
@@ -222,7 +218,7 @@ When parameters have different lengths, shorter lists cycle:
 ```forth
 60 64 67 note           ;; 3 notes
 0.5 1.0 gain            ;; 2 gains (cycles: 0.5, 1.0, 0.5)
-sine s .                ;; emits 3 voices
+sine snd .                ;; emits 3 voices
 ```
 
 ## Summary

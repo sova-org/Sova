@@ -2,8 +2,8 @@ use super::{Word, WordCompile::*};
 
 pub(super) const WORDS: &[Word] = &[
     // Sound
-    Word { name: "sound", aliases: &["s"], category: "Sound", stack: "(name --)", desc: "Begin sound command", example: "\"kick\" sound", compile: Simple, varargs: false },
-    Word { name: ".", aliases: &[], category: "Sound", stack: "(--)", desc: "Emit current sound/MIDI", example: "\"kick\" s .", compile: Simple, varargs: false },
+    Word { name: "sound", aliases: &["snd"], category: "Sound", stack: "(name --)", desc: "Begin sound command", example: "\"kick\" sound", compile: Simple, varargs: false },
+    Word { name: ".", aliases: &[], category: "Sound", stack: "(--)", desc: "Emit current sound/MIDI", example: "\"kick\" snd .", compile: Simple, varargs: false },
     Word { name: "arp", aliases: &[], category: "Sound", stack: "(v1..vn -- arplist)", desc: "Wrap stack values as arpeggio list", example: "c4 e4 g4 arp note", compile: Simple, varargs: true },
     Word { name: "clear", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear sound register", example: "clear", compile: Simple, varargs: false },
     Word { name: "all", aliases: &[], category: "Sound", stack: "(--)", desc: "Apply current params to all sounds", example: "500 lpf 0.5 verb all", compile: Simple, varargs: false },
@@ -26,6 +26,10 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "n", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set sample number", example: "0 n", compile: Param, varargs: true },
     Word { name: "cut", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set cut group", example: "1 cut", compile: Param, varargs: true },
     Word { name: "reset", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Reset parameter", example: "1 reset", compile: Param, varargs: true },
+    Word { name: "stretch", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Time stretch factor (pitch-independent)", example: "2 stretch", compile: Param, varargs: true },
+    Word { name: "slice", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Divide sample into N equal slices", example: "8 slice", compile: Param, varargs: true },
+    Word { name: "pick", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Select which slice to play (0-indexed, wraps)", example: "3 pick", compile: Param, varargs: true },
+    Word { name: "partials", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set number of active harmonics (add source only)", example: "4 partials", compile: Param, varargs: true },
     // Oscillator
     Word { name: "freq", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set frequency (Hz)", example: "440 freq", compile: Param, varargs: true },
     Word { name: "detune", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set detune amount", example: "0.01 detune", compile: Param, varargs: true },
@@ -42,7 +46,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "sub", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator level", example: "0.5 sub", compile: Param, varargs: true },
     Word { name: "suboct", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator octave", example: "2 suboct", compile: Param, varargs: true },
     Word { name: "subwave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator waveform", example: "1 subwave", compile: Param, varargs: true },
-    Word { name: "wave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set oscillator waveform", example: "1 wave", compile: Param, varargs: true },
+    Word { name: "wave", aliases: &["waveform"], category: "Oscillator", stack: "(v.. --)", desc: "Set oscillator waveform", example: "1 wave", compile: Param, varargs: true },
     Word { name: "note", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set MIDI note", example: "60 note", compile: Param, varargs: true },
     // Wavetable
     Word { name: "scan", aliases: &[], category: "Wavetable", stack: "(v.. --)", desc: "Set wavetable scan position", example: "0.5 scan", compile: Param, varargs: true },

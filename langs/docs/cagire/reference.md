@@ -8,7 +8,7 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 - **Float**: `3.14`, `-0.5`, `0.25`
 - **String**: `"kick"`, `"sine"`, `"hello"`
 - **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58) — pushes MIDI number
-- **Quotation**: `{ ... }` — deferred code block, first-class value
+- **Quotation**: `( ... )` — deferred code block, first-class value
 
 ## Stack Operations
 
@@ -76,23 +76,23 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 
 ```
 ;; if / else / then
-coin if "kick" s . else "snare" s . then
+coin if "kick" snd . else "snare" snd . then
 
 ;; quotation conditionals
-{ "kick" s . } coin ?       ;; execute if true
-{ "snare" s . } coin !?     ;; execute if false
+( "kick" snd . ) coin ?       ;; execute if true
+( "snare" snd . ) coin !?     ;; execute if false
 
 ;; ifelse: ( true-quot false-quot bool -- )
-{ 60 } { 72 } coin ifelse note .
+( 60 ) ( 72 ) coin ifelse note .
 
 ;; pick: ( ..quots n -- ) execute nth quotation
-{ 60 } { 64 } { 67 } step 3 mod pick note .
+( 60 ) ( 64 ) ( 67 ) step 3 mod pick note .
 
 ;; apply: execute quotation unconditionally
-{ 2 * } apply
+( 2 * ) apply
 
 ;; times: ( n quot -- ) repeat n times, @i = index
-4 { @i 60 + note . } times
+4 ( @i 60 + note . ) times
 ```
 
 ## Sound Pipeline
@@ -101,12 +101,12 @@ The core pattern: name a sound, set parameters, emit.
 
 ```
 "kick" sound .              ;; play a sample
-"sine" s 440 freq .         ;; play an oscillator
+"sine" snd 440 freq .         ;; play an oscillator
 60 note 100 vel .           ;; MIDI note
 clear                       ;; reset sound register
 ```
 
-`sound` (alias `s`) sets the sound name. `.` emits the event. `clear` resets the register.
+`sound` (alias `snd`) sets the sound name. `.` emits the event. `clear` resets the register.
 
 ### Arpeggios
 
@@ -390,7 +390,7 @@ Sixths: `maj6`, `min6`.
 @freq               ;; recall
 440 ,freq           ;; store (keeps on stack)
 
-: kick "kick" s 0.9 gain . ;
+: kick "kick" snd 0.9 gain . ;
 kick                ;; call defined word
 
 "kick" forget       ;; remove definition

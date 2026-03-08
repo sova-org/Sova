@@ -26,8 +26,8 @@ Octave range is -1 to 9. The formula is `(octave + 1) * 12 + base + modifier`, w
 Note literals push a single integer onto the stack, just like writing `60` directly. They work everywhere an integer works:
 
 ```forth
-c4 note sine s .            ;; play middle C as a sine
-a4 note 0.5 gain modal s .  ;; concert A, quieter
+c4 note sine snd .            ;; play middle C as a sine
+a4 note 0.5 gain modal snd .  ;; concert A, quieter
 ```
 
 ## Intervals
@@ -146,7 +146,7 @@ c4 dom9       ;; stack: 60 64 67 70 74
 Chord tones are varargs — they eat the entire stack. So a chord word should come right after the root note:
 
 ```forth
-c4 maj note sine s .    ;; plays all 3 notes as one chord
+c4 maj note sine snd .    ;; plays all 3 notes as one chord
 ```
 
 ## Scales
@@ -163,7 +163,7 @@ Scale words convert a degree index into a MIDI note. The base note is C4 (MIDI 6
 Use scales with `cycle` or `rand` to walk through pitches:
 
 ```forth
-0 1 2 3 4 5 6 7 8 cycle minor note sine s .
+0 1 2 3 4 5 6 7 8 cycle minor note sine snd .
 ```
 
 **Standard modes:**
@@ -255,7 +255,7 @@ Stack effect: `(note shift -- transposed)`. The shift is multiplied by 12 and ad
 Useful when a synth parameter expects Hz rather than MIDI:
 
 ```forth
-c4 mtof freq sine s .
+c4 mtof freq sine snd .
 ```
 
 ## Putting It Together
@@ -263,40 +263,40 @@ c4 mtof freq sine s .
 A chord progression cycling every line iteration:
 
 ```forth
-{ c3 maj7 } { f3 maj7 } { g3 dom7 } { c3 maj7 } 4 pcycle
-note sine s .
+( c3 maj7 ) ( f3 maj7 ) ( g3 dom7 ) ( c3 maj7 ) 4 pcycle
+note sine snd .
 ```
 
 Arpeggiate a chord across the frame's time divisions:
 
 ```forth
-c4 min7 arp note 0.5 decay sine s .
+c4 min7 arp note 0.5 decay sine snd .
 ```
 
 Random notes from a scale:
 
 ```forth
-0 7 rand minor note sine s .
+0 7 rand minor note sine snd .
 ```
 
 A bass line walking scale degrees:
 
 ```forth
 0 2 4 5 7 5 4 2 8 cycle minor note
--2 oct 0.8 gain sine s .
+-2 oct 0.8 gain sine snd .
 ```
 
 Chord voicings with random inversion:
 
 ```forth
 e3 min9
-{ } { 1 oct } 2 choose
-note modal s .
+( ) ( 1 oct ) 2 choose
+note modal snd .
 ```
 
 Stacked intervals for custom voicings:
 
 ```forth
 c3 P5 P8 M10    ;; C3, G3, C4, E4
-note sine s .
+note sine snd .
 ```
