@@ -914,7 +914,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     // Dedicated reader task — never cancelled, so read_wire_frame
     // can't lose partial reads (which would desync the TCP stream).
     enum ClientRead {
-        Message(ClientMessage),
+        Message(Box<ClientMessage>),
         Closed,
         Error(io::Error),
     }
@@ -924,7 +924,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         loop {
             match read_message_internal(&mut reader, &reader_client_name).await {
                 Ok(Some(msg)) => {
-                    if client_msg_tx.send(ClientRead::Message(msg)).is_err() {
+                    if client_msg_tx.send(ClientRead::Message(Box::new(msg))).is_err() {
                         break;
                     }
                 }
@@ -950,10 +950,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             read_result = client_msg_rx.recv() => {
                 match read_result {
                     Some(ClientRead::Message(msg)) => {
-                        if matches!(&msg, ClientMessage::EnableFeedback) {
+                        if matches!(*msg, ClientMessage::EnableFeedback) {
                             feedback_enabled = true;
                         }
-                        let response = on_message(msg, &state, &mut client_name).await;
+                        let response = on_message(*msg, &state, &mut client_name).await;
 
                         if !matches!(
                             timeout(WRITE_TIMEOUT, send_msg(&mut writer, response)).await,
