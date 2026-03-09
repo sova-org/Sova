@@ -447,7 +447,7 @@ mod tests {
 
     #[tokio::test]
     async fn eof_mid_frame() {
-        // v2 header but truncated before payload
+        // header but truncated before payload
         let mut frame = vec![PROTOCOL_VERSION];
         let len_bytes = 100u32.to_be_bytes();
         frame.extend_from_slice(&len_bytes[1..4]);
@@ -623,7 +623,7 @@ mod tests {
     // -- realistic message roundtrips --
 
     #[tokio::test]
-    async fn v2_roundtrip_hello() {
+    async fn wire_roundtrip_hello() {
         let msg = make_hello();
         let frame = serialize_to_wire_frame(&msg).unwrap();
         assert!(frame.len() > 500, "Hello should be a large payload, got {} bytes", frame.len());
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v2_roundtrip_scope_data() {
+    async fn wire_roundtrip_scope_data() {
         let msg = make_scope_data(1024);
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
@@ -643,7 +643,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v2_roundtrip_frame_position() {
+    async fn wire_roundtrip_frame_position() {
         let msg = make_frame_position(16);
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v2_roundtrip_scene_with_code() {
+    async fn wire_roundtrip_scene_with_code() {
         let msg = ServerMessage::SceneValue(make_scene_with_code());
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
@@ -1086,7 +1086,7 @@ mod tests {
     // -- 1. Fragmented / slow delivery --
 
     #[tokio::test]
-    async fn slow_reader_byte_at_a_time_v2() {
+    async fn slow_reader_byte_at_a_time() {
         let payload = b"hello fragmented world";
         let frame = build_frame_raw(payload);
         let mut reader = SlowReader::new(frame, 1);
@@ -1187,8 +1187,7 @@ mod tests {
     #[tokio::test]
     async fn all_0x02_stream() {
         let data = vec![0x02u8; 1024];
-        // V2 path: length = 0x020202 = 131586 > MAX_MESSAGE_SIZE? No, MAX is 10MB.
-        // Length = 131586 but only 1024 - 8 = 1016 bytes of payload → UnexpectedEof
+        // length = 0x020202 = 131586, but only 1024 - 8 = 1016 bytes of payload → UnexpectedEof
         let err = read_wire_frame(&mut &data[..]).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
