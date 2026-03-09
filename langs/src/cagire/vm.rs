@@ -1201,6 +1201,9 @@ impl CagireVM {
                         if !args.contains_key("dur") {
                             args.insert("dur".to_string(), VariableValue::Float(ctx.step_duration * 4.0));
                         }
+                        if !args.contains_key("release") {
+                            args.insert("release".to_string(), VariableValue::Float(12.0 * ctx.step_duration));
+                        }
                         if !args.contains_key("delaytime") {
                             args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
                         }

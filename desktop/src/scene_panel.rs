@@ -730,6 +730,9 @@ impl ScenePanel {
         if self.editing.is_some() {
             return;
         }
+        if ui.ctx().memory(|m| m.focused().is_some()) {
+            return;
+        }
         let Some((li, fi)) = self.cursor else {
             return;
         };
