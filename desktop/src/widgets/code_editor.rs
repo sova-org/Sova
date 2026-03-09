@@ -660,8 +660,8 @@ fn show_hover_tooltip(
         output.response.rect,
     )
     .at_pointer()
-    .width(350.0)
     .show(|ui| {
+        ui.set_min_width(350.0);
         if let Some(cat) = &entry.category {
             ui.label(egui::RichText::new(cat).small().weak());
         }

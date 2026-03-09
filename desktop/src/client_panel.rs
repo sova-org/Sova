@@ -192,11 +192,15 @@ impl ClientPanel {
                         }
                     }
                     ConnectionStatus::Connecting => {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(t!("client.connecting"))
-                                .min_size(egui::vec2(button_width, 0.0)),
-                        );
+                        if ui
+                            .add(
+                                egui::Button::new(t!("common.cancel"))
+                                    .min_size(egui::vec2(button_width, 0.0)),
+                            )
+                            .clicked()
+                        {
+                            bridge.disconnect();
+                        }
                     }
                     ConnectionStatus::Connected => {}
                 }

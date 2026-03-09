@@ -163,10 +163,26 @@ impl ClientBridge {
         self.runtime.spawn(async move {
             let mut client = SovaClient::new(ip, port);
 
-            if let Err(e) = client.connect().await {
-                let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                ctx.request_repaint();
-                return;
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                client.connect(),
+            )
+            .await
+            {
+                Ok(Err(e)) => {
+                    let _ =
+                        event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
+                    ctx.request_repaint();
+                    return;
+                }
+                Err(_) => {
+                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
+                        "Connection timed out".to_string(),
+                    ));
+                    ctx.request_repaint();
+                    return;
+                }
+                Ok(Ok(())) => {}
             }
 
             if let Err(e) = client.send(ClientMessage::SetName(username)).await {
@@ -272,6 +288,8 @@ impl ClientBridge {
         if let Some(tx) = self.send_tx.take() {
             let _ = tx.send(OutgoingMessage::Disconnect);
         }
+        self.event_rx = None;
+        self.status = ConnectionStatus::Disconnected;
     }
 
     pub fn send(&self, msg: ClientMessage) {
