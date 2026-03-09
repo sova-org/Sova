@@ -216,44 +216,55 @@ impl ClientBridge {
                 }
             }
 
-            loop {
-                tokio::select! {
-                    msg = client.read() => {
-                        match msg {
-                            Ok(Some(server_msg)) => {
-                                let _ = event_tx.send(server_msg);
-                                ctx.request_repaint();
-                            }
-                            Ok(None) => {
-                                // CRC failure — frame corrupted, skip this message
-                                continue;
-                            }
-                            Err(e) => {
-                                let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                                ctx.request_repaint();
+            // Dedicated reader task — never cancelled, so read_wire_frame
+            // can't lose partial reads (which would desync the TCP stream).
+            let mut reader = client.take_reader().unwrap();
+            let read_event_tx = event_tx.clone();
+            let read_ctx = ctx.clone();
+
+            let read_task = tokio::spawn(async move {
+                loop {
+                    match sova_server::read_server_message(&mut reader).await {
+                        Ok(msg) => {
+                            if read_event_tx.send(msg).is_err() {
                                 break;
                             }
+                            read_ctx.request_repaint();
                         }
-                    }
-                    cmd = send_rx.recv() => {
-                        match cmd {
-                            Some(OutgoingMessage::Send(client_msg)) => {
-                                if let Err(e) = client.send(*client_msg).await {
-                                    let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                                    ctx.request_repaint();
-                                    break;
-                                }
-                            }
-                            Some(OutgoingMessage::Disconnect) | None => {
-                                let _ = client.disconnect().await;
-                                let _ = event_tx.send(ServerMessage::ConnectionRefused(String::new()));
-                                ctx.request_repaint();
-                                break;
-                            }
+                        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+                        Err(e) => {
+                            let _ = read_event_tx.send(
+                                ServerMessage::ConnectionRefused(e.to_string()),
+                            );
+                            read_ctx.request_repaint();
+                            break;
                         }
                     }
                 }
+            });
+
+            loop {
+                match send_rx.recv().await {
+                    Some(OutgoingMessage::Send(client_msg)) => {
+                        if let Err(e) = client.send(*client_msg).await {
+                            let _ = event_tx.send(
+                                ServerMessage::ConnectionRefused(e.to_string()),
+                            );
+                            ctx.request_repaint();
+                            break;
+                        }
+                    }
+                    Some(OutgoingMessage::Disconnect) | None => {
+                        let _ = client.disconnect().await;
+                        let _ = event_tx.send(ServerMessage::ConnectionRefused(String::new()));
+                        ctx.request_repaint();
+                        break;
+                    }
+                }
             }
+
+            read_task.abort();
         });
     }
 

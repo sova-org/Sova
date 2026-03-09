@@ -43,6 +43,19 @@ fn validate_length(length: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// Reads one wire frame and deserializes a ServerMessage.
+pub async fn read_server_message<R: AsyncReadExt + Unpin>(
+    reader: &mut R,
+) -> io::Result<ServerMessage> {
+    let payload = read_wire_frame(reader).await?;
+    rmp_serde::from_slice::<ServerMessage>(&payload).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Deserialization failed: {}", e),
+        )
+    })
+}
+
 /// Reads one wire frame, returning CRC-verified payload bytes.
 pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     reader: &mut R,
@@ -198,6 +211,10 @@ impl SovaClient {
         }
 
         Ok(())
+    }
+
+    pub fn take_reader(&mut self) -> Option<BufReader<OwnedReadHalf>> {
+        self.reader.take()
     }
 
     pub async fn disconnect(&mut self) -> io::Result<()> {

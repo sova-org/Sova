@@ -911,13 +911,45 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let (mut update_receiver, needs_resync) = state.client_registry.register();
     let mut feedback_enabled = false;
 
+    // Dedicated reader task — never cancelled, so read_wire_frame
+    // can't lose partial reads (which would desync the TCP stream).
+    enum ClientRead {
+        Message(ClientMessage),
+        Closed,
+        Error(io::Error),
+    }
+    let (client_msg_tx, mut client_msg_rx) = mpsc::unbounded_channel::<ClientRead>();
+    let reader_client_name = client_name.clone();
+    let reader_task = tokio::spawn(async move {
+        loop {
+            match read_message_internal(&mut reader, &reader_client_name).await {
+                Ok(Some(msg)) => {
+                    if client_msg_tx.send(ClientRead::Message(msg)).is_err() {
+                        break;
+                    }
+                }
+                Ok(None) => {
+                    let _ = client_msg_tx.send(ClientRead::Closed);
+                    break;
+                }
+                Err(e) if e.kind() == ErrorKind::InvalidData => {
+                    eprintln!("Bad frame from {}: {}. Skipping.", reader_client_name, e);
+                }
+                Err(e) => {
+                    let _ = client_msg_tx.send(ClientRead::Error(e));
+                    break;
+                }
+            }
+        }
+    });
+
     loop {
         select! {
             biased;
 
-            read_result = read_message_internal(&mut reader, &client_name) => {
+            read_result = client_msg_rx.recv() => {
                 match read_result {
-                    Ok(Some(msg)) => {
+                    Some(ClientRead::Message(msg)) => {
                         if matches!(&msg, ClientMessage::EnableFeedback) {
                             feedback_enabled = true;
                         }
@@ -931,15 +963,16 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                             break;
                         }
                     },
-                    Ok(None) => {
+                    Some(ClientRead::Closed) => {
                         println!("Connection closed cleanly by {}.", client_name);
                         break;
                     },
-                    Err(e) if e.kind() == ErrorKind::InvalidData => {
-                        eprintln!("Bad frame from {}: {}. Skipping.", client_name, e);
-                    }
-                    Err(_e) => {
+                    Some(ClientRead::Error(_e)) => {
                         eprintln!("Read error for client {}. Closing connection.", client_name);
+                        break;
+                    }
+                    None => {
+                        eprintln!("Reader task ended for {}. Closing connection.", client_name);
                         break;
                     }
                 }
@@ -1051,6 +1084,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
         }
     }
+
+    reader_task.abort();
 
     println!("Cleaning up connection for client: {}", client_name);
     if client_name != DEFAULT_CLIENT_NAME {
