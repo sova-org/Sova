@@ -57,3 +57,5 @@ DEBUG*
 **/claude*.log
 **/debug-claude*
 **/claude-debug*
+
+releases/

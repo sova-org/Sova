@@ -4,23 +4,31 @@ set -euo pipefail
 # Usage: scripts/make-app-bundle.sh <target>
 # Creates a macOS .app bundle at target/<target>/release/bundle/osx/Sova.app
 
-if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 <target>"
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "Usage: $0 <target> [--native]"
     exit 1
 fi
 
 TARGET="$1"
+NATIVE=false
+[[ "${2:-}" == "--native" ]] && NATIVE=true
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-BINARY="$REPO_ROOT/target/$TARGET/release/sova-frontend"
 ICON="$REPO_ROOT/desktop/assets/Sova.icns"
 VERSION="0.1.0"
+
+if $NATIVE; then
+    BINARY="$REPO_ROOT/target/release/sova-frontend"
+    APP_DIR="$REPO_ROOT/target/release/bundle/osx/Sova.app"
+else
+    BINARY="$REPO_ROOT/target/$TARGET/release/sova-frontend"
+    APP_DIR="$REPO_ROOT/target/$TARGET/release/bundle/osx/Sova.app"
+fi
 
 if [[ ! -f "$BINARY" ]]; then
     echo "ERROR: binary not found at $BINARY"
     exit 1
 fi
-
-APP_DIR="$REPO_ROOT/target/$TARGET/release/bundle/osx/Sova.app"
 CONTENTS="$APP_DIR/Contents"
 rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"

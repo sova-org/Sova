@@ -1,2 +1,7 @@
 [env]
 MACOSX_DEPLOYMENT_TARGET = "12.0"
+
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "-C", "link-args=-Wl,-Bstatic -lstdc++ -lgcc -lgcc_eh -lpthread -Wl,-Bdynamic -lmingwex -lmsvcrt -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -luuid -lkernel32",
+]

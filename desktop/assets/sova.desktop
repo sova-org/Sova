@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Sova
+Comment=Live coding sequencer
+Exec=sova-frontend
+Icon=sova
+Categories=Audio;Music;Development;
