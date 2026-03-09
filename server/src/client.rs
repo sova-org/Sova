@@ -19,10 +19,10 @@ pub fn serialize_to_wire_frame(msg: &ServerMessage) -> io::Result<Vec<u8>> {
             format!("Failed to serialize ServerMessage: {}", e),
         )
     })?;
-    Ok(build_v2_frame_raw(&payload))
+    Ok(build_frame_raw(&payload))
 }
 
-fn build_v2_frame_raw(payload: &[u8]) -> Vec<u8> {
+fn build_frame_raw(payload: &[u8]) -> Vec<u8> {
     let crc = crc32fast::hash(payload);
     let len_bytes = (payload.len() as u32).to_be_bytes();
     let mut frame = Vec::with_capacity(8 + payload.len());
@@ -43,7 +43,7 @@ fn validate_length(length: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Reads one v2 wire frame, returning CRC-verified payload bytes.
+/// Reads one wire frame, returning CRC-verified payload bytes.
 pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     reader: &mut R,
 ) -> io::Result<Vec<u8>> {
@@ -185,7 +185,7 @@ impl SovaClient {
             io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
         })?;
 
-        let frame = build_v2_frame_raw(&payload);
+        let frame = build_frame_raw(&payload);
 
         if let Err(e) = writer.write_all(&frame).await {
             self.connected = false;
@@ -312,10 +312,10 @@ mod tests {
         }
     }
 
-    // -- v2 frame structure --
+    // -- frame structure --
 
     #[test]
-    fn v2_frame_byte_layout() {
+    fn frame_byte_layout() {
         let msg = ServerMessage::ClockState(120.0, 1.5, 1000, 4.0);
         let frame = serialize_to_wire_frame(&msg).unwrap();
 
@@ -331,9 +331,9 @@ mod tests {
     }
 
     #[test]
-    fn v2_frame_crc_is_over_payload() {
+    fn frame_crc_is_over_payload() {
         let payload = b"test payload data";
-        let frame = build_v2_frame_raw(payload);
+        let frame = build_frame_raw(payload);
         let crc_in_frame = u32::from_be_bytes([frame[4], frame[5], frame[6], frame[7]]);
         assert_eq!(crc_in_frame, crc32fast::hash(payload));
     }
@@ -341,7 +341,7 @@ mod tests {
     // -- stream roundtrip --
 
     #[tokio::test]
-    async fn read_v2_frame() {
+    async fn read_frame() {
         let msg = ServerMessage::Success;
         let bytes = serialize_to_wire_frame(&msg).unwrap();
         let payload = read_wire_frame(&mut &bytes[..]).await.unwrap();
@@ -350,7 +350,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_multiple_v2_frames() {
+    async fn read_multiple_frames() {
         let msgs = [
             ServerMessage::Success,
             ServerMessage::ClockState(120.0, 1.5, 1000, 4.0),
@@ -428,7 +428,7 @@ mod tests {
 
     #[tokio::test]
     async fn zero_length_payload() {
-        let frame = build_v2_frame_raw(b"");
+        let frame = build_frame_raw(b"");
         // Manually patch length to 0 (it already is since payload is empty)
         let err = read_wire_frame(&mut &frame[..]).await.unwrap_err();
         assert!(err.to_string().contains("Invalid message length: 0"));
@@ -436,7 +436,7 @@ mod tests {
 
     #[tokio::test]
     async fn oversized_length() {
-        // v2 header with length > MAX_MESSAGE_SIZE
+        // header with length > MAX_MESSAGE_SIZE
         let mut frame = vec![PROTOCOL_VERSION];
         let big_len = (MAX_MESSAGE_SIZE + 1).to_be_bytes();
         frame.extend_from_slice(&big_len[1..4]);
@@ -615,7 +615,7 @@ mod tests {
     /// Serialize a ClientMessage to wire frame, read it back, deserialize, return.
     async fn client_msg_wire_roundtrip(msg: &ClientMessage) -> ClientMessage {
         let payload = rmp_serde::to_vec_named(msg).unwrap();
-        let frame = build_v2_frame_raw(&payload);
+        let frame = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         rmp_serde::from_slice(&read_back).unwrap()
     }
@@ -946,7 +946,7 @@ mod tests {
     #[tokio::test]
     async fn minimal_one_byte_payload() {
         let payload = &[0x42u8];
-        let frame = build_v2_frame_raw(payload);
+        let frame = build_frame_raw(payload);
         let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert_eq!(read_back, payload);
     }
@@ -955,7 +955,7 @@ mod tests {
     async fn max_message_size_boundary() {
         // Exactly at MAX_MESSAGE_SIZE should be accepted
         let payload = vec![0xABu8; MAX_MESSAGE_SIZE as usize];
-        let frame = build_v2_frame_raw(&payload);
+        let frame = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert_eq!(read_back.len(), MAX_MESSAGE_SIZE as usize);
     }
@@ -1088,7 +1088,7 @@ mod tests {
     #[tokio::test]
     async fn slow_reader_byte_at_a_time_v2() {
         let payload = b"hello fragmented world";
-        let frame = build_v2_frame_raw(payload);
+        let frame = build_frame_raw(payload);
         let mut reader = SlowReader::new(frame, 1);
         let result = read_wire_frame(&mut reader).await.unwrap();
         assert_eq!(result, payload);
@@ -1097,7 +1097,7 @@ mod tests {
     #[tokio::test]
     async fn slow_reader_three_bytes_misaligned() {
         let payload = b"misaligned chunk boundaries";
-        let frame = build_v2_frame_raw(payload);
+        let frame = build_frame_raw(payload);
         let mut reader = SlowReader::new(frame, 3);
         let result = read_wire_frame(&mut reader).await.unwrap();
         assert_eq!(result, payload);
@@ -1121,7 +1121,7 @@ mod tests {
             .collect();
         let mut buf = Vec::new();
         for p in &payloads {
-            buf.extend_from_slice(&build_v2_frame_raw(p));
+            buf.extend_from_slice(&build_frame_raw(p));
         }
         let mut reader = SlowReader::new(buf, 1);
         for expected in &payloads {
@@ -1151,7 +1151,7 @@ mod tests {
     #[tokio::test]
     async fn garbage_prefix_then_valid_frame_no_recovery() {
         let mut buf = deterministic_garbage(50);
-        let valid = build_v2_frame_raw(b"should never reach this");
+        let valid = build_frame_raw(b"should never reach this");
         buf.extend_from_slice(&valid);
 
         let mut cursor = &buf[..];
@@ -1167,7 +1167,7 @@ mod tests {
     #[tokio::test]
     async fn garbage_payload_valid_crc() {
         let garbage_payload = deterministic_garbage(100);
-        let frame = build_v2_frame_raw(&garbage_payload);
+        let frame = build_frame_raw(&garbage_payload);
         // Frame reads OK (CRC is valid over the garbage)
         let result = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert_eq!(result, garbage_payload);
@@ -1198,7 +1198,7 @@ mod tests {
     #[tokio::test]
     async fn valid_msgpack_wrong_type() {
         let wrong = rmp_serde::to_vec_named(&42i64).unwrap();
-        let frame = build_v2_frame_raw(&wrong);
+        let frame = build_frame_raw(&wrong);
         let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert!(ClientMessage::deserialize(&payload).is_err());
     }
@@ -1207,7 +1207,7 @@ mod tests {
     async fn truncated_msgpack_payload() {
         let full = rmp_serde::to_vec_named(&ClientMessage::GetScene).unwrap();
         let half = &full[..full.len() / 2];
-        let frame = build_v2_frame_raw(half);
+        let frame = build_frame_raw(half);
         let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert!(ClientMessage::deserialize(&payload).is_err());
     }
@@ -1218,7 +1218,7 @@ mod tests {
         let msg = ClientMessage::Chat(big.clone());
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
         assert!((payload.len() as u32) < MAX_MESSAGE_SIZE);
-        let frame = build_v2_frame_raw(&payload);
+        let frame = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         let decoded: ClientMessage = rmp_serde::from_slice(&read_back).unwrap();
         match decoded {
@@ -1238,7 +1238,7 @@ mod tests {
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
         let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
-        let wire = build_v2_frame_raw(&payload);
+        let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
         rmp_serde::from_slice::<ClientMessage>(&read_back).unwrap();
     }
@@ -1254,7 +1254,7 @@ mod tests {
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
         let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
-        let wire = build_v2_frame_raw(&payload);
+        let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
         rmp_serde::from_slice::<ClientMessage>(&read_back).unwrap();
     }
@@ -1263,7 +1263,7 @@ mod tests {
     async fn unknown_enum_variant_msgpack() {
         // Hand-craft msgpack map with a bogus variant name
         let bogus = rmp_serde::to_vec_named(&HashMap::from([("BogusVariant", Vec::<u8>::new())])).unwrap();
-        let frame = build_v2_frame_raw(&bogus);
+        let frame = build_frame_raw(&bogus);
         let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert!(ClientMessage::deserialize(&payload).is_err());
     }
@@ -1422,9 +1422,9 @@ mod tests {
         let payload1 = b"frame one";
         let payload3 = b"frame three";
         let mut buf = Vec::new();
-        buf.extend_from_slice(&build_v2_frame_raw(payload1));
+        buf.extend_from_slice(&build_frame_raw(payload1));
         buf.extend_from_slice(&deterministic_garbage(5));
-        buf.extend_from_slice(&build_v2_frame_raw(payload3));
+        buf.extend_from_slice(&build_frame_raw(payload3));
 
         let mut cursor = &buf[..];
         // Frame 1: OK
@@ -1450,9 +1450,9 @@ mod tests {
         fake_frame.extend_from_slice(fake_payload);
 
         let mut buf = Vec::new();
-        buf.extend_from_slice(&build_v2_frame_raw(payload1));
+        buf.extend_from_slice(&build_frame_raw(payload1));
         buf.extend_from_slice(&fake_frame);
-        buf.extend_from_slice(&build_v2_frame_raw(payload3));
+        buf.extend_from_slice(&build_frame_raw(payload3));
 
         let mut cursor = &buf[..];
         // Frame 1: OK
@@ -1468,7 +1468,7 @@ mod tests {
     #[tokio::test]
     async fn slow_reader_mid_frame_eof() {
         let payload = b"this frame will be cut short";
-        let frame = build_v2_frame_raw(payload);
+        let frame = build_frame_raw(payload);
         // Only deliver half the frame
         let half = &frame[..frame.len() / 2];
         let mut reader = SlowReader::new(half.to_vec(), 3);
