@@ -43,45 +43,37 @@ fn validate_length(length: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Reads one wire frame, auto-detecting v1/v2 format.
-/// Returns raw payload bytes (already CRC-verified for v2).
-/// Returns `Ok(None)` for v2 CRC mismatch (corrupted frame, skip it).
+/// Reads one v2 wire frame, returning CRC-verified payload bytes.
 pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     reader: &mut R,
-) -> io::Result<Option<Vec<u8>>> {
+) -> io::Result<Vec<u8>> {
     let mut first = [0u8; 1];
     reader.read_exact(&mut first).await?;
 
-    match first[0] {
-        0x00 => {
-            let mut rest = [0u8; 3];
-            reader.read_exact(&mut rest).await?;
-            let length = u32::from_be_bytes([0x00, rest[0], rest[1], rest[2]]);
-            validate_length(length)?;
-            let mut buf = vec![0u8; length as usize];
-            reader.read_exact(&mut buf).await?;
-            Ok(Some(buf))
-        }
-        PROTOCOL_VERSION => {
-            let mut header = [0u8; 7];
-            reader.read_exact(&mut header).await?;
-            let length = u32::from_be_bytes([0x00, header[0], header[1], header[2]]);
-            let expected_crc =
-                u32::from_be_bytes([header[3], header[4], header[5], header[6]]);
-            validate_length(length)?;
-            let mut buf = vec![0u8; length as usize];
-            reader.read_exact(&mut buf).await?;
-            let actual_crc = crc32fast::hash(&buf);
-            if actual_crc != expected_crc {
-                return Ok(None);
-            }
-            Ok(Some(buf))
-        }
-        v => Err(io::Error::new(
+    if first[0] != PROTOCOL_VERSION {
+        return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("Unsupported protocol version: 0x{v:02x}"),
-        )),
+            format!("Unsupported protocol version: 0x{:02x}", first[0]),
+        ));
     }
+
+    let mut header = [0u8; 7];
+    reader.read_exact(&mut header).await?;
+    let length = u32::from_be_bytes([0x00, header[0], header[1], header[2]]);
+    let expected_crc = u32::from_be_bytes([header[3], header[4], header[5], header[6]]);
+    validate_length(length)?;
+    let mut buf = vec![0u8; length as usize];
+    reader.read_exact(&mut buf).await?;
+    let actual_crc = crc32fast::hash(&buf);
+    if actual_crc != expected_crc {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "CRC mismatch (expected 0x{expected_crc:08x}, got 0x{actual_crc:08x})"
+            ),
+        ));
+    }
+    Ok(buf)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,8 +221,7 @@ impl SovaClient {
         })?;
 
         let payload = match read_wire_frame(reader).await {
-            Ok(Some(buf)) => buf,
-            Ok(None) => return Ok(None),
+            Ok(buf) => buf,
             Err(e) => {
                 self.connected = false;
                 return Err(e);
@@ -251,7 +242,9 @@ impl SovaClient {
 mod tests {
     use super::*;
     use crate::message::ServerMessage;
+    use crate::server::BroadcastItem;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use sova_core::{
         clock::TimeSpan,
         protocol::DeviceInfo,
@@ -345,34 +338,13 @@ mod tests {
         assert_eq!(crc_in_frame, crc32fast::hash(payload));
     }
 
-    // -- helpers --
-
-    fn build_v1_frame(payload: &[u8]) -> Vec<u8> {
-        let len = (payload.len() as u32).to_be_bytes();
-        [&len[..], payload].concat()
-    }
-
-    fn build_v1_server_msg(msg: &ServerMessage) -> Vec<u8> {
-        let payload = rmp_serde::to_vec_named(msg).unwrap();
-        build_v1_frame(&payload)
-    }
-
     // -- stream roundtrip --
 
     #[tokio::test]
     async fn read_v2_frame() {
         let msg = ServerMessage::Success;
         let bytes = serialize_to_wire_frame(&msg).unwrap();
-        let payload = read_wire_frame(&mut &bytes[..]).await.unwrap().unwrap();
-        let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
-        assert!(matches!(decoded, ServerMessage::Success));
-    }
-
-    #[tokio::test]
-    async fn read_v1_frame() {
-        let msg = ServerMessage::Success;
-        let bytes = build_v1_server_msg(&msg);
-        let payload = read_wire_frame(&mut &bytes[..]).await.unwrap().unwrap();
+        let payload = read_wire_frame(&mut &bytes[..]).await.unwrap();
         let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
         assert!(matches!(decoded, ServerMessage::Success));
     }
@@ -390,25 +362,19 @@ mod tests {
         }
         let mut cursor = &buf[..];
         for _ in &msgs {
-            let payload = read_wire_frame(&mut cursor).await.unwrap().unwrap();
+            let payload = read_wire_frame(&mut cursor).await.unwrap();
             let _: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
         }
     }
 
     #[tokio::test]
-    async fn read_mixed_v1_v2() {
+    async fn v1_frame_rejected() {
         let msg = ServerMessage::Success;
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&build_v1_server_msg(&msg));
-        buf.extend_from_slice(&serialize_to_wire_frame(&msg).unwrap());
-        buf.extend_from_slice(&build_v1_server_msg(&msg));
-
-        let mut cursor = &buf[..];
-        for _ in 0..3 {
-            let payload = read_wire_frame(&mut cursor).await.unwrap().unwrap();
-            let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
-            assert!(matches!(decoded, ServerMessage::Success));
-        }
+        let payload = rmp_serde::to_vec_named(&msg).unwrap();
+        let len = (payload.len() as u32).to_be_bytes();
+        let bytes: Vec<u8> = [&len[..], &payload].concat();
+        let err = read_wire_frame(&mut &bytes[..]).await.unwrap_err();
+        assert!(err.to_string().contains("Unsupported protocol version"));
     }
 
     // -- corruption detection --
@@ -419,17 +385,17 @@ mod tests {
         let mut bytes = serialize_to_wire_frame(&msg).unwrap();
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
-        let result = read_wire_frame(&mut &bytes[..]).await.unwrap();
-        assert!(result.is_none());
+        let err = read_wire_frame(&mut &bytes[..]).await.unwrap_err();
+        assert!(err.to_string().contains("CRC mismatch"));
     }
 
     #[tokio::test]
     async fn crc_catches_flipped_crc_byte() {
         let msg = ServerMessage::Success;
         let mut bytes = serialize_to_wire_frame(&msg).unwrap();
-        bytes[5] ^= 0xFF; // flip a CRC byte
-        let result = read_wire_frame(&mut &bytes[..]).await.unwrap();
-        assert!(result.is_none());
+        bytes[5] ^= 0xFF;
+        let err = read_wire_frame(&mut &bytes[..]).await.unwrap_err();
+        assert!(err.to_string().contains("CRC mismatch"));
     }
 
     #[tokio::test]
@@ -445,10 +411,10 @@ mod tests {
         buf.extend_from_slice(&valid);
 
         let mut cursor = &buf[..];
-        // First frame: corrupted → None
-        assert!(read_wire_frame(&mut cursor).await.unwrap().is_none());
-        // Second frame: valid → Some
-        assert!(read_wire_frame(&mut cursor).await.unwrap().is_some());
+        // First frame: corrupted → Err
+        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        // Second frame: valid → Ok
+        read_wire_frame(&mut cursor).await.unwrap();
     }
 
     // -- error conditions --
@@ -639,18 +605,18 @@ mod tests {
         ServerMessage::FramePosition(positions)
     }
 
-    /// Serialize a ServerMessage to v2 wire frame, read it back, deserialize, return.
+    /// Serialize a ServerMessage to wire frame, read it back, deserialize, return.
     async fn server_msg_wire_roundtrip(msg: &ServerMessage) -> ServerMessage {
         let frame = serialize_to_wire_frame(msg).unwrap();
-        let payload = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
+        let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
         rmp_serde::from_slice(&payload).unwrap()
     }
 
-    /// Serialize a ClientMessage to v2 wire frame, read it back, deserialize, return.
+    /// Serialize a ClientMessage to wire frame, read it back, deserialize, return.
     async fn client_msg_wire_roundtrip(msg: &ClientMessage) -> ClientMessage {
         let payload = rmp_serde::to_vec_named(msg).unwrap();
         let frame = build_v2_frame_raw(&payload);
-        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
+        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         rmp_serde::from_slice(&read_back).unwrap()
     }
 
@@ -699,17 +665,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn v1_roundtrip_hello() {
-        let msg = make_hello();
-        let bytes = build_v1_server_msg(&msg);
-        assert!(bytes.len() > 500);
-
-        let payload = read_wire_frame(&mut &bytes[..]).await.unwrap().unwrap();
-        let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
-        assert!(matches!(decoded, ServerMessage::Hello { .. }));
-    }
-
     // -- sustained mixed traffic --
 
     #[tokio::test]
@@ -756,7 +711,7 @@ mod tests {
 
         let mut cursor = &buf[..];
         let mut read_count = 0;
-        while let Ok(Some(_payload)) = read_wire_frame(&mut cursor).await {
+        while let Ok(_payload) = read_wire_frame(&mut cursor).await {
             read_count += 1;
         }
         assert_eq!(read_count, expected_count);
@@ -861,7 +816,7 @@ mod tests {
 
         for msg in &variants {
             let frame = serialize_to_wire_frame(msg).unwrap();
-            let payload = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
+            let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
             rmp_serde::from_slice::<ServerMessage>(&payload).unwrap_or_else(|e| {
                 panic!(
                     "wire roundtrip failed for {:?} (frame={} bytes): {e}",
@@ -957,11 +912,10 @@ mod tests {
         let msg = make_hello();
         let mut bytes = serialize_to_wire_frame(&msg).unwrap();
         assert!(bytes.len() > 100);
-        // Corrupt a byte in the middle of the payload
         let mid = bytes.len() / 2;
         bytes[mid] ^= 0xFF;
-        let result = read_wire_frame(&mut &bytes[..]).await.unwrap();
-        assert!(result.is_none(), "CRC should catch corruption in large payload");
+        let err = read_wire_frame(&mut &bytes[..]).await.unwrap_err();
+        assert!(err.to_string().contains("CRC mismatch"));
     }
 
     #[tokio::test]
@@ -979,10 +933,10 @@ mod tests {
         buf.extend_from_slice(&valid);
 
         let mut cursor = &buf[..];
-        // Corrupted ScopeData → None
-        assert!(read_wire_frame(&mut cursor).await.unwrap().is_none());
-        // Valid FramePosition → Some
-        let payload = read_wire_frame(&mut cursor).await.unwrap().unwrap();
+        // Corrupted ScopeData → CRC error
+        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        // Valid FramePosition → Ok
+        let payload = read_wire_frame(&mut cursor).await.unwrap();
         let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
         assert!(matches!(decoded, ServerMessage::FramePosition(..)));
     }
@@ -990,18 +944,10 @@ mod tests {
     // -- corner cases --
 
     #[tokio::test]
-    async fn minimal_one_byte_payload_v2() {
+    async fn minimal_one_byte_payload() {
         let payload = &[0x42u8];
         let frame = build_v2_frame_raw(payload);
-        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
-        assert_eq!(read_back, payload);
-    }
-
-    #[tokio::test]
-    async fn minimal_one_byte_payload_v1() {
-        let payload = &[0x42u8];
-        let frame = build_v1_frame(payload);
-        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
+        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert_eq!(read_back, payload);
     }
 
@@ -1010,7 +956,7 @@ mod tests {
         // Exactly at MAX_MESSAGE_SIZE should be accepted
         let payload = vec![0xABu8; MAX_MESSAGE_SIZE as usize];
         let frame = build_v2_frame_raw(&payload);
-        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap().unwrap();
+        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert_eq!(read_back.len(), MAX_MESSAGE_SIZE as usize);
     }
 
@@ -1053,25 +999,22 @@ mod tests {
 
         let mut cursor = &buf[..];
         for _ in 0..3 {
-            assert!(read_wire_frame(&mut cursor).await.unwrap().is_none());
+            assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
         }
-        let payload = read_wire_frame(&mut cursor).await.unwrap().unwrap();
+        let payload = read_wire_frame(&mut cursor).await.unwrap();
         let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
         assert!(matches!(decoded, ServerMessage::FramePosition(..)));
     }
 
     #[tokio::test]
     async fn length_corruption_shrinks_causes_desync() {
-        // Corrupt the length field to be smaller than actual payload.
-        // Reader consumes fewer bytes, leaving leftover bytes that
-        // start the next "frame" mid-payload — should error or EOF.
         let msg = make_hello();
         let mut frame = serialize_to_wire_frame(&msg).unwrap();
         let real_len = u32::from_be_bytes([0x00, frame[1], frame[2], frame[3]]);
         assert!(real_len > 100);
 
         // Shrink length to 10 — reader reads 10 bytes as "payload",
-        // CRC won't match → None, then leftover bytes are garbage.
+        // CRC won't match, then leftover bytes are garbage.
         let small_len = 10u32.to_be_bytes();
         frame[1] = small_len[1];
         frame[2] = small_len[2];
@@ -1079,10 +1022,9 @@ mod tests {
 
         let mut cursor = &frame[..];
         // First read: CRC mismatch on the 10-byte "payload"
-        assert!(read_wire_frame(&mut cursor).await.unwrap().is_none());
+        assert!(read_wire_frame(&mut cursor).await.is_err());
         // Second read: starts mid-payload, version byte is garbage
-        let result = read_wire_frame(&mut cursor).await;
-        assert!(result.is_err() || matches!(result, Ok(None)));
+        assert!(read_wire_frame(&mut cursor).await.is_err());
     }
 
     #[tokio::test]
@@ -1099,6 +1041,438 @@ mod tests {
         frame[3] = big_len[3];
 
         let err = read_wire_frame(&mut &frame[..]).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    // ================================================================
+    // Adversarial protocol tests
+    // ================================================================
+
+    // -- SlowReader: simulates fragmented TCP delivery --
+
+    struct SlowReader {
+        data: Vec<u8>,
+        pos: usize,
+        chunk_size: usize,
+    }
+
+    impl SlowReader {
+        fn new(data: Vec<u8>, chunk_size: usize) -> Self {
+            SlowReader {
+                data,
+                pos: 0,
+                chunk_size,
+            }
+        }
+    }
+
+    impl tokio::io::AsyncRead for SlowReader {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            let remaining = self.data.len() - self.pos;
+            if remaining == 0 {
+                return std::task::Poll::Ready(Ok(()));
+            }
+            let n = remaining.min(self.chunk_size).min(buf.remaining());
+            buf.put_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    // -- 1. Fragmented / slow delivery --
+
+    #[tokio::test]
+    async fn slow_reader_byte_at_a_time_v2() {
+        let payload = b"hello fragmented world";
+        let frame = build_v2_frame_raw(payload);
+        let mut reader = SlowReader::new(frame, 1);
+        let result = read_wire_frame(&mut reader).await.unwrap();
+        assert_eq!(result, payload);
+    }
+
+    #[tokio::test]
+    async fn slow_reader_three_bytes_misaligned() {
+        let payload = b"misaligned chunk boundaries";
+        let frame = build_v2_frame_raw(payload);
+        let mut reader = SlowReader::new(frame, 3);
+        let result = read_wire_frame(&mut reader).await.unwrap();
+        assert_eq!(result, payload);
+    }
+
+    #[tokio::test]
+    async fn slow_reader_large_message_small_chunks() {
+        let msg = make_hello();
+        let frame = serialize_to_wire_frame(&msg).unwrap();
+        assert!(frame.len() > 500);
+        let mut reader = SlowReader::new(frame, 8);
+        let payload = read_wire_frame(&mut reader).await.unwrap();
+        let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
+        assert!(matches!(decoded, ServerMessage::Hello { .. }));
+    }
+
+    #[tokio::test]
+    async fn slow_reader_multiple_frames_byte_at_a_time() {
+        let payloads: Vec<Vec<u8>> = (0..5u8)
+            .map(|i| vec![i; 20 + i as usize * 10])
+            .collect();
+        let mut buf = Vec::new();
+        for p in &payloads {
+            buf.extend_from_slice(&build_v2_frame_raw(p));
+        }
+        let mut reader = SlowReader::new(buf, 1);
+        for expected in &payloads {
+            let result = read_wire_frame(&mut reader).await.unwrap();
+            assert_eq!(&result, expected);
+        }
+    }
+
+    // -- 2. Garbage / random data streams --
+
+    fn deterministic_garbage(len: usize) -> Vec<u8> {
+        let mut data = Vec::with_capacity(len);
+        let mut val: u8 = 0x5A;
+        for _ in 0..len {
+            val = val.wrapping_mul(0x6D).wrapping_add(0x3B);
+            data.push(val);
+        }
+        data
+    }
+
+    #[tokio::test]
+    async fn pure_garbage_stream() {
+        let garbage = deterministic_garbage(1024);
+        assert!(read_wire_frame(&mut &garbage[..]).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn garbage_prefix_then_valid_frame_no_recovery() {
+        let mut buf = deterministic_garbage(50);
+        let valid = build_v2_frame_raw(b"should never reach this");
+        buf.extend_from_slice(&valid);
+
+        let mut cursor = &buf[..];
+        // First read: garbage version byte → error
+        assert!(read_wire_frame(&mut cursor).await.is_err());
+        // Stream is now desynchronized — second read won't recover cleanly
+        assert!(
+            read_wire_frame(&mut cursor).await.is_err(),
+            "stream should be permanently desynced after garbage prefix"
+        );
+    }
+
+    #[tokio::test]
+    async fn garbage_payload_valid_crc() {
+        let garbage_payload = deterministic_garbage(100);
+        let frame = build_v2_frame_raw(&garbage_payload);
+        // Frame reads OK (CRC is valid over the garbage)
+        let result = read_wire_frame(&mut &frame[..]).await.unwrap();
+        assert_eq!(result, garbage_payload);
+        // But deserializing as a ClientMessage fails
+        let deser = ClientMessage::deserialize(&result);
+        assert!(deser.is_err());
+    }
+
+    #[tokio::test]
+    async fn all_zeros_stream() {
+        let zeros = vec![0u8; 1024];
+        let err = read_wire_frame(&mut &zeros[..]).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("Unsupported protocol version: 0x00"));
+    }
+
+    #[tokio::test]
+    async fn all_0x02_stream() {
+        let data = vec![0x02u8; 1024];
+        // V2 path: length = 0x020202 = 131586 > MAX_MESSAGE_SIZE? No, MAX is 10MB.
+        // Length = 131586 but only 1024 - 8 = 1016 bytes of payload → UnexpectedEof
+        let err = read_wire_frame(&mut &data[..]).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    // -- 3. Deserialization attacks --
+
+    #[tokio::test]
+    async fn valid_msgpack_wrong_type() {
+        let wrong = rmp_serde::to_vec_named(&42i64).unwrap();
+        let frame = build_v2_frame_raw(&wrong);
+        let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
+        assert!(ClientMessage::deserialize(&payload).is_err());
+    }
+
+    #[tokio::test]
+    async fn truncated_msgpack_payload() {
+        let full = rmp_serde::to_vec_named(&ClientMessage::GetScene).unwrap();
+        let half = &full[..full.len() / 2];
+        let frame = build_v2_frame_raw(half);
+        let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
+        assert!(ClientMessage::deserialize(&payload).is_err());
+    }
+
+    #[tokio::test]
+    async fn extremely_long_string() {
+        let big = "A".repeat(5_000_000);
+        let msg = ClientMessage::Chat(big.clone());
+        let payload = rmp_serde::to_vec_named(&msg).unwrap();
+        assert!((payload.len() as u32) < MAX_MESSAGE_SIZE);
+        let frame = build_v2_frame_raw(&payload);
+        let read_back = read_wire_frame(&mut &frame[..]).await.unwrap();
+        let decoded: ClientMessage = rmp_serde::from_slice(&read_back).unwrap();
+        match decoded {
+            ClientMessage::Chat(s) => assert_eq!(s.len(), 5_000_000),
+            other => panic!("expected Chat, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[tokio::test]
+    async fn deeply_nested_map_100_levels() {
+        use sova_core::vm::variable::VariableValue;
+        let mut val = VariableValue::Integer(42);
+        for i in 0..100 {
+            val = VariableValue::Map(HashMap::from([(format!("level_{i}"), val)]));
+        }
+        let mut frame = Frame::default();
+        frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
+        let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
+        let payload = rmp_serde::to_vec_named(&msg).unwrap();
+        let wire = build_v2_frame_raw(&payload);
+        let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
+        rmp_serde::from_slice::<ClientMessage>(&read_back).unwrap();
+    }
+
+    #[tokio::test]
+    async fn deeply_nested_vec_100_levels() {
+        use sova_core::vm::variable::VariableValue;
+        let mut val = VariableValue::Integer(1);
+        for _ in 0..100 {
+            val = VariableValue::Vec(vec![val]);
+        }
+        let mut frame = Frame::default();
+        frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
+        let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
+        let payload = rmp_serde::to_vec_named(&msg).unwrap();
+        let wire = build_v2_frame_raw(&payload);
+        let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
+        rmp_serde::from_slice::<ClientMessage>(&read_back).unwrap();
+    }
+
+    #[tokio::test]
+    async fn unknown_enum_variant_msgpack() {
+        // Hand-craft msgpack map with a bogus variant name
+        let bogus = rmp_serde::to_vec_named(&HashMap::from([("BogusVariant", Vec::<u8>::new())])).unwrap();
+        let frame = build_v2_frame_raw(&bogus);
+        let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
+        assert!(ClientMessage::deserialize(&payload).is_err());
+    }
+
+    // -- 4. Client state machine --
+
+    #[tokio::test]
+    async fn send_when_not_connected() {
+        let mut client = SovaClient::new("127.0.0.1".into(), 9999);
+        let err = client.send(ClientMessage::GetScene).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotConnected);
+    }
+
+    #[tokio::test]
+    async fn read_when_not_connected() {
+        let mut client = SovaClient::new("127.0.0.1".into(), 9999);
+        let err = client.read().await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotConnected);
+    }
+
+    #[tokio::test]
+    async fn double_disconnect_idempotent() {
+        let mut client = SovaClient::new("127.0.0.1".into(), 9999);
+        client.disconnect().await.unwrap();
+        client.disconnect().await.unwrap();
+    }
+
+    // -- 5. Broadcast channel pressure --
+
+    #[tokio::test]
+    async fn broadcast_droppable_overflow_no_resync() {
+        use crate::server::ClientRegistry;
+        use std::sync::atomic::Ordering;
+
+        let registry = ClientRegistry::new();
+        let (mut rx, resync) = registry.register();
+
+        let droppable = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: true,
+        };
+
+        // Fill channel to capacity (512) + 1 overflow
+        for _ in 0..513 {
+            registry.broadcast(droppable.clone());
+        }
+
+        // Droppable overflow should NOT set resync
+        assert!(!resync.load(Ordering::Relaxed));
+
+        let mut count = 0;
+        while rx.try_recv().is_ok() {
+            count += 1;
+        }
+        assert_eq!(count, 512);
+    }
+
+    #[tokio::test]
+    async fn broadcast_non_droppable_overflow_sets_resync() {
+        use crate::server::ClientRegistry;
+        use std::sync::atomic::Ordering;
+
+        let registry = ClientRegistry::new();
+        let (_rx, resync) = registry.register();
+
+        let non_droppable = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: false,
+        };
+
+        for _ in 0..513 {
+            registry.broadcast(non_droppable.clone());
+        }
+
+        assert!(resync.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn broadcast_closed_channel_removes_client() {
+        use crate::server::ClientRegistry;
+
+        let registry = ClientRegistry::new();
+        let (rx, _resync) = registry.register();
+        drop(rx);
+
+        let item = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: false,
+        };
+        registry.broadcast(item.clone());
+
+        // Register a new client and verify the old one was cleaned up
+        let (mut rx2, _) = registry.register();
+        registry.broadcast(item);
+        assert!(rx2.try_recv().is_ok());
+    }
+
+    #[tokio::test]
+    async fn broadcast_mixed_pressure() {
+        use crate::server::ClientRegistry;
+        use std::sync::atomic::Ordering;
+
+        let registry = ClientRegistry::new();
+        let (_rx, resync) = registry.register();
+
+        let droppable = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: true,
+        };
+        let non_droppable = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: false,
+        };
+
+        // Fill with 512 droppable (at capacity)
+        for _ in 0..512 {
+            registry.broadcast(droppable.clone());
+        }
+        assert!(!resync.load(Ordering::Relaxed));
+
+        // One more non-droppable → overflow → resync
+        registry.broadcast(non_droppable);
+        assert!(resync.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn broadcast_multi_client_independent() {
+        use crate::server::ClientRegistry;
+        use std::sync::atomic::Ordering;
+
+        let registry = ClientRegistry::new();
+        let (rx_a, _resync_a) = registry.register();
+        let (_rx_b, resync_b) = registry.register();
+
+        // Drop A's receiver
+        drop(rx_a);
+
+        let non_droppable = BroadcastItem::Raw {
+            bytes: Arc::new(vec![0u8; 4]),
+            droppable: false,
+        };
+
+        // Fill B's channel past capacity
+        for _ in 0..513 {
+            registry.broadcast(non_droppable.clone());
+        }
+
+        // A should have been removed (dropped rx), B should have resync
+        assert!(resync_b.load(Ordering::Relaxed));
+    }
+
+    // -- 6. Stream desynchronization --
+
+    #[tokio::test]
+    async fn garbage_mid_stream_permanent_desync() {
+        let payload1 = b"frame one";
+        let payload3 = b"frame three";
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&build_v2_frame_raw(payload1));
+        buf.extend_from_slice(&deterministic_garbage(5));
+        buf.extend_from_slice(&build_v2_frame_raw(payload3));
+
+        let mut cursor = &buf[..];
+        // Frame 1: OK
+        let r1 = read_wire_frame(&mut cursor).await.unwrap();
+        assert_eq!(r1, payload1);
+        // Frame 2: garbage byte as version → error
+        assert!(read_wire_frame(&mut cursor).await.is_err());
+        // Frame 3: unreachable — stream is desynced
+    }
+
+    #[tokio::test]
+    async fn structured_garbage_mid_stream_recovery() {
+        let payload1 = b"first";
+        let payload3 = b"third";
+
+        // Build a fake frame with valid structure but bad CRC
+        let fake_payload = b"fake data here";
+        let bad_crc = 0xDEADBEEFu32;
+        let len_bytes = (fake_payload.len() as u32).to_be_bytes();
+        let mut fake_frame = vec![PROTOCOL_VERSION];
+        fake_frame.extend_from_slice(&len_bytes[1..4]);
+        fake_frame.extend_from_slice(&bad_crc.to_be_bytes());
+        fake_frame.extend_from_slice(fake_payload);
+
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&build_v2_frame_raw(payload1));
+        buf.extend_from_slice(&fake_frame);
+        buf.extend_from_slice(&build_v2_frame_raw(payload3));
+
+        let mut cursor = &buf[..];
+        // Frame 1: OK
+        let r1 = read_wire_frame(&mut cursor).await.unwrap();
+        assert_eq!(r1, payload1);
+        // Fake frame: bad CRC → error
+        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        // Frame 3: should recover since fake frame was well-structured
+        let r3 = read_wire_frame(&mut cursor).await.unwrap();
+        assert_eq!(r3, payload3);
+    }
+
+    #[tokio::test]
+    async fn slow_reader_mid_frame_eof() {
+        let payload = b"this frame will be cut short";
+        let frame = build_v2_frame_raw(payload);
+        // Only deliver half the frame
+        let half = &frame[..frame.len() / 2];
+        let mut reader = SlowReader::new(half.to_vec(), 3);
+        let err = read_wire_frame(&mut reader).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
 }

@@ -1,0 +1,104 @@
+---
+import fs from 'node:fs';
+const cargo = fs.readFileSync('../desktop/Cargo.toml', 'utf-8');
+const version = cargo.match(/version\s*=\s*"([^"]+)"/)?.[1];
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sova - Polyglot live coding sequencer</title>
+    <meta name="description" content="Polyglot live coding sequencer built on a robust virtual machine for real-time musical improvisation through code">
+    <meta name="author" content="Raphaël Forment">
+    <meta name="keywords" content="live coding, sequencer, music, midi, osc, ableton link, polyglot, virtual machine">
+    <meta property="og:title" content="Sova - Polyglot live coding sequencer">
+    <meta property="og:description" content="Polyglot live coding sequencer built on a robust virtual machine for real-time musical improvisation through code">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/sova_gui.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Sova - Polyglot live coding sequencer">
+    <meta name="twitter:description" content="Polyglot live coding sequencer built on a robust virtual machine for real-time musical improvisation through code">
+    <link rel="icon" href="/icon.png">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header>
+        <img class="icon" src="/icon.png" alt="Sova">
+        <div>
+            <h1>SOVA: POLYGLOT LIVE CODING</h1>
+            <p class="subtitle">AGPL-3.0 · Raphaël Maurice Forment · 2026 · v{version}</p>
+        </div>
+    </header>
+
+    <img class="screenshot" src="/sova_gui.png" alt="Sova desktop application">
+
+    <h2>Download</h2>
+    <table class="downloads-table">
+        <tr>
+            <th>Platform</th>
+            <th>Desktop</th>
+        </tr>
+        <tr>
+            <td>macOS (ARM)</td>
+            <td><s>zip</s></td>
+        </tr>
+        <tr>
+            <td>macOS (Intel)</td>
+            <td><s>zip</s></td>
+        </tr>
+        <tr>
+            <td>Linux (x86_64)</td>
+            <td><s>zip</s></td>
+        </tr>
+        <tr>
+            <td>Linux (ARM)</td>
+            <td><s>zip</s></td>
+        </tr>
+        <tr>
+            <td>Windows (x86_64)</td>
+            <td><s>zip</s></td>
+        </tr>
+    </table>
+    <p class="note">Source code and issue tracker on <a href="https://github.com/sova-org/sova">GitHub</a>. You can also compile the software yourself from source!</p>
+
+    <h2>About</h2>
+    <p>Sova is a music programming environment born from a research/creation project at <a href="https://www.athenor.com/">Athénor CNCM</a> and the <a href="https://www.ls2n.fr/">LS2N laboratory</a> (University of Nantes). We want to build a musical instrument that beginners and children can pick up, yet one powerful enough for experienced musicians and artists to push to its limits. The core is written in <a href="https://www.rust-lang.org/">Rust</a> and designed to be extended by the community: add new languages, I/O protocols, or synthesis options without touching the core itself.</p>
+    <p>Think of Sova as a step sequencer where each step is a script. Each script can generate anything from a single note to arcane algorithmic processes. Unlike conventional step sequencers, step duration is not fixed — a step can last a fraction of a beat or run indefinitely. You can pick a different programming language for each step, choosing whichever best suits the task. Scripts can be interrupted, rewritten, and reprogrammed on the fly during a live performance.</p>
+    <p>Sova is a <em>polyglot</em> environment and a vessel for experimentation. It hosts multiple programming languages — compiled and interpreted — all sharing the same virtual machine, scheduler, and I/O. Our goal is a growing collection of music languages that each do things differently: different paradigms, data structures, abstractions. We encourage musicians to perceive the computer as a musical instrument — an object both technical and poetical. We hope Sova will foster experimentation around programming languages for immediate musical expression.</p>
+
+    <h2>Features (click to learn more!)</h2>
+    <div class="features">
+        <div class="feature-tags">
+            <button data-desc="Script execution and scheduling runs on high-performance Rust code. Synchronization with other devices and apps through Ableton Link. Languages themselves are temporized — the scheduler monitors every instruction and side-effect, ensuring programs execute strictly in time. Metronomic precision is not an afterthought, it is the foundation.">Precision</button>
+            <button data-desc="Schedule musical events, manipulate data, and reprogram the environment itself at runtime. Scripts share data with each other and can alter the behavior of the whole session on the fly. The musician is not just a user of the system — they reshape it while it runs.">Meta-programming</button>
+            <button data-desc="Three bespoke languages ship with Sova: Bali (stack-based with Lisp-like syntax, compiled to VM bytecode), Boinx (pattern-based with composition operators, interpreted), and Bob (imperative, compiled to VM bytecode). Pick the language that fits the musical moment. Experienced users can design their own language from scratch — Sova handles the runtime so you can focus on syntax and semantics.">Polyglot</button>
+            <button data-desc="A Scene holds Lines (parallel tracks) containing Frames (sequential steps), each with its own Script. Lines support looping, per-line speed control, and custom loop boundaries. Frame duration is measured in beats with configurable repetitions. Enable or disable individual frames on the fly to sculpt your arrangement in real time.">Sequencer</button>
+            <button data-desc="TCP client/server architecture for collaborative jamming. Multiple performers connect to a shared server, editing and executing scripts simultaneously. Shared scene state, real-time sync, live chat, shared transport and devices. Host jam sessions with friends over the local network or across the internet.">Multiplayer</button>
+            <button data-desc="Full MIDI input and output across 16 device slots. Notes, CC, pitch bend, program changes. Read incoming CC values in real time. The world thread dispatches MIDI with 2ms lookahead for tight timing. Connect to any hardware or software synthesizer.">MIDI</button>
+            <button data-desc="OSC UDP output dispatched with 20ms lookahead. Route messages to SuperCollider, Max/MSP, Pure Data, TouchDesigner, or any OSC-capable application. New protocols are straightforward to add.">OSC</button>
+            <button data-desc="Compatible with classic live coding audio engines: SuperDirt (TidalCycles, Strudel, Sardine), Dirt (old-school C engine), and Dough (new C/WASM engine by Felix Roos). Sova's future built-in engine, Doux, is a Rust fork of Dough currently in development.">Audio Engines</button>
+            <button data-desc="Native desktop GUI built with egui/eframe — detachable panels, built-in script editor, command palette, device management. A standalone terminal UI (Solo-TUI) for minimal setups. Runs on macOS (ARM and Intel), Linux (x86_64 and ARM), and Windows.">Cross-platform</button>
+        </div>
+        <div class="feature-desc" id="feature-desc"></div>
+    </div>
+
+    <h2>Team</h2>
+    <p>Sova is developed by a small team of researchers and musicians with the support of <a href="https://www.athenor.com/">Athénor CNCM</a> and the <a href="https://www.ls2n.fr/">LS2N laboratory</a> (University of Nantes). As a free and open source project, contributions of all kinds are welcome.</p>
+    <ul>
+        <li><strong>Loïg Jezequel</strong> — Associate professor at Nantes University. Research in model-checking and its applications.</li>
+        <li><strong>Tanguy Dubois</strong> — PhD student at LS2N. Expertise in Rust and software development.</li>
+        <li><strong>Raphaël Forment</strong> — Musician, programmer, PhD in musicology. Active in the <a href="https://cookie.paris/">Cookie Collective</a> and <a href="https://toplap.org">TOPLAP</a>.</li>
+    </ul>
+
+    <h2>Live Coding</h2>
+    <p>Live coding is a technique where a programmer writes code in real-time in front of an audience. It is a way to experiment with code, to share openly, to express yourself through code. It can be technical, poetical, weird, preferably all at once. Live coding can be used to create music, visual art, and other forms of media. Live coding is an autotelic activity: doing it is its own reward. There are no errors, only fun. Learn more at <a href="https://toplap.org">TOPLAP</a> or <a href="https://livecoding.fr">livecoding.fr</a>.</p>
+
+    <p class="colophon">
+        <a href="https://raphaelforment.fr">BuboBubo</a> · <a href="https://github.com/sova-org/sova">GitHub</a> · AGPL-3.0 · <a href="https://toplap.org">TOPLAP</a> · <a href="https://cookie.paris/">Cookie Collective</a> · <a href="https://livecoding.fr">livecoding.fr</a>
+    </p>
+
+    <script is:inline src="/script.js"></script>
+</body>
+</html>

@@ -935,6 +935,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         println!("Connection closed cleanly by {}.", client_name);
                         break;
                     },
+                    Err(e) if e.kind() == ErrorKind::InvalidData => {
+                        eprintln!("Bad frame from {}: {}. Skipping.", client_name, e);
+                    }
                     Err(_e) => {
                         eprintln!("Read error for client {}. Closing connection.", client_name);
                         break;
@@ -1085,8 +1088,7 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     use crate::client::read_wire_frame;
 
     let payload = match read_wire_frame(reader).await {
-        Ok(Some(buf)) => buf,
-        Ok(None) => return Ok(None),
+        Ok(buf) => buf,
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
             println!(
                 "Connection closed by {} (EOF).",
