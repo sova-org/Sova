@@ -169,10 +169,10 @@ impl BoinxIdent {
         if self.1 == EnvFunc {
             return execute_boinx_macro(ctx, &self.0);
         }
-        if forbidden.contains(self) {
-            return BoinxItem::default();
-        }
         let var = self.get_var().unwrap();
+        if forbidden.contains(self) || !ctx.has_var(&var) {
+            return BoinxItem::Str(self.0.clone());
+        }
         let obj = ctx.evaluate(&var);
         let compo = BoinxCompo::from(obj);
         forbidden.insert(self.clone());
