@@ -94,7 +94,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let b = VariableValue::from(iter.next().unwrap());
                 let a = a.as_integer(ctx);
                 let b = b.as_integer(ctx);
-                (a, b)
+                if a <= b { (a,b) } else { (b,a) }
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
                 let a = a.as_integer(ctx);
@@ -112,7 +112,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let b = VariableValue::from(iter.next().unwrap());
                 let a = a.as_float(ctx);
                 let b = b.as_float(ctx);
-                (a, b)
+                if a <= b { (a,b) } else { (b,a) }
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
                 let a = a.as_float(ctx);
@@ -130,7 +130,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let b = VariableValue::from(iter.next().unwrap());
                 let a = a.as_integer(ctx);
                 let b = b.as_integer(ctx);
-                (a, b)
+                if a <= b { (a,b) } else { (b,a) }
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
                 let a = a.as_integer(ctx);
