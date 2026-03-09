@@ -123,6 +123,7 @@ pub enum ClientMessage {
     UnassignDeviceFromSlot(usize),
     CreateOscDevice(String, String, u16),
     RemoveOscDevice(String),
+    SetDeviceLatency(String, f64),
     RestoreDevices(Vec<DeviceInfo>),
     GetAudioEngineState,
     RestartAudioEngine {

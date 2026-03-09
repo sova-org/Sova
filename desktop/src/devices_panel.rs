@@ -14,7 +14,9 @@ pub struct DevicesPanel {
     osc_ip: String,
     osc_port: String,
     editing_slot: Option<String>,
+    editing_latency: Option<String>,
     slot_edit_value: String,
+    latency_edit_value: String,
 }
 
 impl DevicesPanel {
@@ -29,7 +31,9 @@ impl DevicesPanel {
             osc_ip: String::new(),
             osc_port: String::new(),
             editing_slot: None,
+            editing_latency: None,
             slot_edit_value: String::new(),
+            latency_edit_value: String::new(),
         }
     }
 
@@ -77,6 +81,8 @@ impl DevicesPanel {
                 let r = ui.strong(t!("devices.type"));
                 hint::on_hover(ui.ctx(), &r, t!("devices.hint.type"));
                 let r = ui.strong(t!("devices.slot"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.latency"));
+                let r = ui.strong(t!("devices.latency"));
                 hint::on_hover(ui.ctx(), &r, t!("devices.hint.slot"));
                 let r = ui.strong(t!("devices.status"));
                 hint::on_hover(ui.ctx(), &r, t!("devices.hint.status"));
@@ -105,9 +111,8 @@ impl DevicesPanel {
         };
         ui.label(kind_label);
 
-        let is_editing = self.editing_slot.as_ref().is_some_and(|n| n == &dev.name);
-
-        if is_editing {
+        let is_editing_slot = self.editing_slot.as_ref().is_some_and(|n| n == &dev.name);
+        if is_editing_slot {
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.slot_edit_value)
                     .desired_width(30.0)
@@ -136,6 +141,38 @@ impl DevicesPanel {
             if resp.clicked() {
                 self.editing_slot = Some(dev.name.clone());
                 self.slot_edit_value = dev.slot_id.map(|s| s.to_string()).unwrap_or_default();
+            }
+        }
+
+        let is_editing_latency = self.editing_latency.as_ref().is_some_and(|n| n == &dev.name);
+        if is_editing_latency {
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.latency_edit_value)
+                    .desired_width(30.0)
+                    .hint_text("\u{2014}"),
+            );
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), t!("devices.hint.latency"));
+            }
+            if resp.lost_focus() {
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.editing_latency = None;
+                } else {
+                    self.commit_latency_edit(dev, bridge);
+                }
+            }
+            resp.request_focus();
+        } else {
+            let latency_text = dev
+                .latency
+                .to_string();
+            let resp = ui.add(egui::Label::new(&latency_text).sense(egui::Sense::click()));
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), t!("devices.hint.latency"));
+            }
+            if resp.clicked() {
+                self.editing_latency = Some(dev.name.clone());
+                self.latency_edit_value = dev.latency.to_string();
             }
         }
 
@@ -209,6 +246,18 @@ impl DevicesPanel {
         }
 
         self.editing_slot = None;
+    }
+
+    fn commit_latency_edit(&mut self, dev: &DeviceInfo, bridge: &ClientBridge) {
+        let val = self.latency_edit_value.trim();
+
+        if val.is_empty() {
+            bridge.set_latency(&dev.name, 0.2);
+        } else if let Ok(latency) = val.parse::<f64>() {
+            bridge.set_latency(&dev.name, latency);
+        }
+
+        self.editing_latency = None;
     }
 
     fn show_creation_controls(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {

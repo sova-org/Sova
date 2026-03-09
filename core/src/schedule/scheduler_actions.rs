@@ -135,6 +135,7 @@ impl ActionProcessor {
             }
             // Handled earlier by scheduler
             SchedulerMessage::TransportStart(_)
+            | SchedulerMessage::SetScenePrelude(_)
             | SchedulerMessage::TransportStop(_)
             | SchedulerMessage::SetTempo(_, _)
             | SchedulerMessage::SetQuantum(_, _)

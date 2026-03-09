@@ -1,5 +1,7 @@
 use sova_core::vm::language::{LanguageDocumentation, ReferenceEntry, LanguageElement};
 
+use crate::boinx::ast::{add_macros_doc, funcs::add_funcs_doc};
+
 pub fn make_documentation() -> LanguageDocumentation {
     let mut doc = LanguageDocumentation::default();
 
@@ -51,6 +53,9 @@ pub fn make_documentation() -> LanguageDocumentation {
         "This operator applies a *Compose* operator between each *atomic item* of the LHS, and the RHS, and replaces each of the LHS items with the result of its composition."
     ).with_example("['bd' 'sn' ['bd' 'bd'] 'sn'] # \"s\"").with_category("Operators");
     doc.reference.insert(LanguageElement::Word("#".to_owned()), entry);
+
+    add_funcs_doc(&mut doc);
+    add_macros_doc(&mut doc);
 
     doc
 }

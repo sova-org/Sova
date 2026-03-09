@@ -1,10 +1,8 @@
-use std::{collections::BTreeSet, fmt::Display};
+use std::{cell::LazyCell, collections::{BTreeMap, BTreeSet}, fmt::Display};
 
-use crate::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem};
+use crate::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem, funcs::ItemFunc};
 use sova_core::{
-    clock::TimeSpan,
-    log_eprintln,
-    vm::{EvaluationContext, variable::Variable},
+    clock::TimeSpan, log_warn, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::Variable}
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -29,31 +27,45 @@ impl Display for BoinxIdentQualif {
     }
 }
 
-pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
-    use BoinxArithmeticOp::*;
+const MACROS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     use BoinxItem::*;
-    match name {
-        "maj" => Simultaneous(vec![
+    use BoinxArithmeticOp::*;
+    let mut funcs = BTreeMap::new();
+    funcs.insert("maj".to_owned(), ItemFunc::define(
+        "Composable major chord",
+        |_, _| Simultaneous(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ]),
-        "min" => Simultaneous(vec![
+        ])
+    ));
+    funcs.insert("min".to_owned(), ItemFunc::define(
+        "Composable minor chord",
+        |_, _| Simultaneous(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ]),
-        "arpmaj" => Sequence(vec![
+        ])
+    ));
+    funcs.insert("arpmaj".to_owned(), ItemFunc::define(
+        "Composable major chord arpeggio",
+        |_, _| Sequence(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ]),
-        "arpmin" => Sequence(vec![
+        ])
+    ));
+    funcs.insert("arpmin".to_owned(), ItemFunc::define(
+        "Composable minor chord arpeggio",
+        |_, _| Sequence(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ]),
-        "scalemaj" => Sequence(vec![
+        ])
+    ));
+    funcs.insert("scalemaj".to_owned(), ItemFunc::define(
+        "Composable major scale sequence",
+        |_, _| Sequence(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
@@ -61,8 +73,11 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(9))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(11))),
-        ]),
-        "scalemin" => Sequence(vec![
+        ])
+    ));
+    funcs.insert("scalemin".to_owned(), ItemFunc::define(
+        "Composable minor scale sequence",
+        |_, _| Sequence(vec![
             Placeholder,
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
@@ -70,30 +85,74 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(8))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(10))),
-        ]),
-        "half" => Simultaneous(vec![WithDuration(
+        ])
+    ));
+    funcs.insert("half".to_owned(), ItemFunc::define(
+        "Composable sequence to only use half of length",
+        |_, _| Simultaneous(vec![WithDuration(
             Box::new(Placeholder),
             TimeSpan::Frames(0.5),
-        )]),
-        "stop" => Stop,
-        "prev" => Previous,
-        "beat" => Number(ctx.clock.beat()),
-        "micros" => Duration(TimeSpan::Micros(ctx.logic_date)),
-        "tempo" => Number(ctx.clock.tempo()),
-        "quantum" => Number(ctx.clock.quantum()),
-        "rand" => Number(rand::random()),
-        "irand" => Note(rand::random()),
-        _ if name.starts_with("seq") => {
-            let value = &name[3..];
-            if let Ok(n) = value.parse::<usize>() {
-                return Sequence(vec![Placeholder; n]);
-            }
-            Mute
-        }
-        _ => {
-            log_eprintln!("Boinx macro not found: {name}");
-            Mute
-        }
+        )])
+    ));
+    funcs.insert("stop".to_owned(), ItemFunc::define(
+        "Stops execution of the current line",
+        |_, _| Stop
+    ));
+    funcs.insert("prev".to_owned(), ItemFunc::define(
+        "Evaluates to the previous output value of the line",
+        |_, _| Previous
+    ));
+    funcs.insert("beat".to_owned(), ItemFunc::define(
+        "Evaluates to the current beat",
+        |ctx, _| Number(ctx.clock.beat())
+    ));
+    funcs.insert("micros".to_owned(), ItemFunc::define(
+        "Evaluates to the current microseconds date",
+        |ctx, _| Duration(TimeSpan::Micros(ctx.logic_date))
+    ));
+    funcs.insert("beat".to_owned(), ItemFunc::define(
+        "Evaluates to the current microseconds date",
+        |ctx, _| Duration(TimeSpan::Micros(ctx.logic_date))
+    ));
+    funcs.insert("tempo".to_owned(), ItemFunc::define(
+        "Evaluates to the current tempo",
+        |ctx, _| Number(ctx.clock.tempo())
+    ));
+    funcs.insert("quantum".to_owned(), ItemFunc::define(
+        "Evaluates to the current quantum",
+        |ctx, _| Number(ctx.clock.quantum())
+    ));
+    funcs.insert("rand".to_owned(), ItemFunc::define(
+        "Evaluates to a random float between 0 and 1",
+        |_, _| Number(rand::random())
+    ));
+    funcs.insert("irand".to_owned(), ItemFunc::define(
+        "Evaluates to a random integer",
+        |_, _| Note(rand::random())
+    ));
+    funcs
+});
+
+pub fn execute_boinx_macro(
+    ctx: &mut EvaluationContext,
+    name: &str,
+) -> BoinxItem {
+    if let Some(func) = MACROS.get(name) {
+        func.evaluate(ctx, Vec::new())
+    } else {
+        log_warn!("Boinx macro '{name}' does not exist !");
+        BoinxItem::Mute
+    }
+}
+
+pub fn add_macros_doc(doc : &mut LanguageDocumentation) {
+    for (key, value) in MACROS.iter() {
+        doc.reference.insert(
+            LanguageElement::Word(key.clone()), 
+            ReferenceEntry::new(value.doc.clone())
+                .with_category("Macros")
+                .with_example(format!("_{key}"))
+        );
     }
 }
 
@@ -108,12 +167,12 @@ impl BoinxIdent {
     ) -> BoinxItem {
         use BoinxIdentQualif::*;
         if self.1 == EnvFunc {
-            return env_func(&self.0, ctx);
-        }
-        if forbidden.contains(self) {
-            return BoinxItem::default();
+            return execute_boinx_macro(ctx, &self.0);
         }
         let var = self.get_var().unwrap();
+        if forbidden.contains(self) || !ctx.has_var(&var) {
+            return BoinxItem::Str(self.0.clone());
+        }
         let obj = ctx.evaluate(&var);
         let compo = BoinxCompo::from(obj);
         forbidden.insert(self.clone());

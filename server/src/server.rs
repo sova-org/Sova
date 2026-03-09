@@ -429,6 +429,16 @@ async fn on_message(
                 name, e
             )),
         },
+        ClientMessage::SetDeviceLatency(name, latency) => {
+            state.devices.set_latency(name, latency);
+            let updated_list = state.devices.device_list();
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::DeviceList(updated_list.clone()),
+                false,
+            );
+            ServerMessage::DeviceList(updated_list)
+        }
         ClientMessage::GetLine(line_id) => {
             let scene = state.scene_image.lock().await;
             if let Some(line) = scene.line(line_id) {
@@ -691,6 +701,12 @@ impl SovaCoreServer {
                         match &p {
                             SovaNotification::UpdatedScene(scene) => {
                                 *guard = scene.clone();
+                            }
+                            SovaNotification::UpdatedSceneMode(mode) => {
+                                guard.mode = *mode;
+                            }
+                            SovaNotification::UpdatedScenePrelude(prelude) => {
+                                guard.prelude = prelude.clone();
                             }
                             SovaNotification::UpdatedLines(lines) => {
                                 for (i, line) in lines {
