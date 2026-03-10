@@ -51,7 +51,10 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub enum BroadcastItem {
-    Raw { bytes: Arc<Vec<u8>>, droppable: bool },
+    Raw {
+        bytes: Arc<Vec<u8>>,
+        droppable: bool,
+    },
     Filtered(SovaNotification),
     Feedback(SchedulerMessage),
 }
@@ -200,10 +203,9 @@ async fn on_message(
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(SovaNotification::ChatReceived(
-                    client_name.clone(),
-                    chat_msg,
-                )));
+            state.client_registry.broadcast(BroadcastItem::Filtered(
+                SovaNotification::ChatReceived(client_name.clone(), chat_msg),
+            ));
             ServerMessage::Success
         }
         ClientMessage::SetName(new_name) => {
@@ -252,9 +254,10 @@ async fn on_message(
         ClientMessage::SetScene(scene, timing) => {
             send_and_relay(state, SchedulerMessage::SetScene(scene, timing))
         }
-        ClientMessage::RemoveFrame(line_id, position, timing) => {
-            send_and_relay(state, SchedulerMessage::RemoveFrame(line_id, position, timing))
-        }
+        ClientMessage::RemoveFrame(line_id, position, timing) => send_and_relay(
+            state,
+            SchedulerMessage::RemoveFrame(line_id, position, timing),
+        ),
         ClientMessage::GetSnapshot => {
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
@@ -271,31 +274,19 @@ async fn on_message(
         }
         ClientMessage::StartedEditingFrame(line_idx, frame_idx) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                SovaNotification::PeerStartedEditingFrame(
-                    client_name.clone(),
-                    line_idx,
-                    frame_idx,
-                ),
+                SovaNotification::PeerStartedEditingFrame(client_name.clone(), line_idx, frame_idx),
             ));
             ServerMessage::Success
         }
         ClientMessage::StoppedEditingFrame(line_idx, frame_idx) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                SovaNotification::PeerStoppedEditingFrame(
-                    client_name.clone(),
-                    line_idx,
-                    frame_idx,
-                ),
+                SovaNotification::PeerStoppedEditingFrame(client_name.clone(), line_idx, frame_idx),
             ));
             ServerMessage::Success
         }
         ClientMessage::CursorPosition(line_idx, frame_idx) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                SovaNotification::PeerCursorMoved(
-                    client_name.clone(),
-                    line_idx,
-                    frame_idx,
-                ),
+                SovaNotification::PeerCursorMoved(client_name.clone(), line_idx, frame_idx),
             ));
             ServerMessage::Success
         }
@@ -473,16 +464,25 @@ async fn on_message(
         ClientMessage::SetFrames(frames, timing) => {
             send_and_relay(state, SchedulerMessage::SetFrames(frames, timing))
         }
-        ClientMessage::AddFrame(line_id, frame_id, frame, timing) => {
-            send_and_relay(state, SchedulerMessage::AddFrame(line_id, frame_id, frame, timing))
-        }
+        ClientMessage::AddFrame(line_id, frame_id, frame, timing) => send_and_relay(
+            state,
+            SchedulerMessage::AddFrame(line_id, frame_id, frame, timing),
+        ),
         ClientMessage::RestoreDevices(devices) => {
             let missing_devices = state.devices.restore_from_snapshot(devices);
             let updated_list = state.devices.device_list();
-            broadcast_raw(&state.client_registry, &ServerMessage::DeviceList(updated_list), false);
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::DeviceList(updated_list),
+                false,
+            );
             ServerMessage::DevicesRestored { missing_devices }
         }
-        ClientMessage::PreviewSample { folder, index, begin } => {
+        ClientMessage::PreviewSample {
+            folder,
+            index,
+            begin,
+        } => {
             use sova_core::vm::event::ConcreteEvent;
             use sova_core::vm::variable::VariableValue;
 
@@ -493,17 +493,13 @@ async fn on_message(
             args.insert("dur".to_string(), VariableValue::Float(2.0));
             args.insert("begin".to_string(), VariableValue::Float(begin));
 
-            let event = ConcreteEvent::Dirt {
-                args,
-                device_id: 0,
-            };
+            let event = ConcreteEvent::Dirt { args, device_id: 0 };
 
             let clock = Clock::from(&state.clock_server);
             let time = clock.micros();
-            let messages =
-                state
-                    .devices
-                    .map_event_for_device_name("Doux", event, time, &clock);
+            let messages = state
+                .devices
+                .map_event_for_device_name("Doux", event, time, &clock);
 
             for timed in messages {
                 let _ = timed.message.send();
@@ -526,9 +522,7 @@ async fn on_message(
             };
 
             if restart_tx.send(request).is_err() {
-                return ServerMessage::InternalError(
-                    "Failed to send restart request".to_string(),
-                );
+                return ServerMessage::InternalError("Failed to send restart request".to_string());
             }
 
             match response_rx.recv() {
@@ -659,7 +653,7 @@ impl SovaCoreServer {
                     println!("\n[!] Ctrl+C received, shutting down server...");
                     break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {
                     self.state
                         .client_registry
                         .broadcast(BroadcastItem::Filtered(SovaNotification::Tick));
@@ -745,8 +739,7 @@ impl SovaCoreServer {
                         };
 
                         if should_broadcast {
-                            let droppable =
-                                matches!(&p, SovaNotification::FramePositionChanged(_));
+                            let droppable = matches!(&p, SovaNotification::FramePositionChanged(_));
                             match notification_to_server_message(p) {
                                 Ok(msg) => {
                                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
@@ -847,8 +840,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
-            let available_languages =
-                state.languages.definitions().collect();
+            let available_languages = state.languages.definitions().collect();
 
             println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
@@ -876,7 +868,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 }
                 let updated = clients_guard.clone();
                 drop(clients_guard);
-                broadcast_raw(&state.client_registry, &ServerMessage::PeersUpdated(updated), false);
+                broadcast_raw(
+                    &state.client_registry,
+                    &ServerMessage::PeersUpdated(updated),
+                    false,
+                );
                 return Err(io::Error::new(
                     io::ErrorKind::WriteZero,
                     "Failed to send Hello message",
@@ -925,7 +921,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         loop {
             match read_message_internal(&mut reader, &reader_client_name).await {
                 Ok(Some(msg)) => {
-                    if client_msg_tx.send(ClientRead::Message(Box::new(msg))).is_err() {
+                    if client_msg_tx
+                        .send(ClientRead::Message(Box::new(msg)))
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -1126,10 +1125,7 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     let payload = match read_wire_frame(reader).await {
         Ok(buf) => buf,
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-            println!(
-                "Connection closed by {} (EOF).",
-                client_id_for_logging
-            );
+            println!("Connection closed by {} (EOF).", client_id_for_logging);
             return Ok(None);
         }
         Err(e) => return Err(e),
@@ -1137,4 +1133,3 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
 
     ClientMessage::deserialize(&payload)
 }
-
