@@ -280,12 +280,14 @@ impl CommandPalette {
                     return;
                 }
 
+                let prev_selected = self.selected;
                 if arrow_up && self.selected > 0 {
                     self.selected -= 1;
                 }
                 if arrow_down && self.selected + 1 < self.filtered.len() {
                     self.selected += 1;
                 }
+                let selection_changed = self.selected != prev_selected;
 
                 if enter && !self.filtered.is_empty() {
                     let idx = self.filtered[self.selected].cmd_idx;
@@ -386,7 +388,7 @@ impl CommandPalette {
                                 weak_color,
                             );
 
-                            if selected {
+                            if selected && selection_changed {
                                 resp.scroll_to_me(None);
                             }
                             if resp.clicked() {
