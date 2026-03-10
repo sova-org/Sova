@@ -28,6 +28,3 @@ crc32fast = "1"
 crossbeam-channel = "0.5.15"
 socket2 = "0.5"
 doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.9", package = "doux-sova", optional = true }
-
-[build-dependencies]
-winres = "0.1"
