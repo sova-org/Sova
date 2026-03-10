@@ -1,24 +1,21 @@
-use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender};
+use crossbeam_channel::{self, Receiver, Sender, TryRecvError};
 
-use std::{collections::BinaryHeap, sync::Arc, thread::JoinHandle, time::Duration};
+use std::{collections::BinaryHeap, sync::Arc, thread::JoinHandle};
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
-    log_println,
+    log_println, log_eprintln, get_logger,
     protocol::{ProtocolPayload, TimedMessage},
 };
-use crate::{get_logger, log_eprintln};
 
 pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
-pub const TIMEBASE_CAIBRATION_INTERVAL: SyncTime = 1_000_000;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
 pub struct World {
     queue: BinaryHeap<TimedMessage>,
     message_source: Receiver<TimedMessage>,
-    next_timeout: Duration,
     clock: Clock,
     /// MIDI interface latency compensation (2ms)
     midi_early_threshold: SyncTime,
@@ -34,13 +31,12 @@ impl World {
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
-                    Ok(_) => log_eprintln!("World: real-time priority set"),
+                    Ok(_) => log_println!("World: real-time priority set"),
                     Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
                 }
                 let mut world = World {
                     queue: Default::default(),
                     message_source: rx,
-                    next_timeout: Duration::MAX,
                     clock: clock_server.into(),
                     midi_early_threshold: MIDI_EARLY_THRESHOLD, // 2ms for MIDI interface compensation
                     non_midi_lookahead: NON_MIDI_LOOKAHEAD, // 20ms lookahead for OSC/AudioEngine
@@ -54,15 +50,12 @@ impl World {
     pub fn live(&mut self) {
         log_println!("Starting world");
         loop {
-            let remaining = self
-                .next_timeout
-                .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS)); // Reduced for better precision
-            match self.message_source.recv_timeout(remaining) {
-                Err(RecvTimeoutError::Disconnected) => break,
+            match self.message_source.try_recv() {
+                Err(TryRecvError::Disconnected) => break,
                 Ok(timed_message) => {
                     self.handle_timed_message(timed_message);
                 }
-                Err(RecvTimeoutError::Timeout) => (), // Received nothing
+                Err(TryRecvError::Empty) => (), // Received nothing
             }
             let Some(next) = self.queue.peek() else {
                 continue;
@@ -79,7 +72,6 @@ impl World {
                 let msg = self.queue.pop().unwrap();
                 self.execute_message(msg);
             }
-            self.refresh_next_timeout();
         }
         log_println!("[-] Exiting world...");
     }
@@ -98,17 +90,6 @@ impl World {
         };
         timed_message.time = timed_message.time.saturating_sub(offset);
         self.queue.push(timed_message);
-    }
-
-    fn refresh_next_timeout(&mut self) {
-        let Some(next_msg) = self.queue.peek() else {
-            self.next_timeout = Duration::MAX;
-            return;
-        };
-
-        let now = self.clock.micros();
-        let remaining = next_msg.time.saturating_sub(now);
-        self.next_timeout = Duration::from_micros(remaining);
     }
 
     pub fn execute_message(&mut self, msg: TimedMessage) {
