@@ -516,7 +516,7 @@ impl eframe::App for SovaApp {
                         }
                     } else if ui.button(t!("menu.start_server")).clicked() {
                         ui.close();
-                        self.server.start(self.audio.initial_audio_config());
+                        self.server.start(self.audio.generate_audio_config());
                     }
                     if self.bridge.is_connected() {
                         ui.separator();
@@ -811,13 +811,13 @@ impl eframe::App for SovaApp {
                 })
                 .inner;
             if action.start_server {
-                self.server.start(self.audio.initial_audio_config());
+                self.server.start(self.audio.generate_audio_config());
             }
             if action.open_server_config {
                 self.server.open = true;
             }
             if action.start_feedback && !self.bridge.has_feedback() {
-                self.bridge.start_feedback(self.audio.initial_audio_config());
+                self.bridge.start_feedback(self.audio.generate_audio_config());
             }
         }
 
@@ -825,7 +825,7 @@ impl eframe::App for SovaApp {
         let server_action = self.server.show(ctx);
         match server_action {
             ServerAction::Start => {
-                self.server.start(self.audio.initial_audio_config());
+                self.server.start(self.audio.generate_audio_config());
             }
             ServerAction::Stop => {
                 self.bridge.disconnect();

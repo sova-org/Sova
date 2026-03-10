@@ -29,7 +29,7 @@ use sova_core::{
 
 use crate::message::ServerMessage;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioRestartConfig {
     pub device: Option<String>,
     pub input_device: Option<String>,
@@ -514,24 +514,9 @@ async fn on_message(
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
         }
-        ClientMessage::RestartAudioEngine {
-            device,
-            input_device,
-            channels,
-            buffer_size,
-            sample_paths,
-        } => {
+        ClientMessage::RestartAudioEngine(config) => {
             let Some(ref restart_tx) = state.audio_restart_tx else {
                 return ServerMessage::InternalError("Audio engine not available".to_string());
-            };
-
-            let config = AudioRestartConfig {
-                device,
-                input_device,
-                channels,
-                buffer_size,
-                sample_paths: sample_paths.into_iter().map(PathBuf::from).collect(),
-                max_voices: 32,
             };
 
             let (response_tx, response_rx) = crossbeam_channel::bounded(1);

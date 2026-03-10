@@ -66,7 +66,7 @@ impl AudioPanel {
         self.input_devices = sova_server::audio::doux_audio::list_input_devices();
     }
 
-    pub fn initial_audio_config(&self) -> AudioRestartConfig {
+    pub fn generate_audio_config(&self) -> AudioRestartConfig {
         AudioRestartConfig {
             device: if self.output_device.is_empty() {
                 None
@@ -86,25 +86,7 @@ impl AudioPanel {
     }
 
     pub fn restart_message(&self) -> ClientMessage {
-        ClientMessage::RestartAudioEngine {
-            device: if self.output_device.is_empty() {
-                None
-            } else {
-                Some(self.output_device.clone())
-            },
-            input_device: if self.input_device.is_empty() {
-                None
-            } else {
-                Some(self.input_device.clone())
-            },
-            channels: self.channels,
-            buffer_size: self.buffer_size,
-            sample_paths: self
-                .sample_paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
-        }
+        ClientMessage::RestartAudioEngine(self.generate_audio_config())
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {

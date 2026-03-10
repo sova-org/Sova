@@ -1,3 +1,4 @@
+use crate::AudioRestartConfig;
 use crate::message::ServerMessage;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
@@ -126,13 +127,7 @@ pub enum ClientMessage {
     SetDeviceLatency(String, f64),
     RestoreDevices(Vec<DeviceInfo>),
     GetAudioEngineState,
-    RestartAudioEngine {
-        device: Option<String>,
-        input_device: Option<String>,
-        channels: u16,
-        buffer_size: Option<u32>,
-        sample_paths: Vec<String>,
-    },
+    RestartAudioEngine(AudioRestartConfig),
     PreviewSample {
         folder: String,
         index: usize,
@@ -897,13 +892,14 @@ mod tests {
             ClientMessage::RemoveOscDevice("sc".into()),
             ClientMessage::RestoreDevices(vec![device]),
             ClientMessage::GetAudioEngineState,
-            ClientMessage::RestartAudioEngine {
+            ClientMessage::RestartAudioEngine(AudioRestartConfig {
                 device: Some("BlackHole 16ch".into()),
                 input_device: None,
                 channels: 2,
                 buffer_size: Some(512),
                 sample_paths: vec!["/samples/drums".into(), "/samples/synth".into()],
-            },
+                max_voices: 32
+            }),
             ClientMessage::PreviewSample {
                 folder: "/samples/drums".into(),
                 index: 3,
