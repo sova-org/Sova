@@ -37,6 +37,46 @@ pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>)
     items.unwrap_or_default().evaluate(ctx)
 }
 
+pub fn audio_rate_modulation_string(
+    ctx: &EvaluationContext, 
+    args: Vec<BoinxItem>,
+    shape: &str,
+    op: &str
+) -> String {
+    let mut args = unpack_if_one(args);
+    let n_args = args.len();
+    let default_period = TimeSpan::Beats(1.0).as_secs(ctx.clock, ctx.frame_len);
+    let (start, end, period) = match n_args {
+        1 => {
+            let end = args.pop().unwrap();
+            let end = VariableValue::from(end).as_float(ctx);
+            (0.0, end, default_period)
+        }
+        2 => {
+            let end = args.pop().unwrap();
+            let end = VariableValue::from(end).as_float(ctx);
+            let start = args.pop().unwrap();
+            let start = VariableValue::from(start).as_float(ctx);
+            (start, end, default_period)
+        }
+        3 => {
+            let period = args.pop().unwrap();
+            let period = VariableValue::from(period);
+            let period = period.as_dur(ctx).as_secs(ctx.clock, ctx.frame_len);
+            let end = args.pop().unwrap();
+            let end = VariableValue::from(end).as_float(ctx);
+            let start = args.pop().unwrap();
+            let start = VariableValue::from(start).as_float(ctx);
+            (start, end, period)
+        }
+        _ => {
+            log_warn!("Too many parameters for audio-rate modulation function ! Ignoring");
+            (0.0, 1.0, default_period)
+        }
+    };
+    format!("{start}{op}{end}:{period}{shape}")
+}
+
 pub type ItemGen = fn(&mut EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem;
 pub struct ItemFunc {
     pub doc: String,
@@ -257,6 +297,66 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             let size = VariableValue::from(value).yield_integer(ctx) as usize;
             Sequence(vec![Placeholder ; size])
         }
+    ));
+    funcs.insert("lfo".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (sine)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "", "~"))
+        } 
+    ));
+    funcs.insert("tlfo".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (triangle)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "t", "~"))
+        } 
+    ));
+    funcs.insert("wlfo".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (saw)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "w", "~"))
+        } 
+    ));
+    funcs.insert("qlfo".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (square)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "q", "~"))
+        } 
+    ));
+    funcs.insert("slide".to_owned(), ItemFunc::define(
+        "Audio rate modulation slide for Doux (linear)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "", ">"))
+        } 
+    ));
+    funcs.insert("expslide".to_owned(), ItemFunc::define(
+        "Audio rate modulation slide for Doux (exponential)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "e", ">"))
+        } 
+    ));
+    funcs.insert("sslide".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (smooth)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "s", ">"))
+        } 
+    ));
+    funcs.insert("jit".to_owned(), ItemFunc::define(
+        "Audio rate modulation randomization for Doux (sample & hold)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "", "?"))
+        } 
+    ));
+    funcs.insert("sjit".to_owned(), ItemFunc::define(
+        "Audio rate modulation slide for Doux (smooth interpolation)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "s", "?"))
+        } 
+    ));
+    funcs.insert("drunk".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (Random walk)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "d", "?"))
+        } 
     ));
     funcs
 });
