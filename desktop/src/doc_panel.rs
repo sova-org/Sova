@@ -185,8 +185,6 @@ impl DocPanel {
             .resizable(true);
 
         let r = panel.show(ctx, |ui| {
-            self.show_header(ui);
-            ui.separator();
             self.show_content(ui, bridge, editor_settings);
         });
 
@@ -202,41 +200,6 @@ impl DocPanel {
         }
     }
 
-    fn show_header(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.strong(t!("doc.title").as_ref());
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let collapse_icon = match self.settings.side {
-                    DocSide::Left => icons::CHEVRON_LEFT,
-                    DocSide::Right => icons::CHEVRON_RIGHT,
-                };
-                if ui
-                    .button(collapse_icon)
-                    .on_hover_text(t!("doc.collapse"))
-                    .clicked()
-                {
-                    if self.hover_expanded {
-                        self.hover_expanded = false;
-                    } else {
-                        self.settings.collapsed = true;
-                    }
-                }
-
-                if ui
-                    .button(icons::SWAP)
-                    .on_hover_text(t!("doc.swap_side"))
-                    .clicked()
-                {
-                    self.settings.side = match self.settings.side {
-                        DocSide::Left => DocSide::Right,
-                        DocSide::Right => DocSide::Left,
-                    };
-                }
-            });
-        });
-    }
-
     fn show_content(
         &mut self,
         ui: &mut egui::Ui,
@@ -249,10 +212,15 @@ impl DocPanel {
 
         egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
-                    .clicked()
-                {
+                let r = ui.selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref());
+                if self.selected_tab == 0 {
+                    let accent = ui.visuals().selection.bg_fill;
+                    ui.painter().line_segment(
+                        [r.rect.left_bottom(), r.rect.right_bottom()],
+                        egui::Stroke::new(2.0, accent),
+                    );
+                }
+                if r.clicked() {
                     self.selected_tab = 0;
                     self.search.clear();
                     self.view = None;
@@ -262,10 +230,15 @@ impl DocPanel {
                 }
                 for (i, lang) in langs.iter().enumerate() {
                     let tab_idx = i + 1;
-                    if ui
-                        .selectable_label(self.selected_tab == tab_idx, &lang.name)
-                        .clicked()
-                    {
+                    let r = ui.selectable_label(self.selected_tab == tab_idx, &lang.name);
+                    if self.selected_tab == tab_idx {
+                        let accent = ui.visuals().selection.bg_fill;
+                        ui.painter().line_segment(
+                            [r.rect.left_bottom(), r.rect.right_bottom()],
+                            egui::Stroke::new(2.0, accent),
+                        );
+                    }
+                    if r.clicked() {
                         self.selected_tab = tab_idx;
                         self.search.clear();
                         self.view = None;
@@ -274,12 +247,45 @@ impl DocPanel {
                         self.scroll_to_top = true;
                     }
                 }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let collapse_icon = match self.settings.side {
+                        DocSide::Left => icons::CHEVRON_LEFT,
+                        DocSide::Right => icons::CHEVRON_RIGHT,
+                    };
+                    if ui
+                        .button(collapse_icon)
+                        .on_hover_text(t!("doc.collapse"))
+                        .clicked()
+                    {
+                        if self.hover_expanded {
+                            self.hover_expanded = false;
+                        } else {
+                            self.settings.collapsed = true;
+                        }
+                    }
+                    if ui
+                        .button(icons::SWAP)
+                        .on_hover_text(t!("doc.swap_side"))
+                        .clicked()
+                    {
+                        self.settings.side = match self.settings.side {
+                            DocSide::Left => DocSide::Right,
+                            DocSide::Right => DocSide::Left,
+                        };
+                    }
+                });
             });
 
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(t!("doc.filter").as_ref());
-                ui.text_edit_singleline(&mut self.search);
+                ui.label(egui::RichText::new(t!("doc.filter").as_ref()).weak().small());
+                egui::TextEdit::singleline(&mut self.search)
+                    .hint_text("…")
+                    .desired_width(ui.available_width())
+                    .show(ui);
             });
+            ui.add_space(4.0);
         });
 
         let needle = self.search.to_lowercase();
@@ -289,6 +295,7 @@ impl DocPanel {
             .resizable(true)
             .default_width(140.0)
             .width_range(100.0..=220.0)
+            .frame(egui::Frame::NONE.inner_margin(4.0).fill(ui.visuals().panel_fill))
             .show_inside(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if selected == 0 {
@@ -300,7 +307,9 @@ impl DocPanel {
                 });
             });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: 16, top: 8, bottom: 8 }))
+            .show_inside(ui, |ui| {
             let mut scroll = egui::ScrollArea::vertical();
             if self.scroll_to_top {
                 scroll = scroll.vertical_scroll_offset(0.0);
@@ -319,6 +328,7 @@ impl DocPanel {
 
     fn show_general_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
         ui.strong(t!("doc.articles").as_ref());
+        ui.add_space(4.0);
         for (i, (title, content)) in general_articles().iter().enumerate() {
             if !needle.is_empty()
                 && !title.to_lowercase().contains(needle)
@@ -328,6 +338,13 @@ impl DocPanel {
             }
             let selected = self.view == Some(DocView::GeneralArticle(i));
             let r = ui.selectable_label(selected, *title);
+            if selected {
+                let accent = ui.visuals().selection.bg_fill;
+                ui.painter().line_segment(
+                    [r.rect.left_top(), r.rect.left_bottom()],
+                    egui::Stroke::new(2.0, accent),
+                );
+            }
             if selected && self.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
                 self.scroll_toc = false;
@@ -349,14 +366,14 @@ impl DocPanel {
                     } else {
                         ui.heading(*title);
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
                 }
             }
             _ => {
                 if let Some((_title, content)) = articles.first() {
                     show_welcome_header(ui);
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
                 }
             }
@@ -379,12 +396,21 @@ fn show_welcome_header(ui: &mut egui::Ui) {
         });
     });
     ui.add_space(8.0);
+    let accent = ui.visuals().selection.bg_fill;
+    let dimmed = egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 60);
+    let rect = ui.available_rect_before_wrap();
+    ui.painter().line_segment(
+        [rect.left_top(), egui::pos2(rect.right(), rect.top())],
+        egui::Stroke::new(1.0, dimmed),
+    );
+    ui.add_space(8.0);
 }
 
 impl DocPanel {
     fn show_lang_toc(&mut self, ui: &mut egui::Ui, doc: &LanguageDocumentation, needle: &str) {
         if !doc.articles.is_empty() {
             ui.strong(t!("doc.articles").as_ref());
+            ui.add_space(4.0);
             for (i, (title, content)) in doc.articles.iter().enumerate() {
                 if !needle.is_empty()
                     && !title.to_lowercase().contains(needle)
@@ -394,6 +420,13 @@ impl DocPanel {
                 }
                 let selected = self.view == Some(DocView::LangArticle(i));
                 let r = ui.selectable_label(selected, title);
+                if selected {
+                    let accent = ui.visuals().selection.bg_fill;
+                    ui.painter().line_segment(
+                        [r.rect.left_top(), r.rect.left_bottom()],
+                        egui::Stroke::new(2.0, accent),
+                    );
+                }
                 if selected && self.scroll_toc {
                     r.scroll_to_me(Some(egui::Align::Center));
                     self.scroll_toc = false;
@@ -468,6 +501,13 @@ impl DocPanel {
         let show_item = |panel: &mut DocPanel, ui: &mut egui::Ui, item: &TocItem| {
             let selected = panel.view == Some(DocView::LangReference(item.index));
             let r = ui.selectable_label(selected, &item.label);
+            if selected {
+                let accent = ui.visuals().selection.bg_fill;
+                ui.painter().line_segment(
+                    [r.rect.left_top(), r.rect.left_bottom()],
+                    egui::Stroke::new(2.0, accent),
+                );
+            }
             if selected && panel.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
                 panel.scroll_toc = false;
@@ -505,6 +545,7 @@ impl DocPanel {
             }
         } else {
             ui.strong(t!("doc.reference").as_ref());
+            ui.add_space(4.0);
             for item in &items {
                 if !matches_search(item) {
                     continue;
@@ -528,7 +569,7 @@ impl DocPanel {
                 if let Some((title, content)) = doc.articles.get(*idx) {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
                     show_highlighted_markdown(
                         ui,
                         &mut self.md_cache,
@@ -574,6 +615,7 @@ impl DocPanel {
                     }
 
                     ui.separator();
+                    ui.add_space(8.0);
 
                     // Description
                     {
@@ -693,7 +735,7 @@ impl DocPanel {
                 if let Some((title, content)) = doc.articles.first() {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
                     show_highlighted_markdown(
                         ui,
                         &mut self.md_cache,
@@ -703,7 +745,7 @@ impl DocPanel {
                     );
                 } else if let Some((elem, entry)) = doc.reference.iter().next() {
                     ui.heading(element_label(elem));
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
                     ui.label(&entry.description);
                 }
             }
@@ -776,9 +818,9 @@ impl DocPanel {
                 ui.fonts_mut(|f| f.layout_job(job))
             };
 
-        egui::Frame::NONE
+        let frame_response = egui::Frame::NONE
             .fill(bg)
-            .inner_margin(8.0)
+            .inner_margin(egui::Margin { left: 12, right: 8, top: 8, bottom: 8 })
             .show(ui, |ui| {
                 egui::TextEdit::multiline(&mut self.edited_example)
                     .font(font_id)
@@ -787,6 +829,12 @@ impl DocPanel {
                     .layouter(&mut layouter)
                     .show(ui);
             });
+        let rect = frame_response.response.rect;
+        let accent = ui.visuals().selection.bg_fill;
+        ui.painter().line_segment(
+            [rect.left_top(), rect.left_bottom()],
+            egui::Stroke::new(3.0, accent),
+        );
     }
 }
 
@@ -851,13 +899,21 @@ fn show_highlighted_markdown(
 
         let code = code.strip_suffix('\n').unwrap_or(code);
 
-        egui::Frame::NONE
+        ui.add_space(6.0);
+        let frame_response = egui::Frame::NONE
             .fill(bg)
-            .inner_margin(8.0)
+            .inner_margin(egui::Margin { left: 12, right: 8, top: 8, bottom: 8 })
             .show(ui, |ui| {
                 let job = build_highlighted_job(code, &font_id, text_color, syntax, theme);
                 ui.add(egui::Label::new(job).selectable(true));
             });
+        let rect = frame_response.response.rect;
+        let accent = ui.visuals().selection.bg_fill;
+        ui.painter().line_segment(
+            [rect.left_top(), rect.left_bottom()],
+            egui::Stroke::new(3.0, accent),
+        );
+        ui.add_space(6.0);
 
         rest = remainder;
     }
