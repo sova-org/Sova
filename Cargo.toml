@@ -32,5 +32,5 @@ debug = true
 core = { path = "core" }
 
 [patch."https://github.com/sova-org/doux"]
-doux-sova = { path = "/Users/bubo/doux/doux-sova" }
-doux = { path = "/Users/bubo/doux" }
+doux-sova = { path = "../doux/doux-sova" }
+doux = { path = "../doux" }
