@@ -1,8 +1,14 @@
 # Languages
 
-Sova has four built-in languages. Each frame picks one. You can mix them freely
-across frames in the same line -- a Bob melody followed by a Cagire drone
-followed by a Boinx drum break.
+Sova is a *polyglot* environment. Multiple languages coexist within the same
+virtual machine, sharing the scheduler and I/O layer. Each language follows its
+own paradigm and exposes different abstractions for the musician to work with.
+This diversity fosters experimentation: pick the language that best fits the
+musical idea at hand.
+
+Four languages ship with Sova. Each frame chooses one. They can be mixed freely
+across frames in the same line — a Bob melody followed by a Cagire drone, then
+a Boinx rhythmic transition.
 
 ## Cagire
 
@@ -21,13 +27,13 @@ A chord with reverb:
 c4 min7 note 0.4 verb sine snd .
 ```
 
-A rhythmic pattern using timing offsets and Euclidean distribution:
+A rhythmic pattern using Euclidean distribution:
 
 ```forth
 3 8 euclid at hat snd .
 ```
 
-Cagire has built-in music theory -- notes, intervals, chords, scales -- plus
+Cagire has built-in music theory — notes, intervals, chords, scales — plus
 randomness, cycling, variables, and user-defined words. See the **Cagire** tab.
 
 ## Bob
@@ -96,7 +102,7 @@ Euclidean rhythm:
 ```
 
 BaLi's functional style makes it natural for algorithmic composition and
-generative patterns. See the **bali** tab.
+generative patterns. See the **BaLi** tab.
 
 ## Boinx
 
@@ -110,7 +116,7 @@ A kick-hat pattern:
 <s: 'kick'> | [. _ . _]
 ```
 
-Layered drums with a kick and hi-hat playing simultaneously:
+Layered drums with kick and hi-hat playing simultaneously:
 
 ```
 (<s: 'kick'> <s: 'hat'>) | [. _ . _]

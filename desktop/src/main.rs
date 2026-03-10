@@ -80,12 +80,11 @@ fn main() -> eframe::Result {
         .expect("failed to load icon");
 
     let options = eframe::NativeOptions {
-        centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_app_id("sova")
             .with_title("Sova")
             .with_icon(icon)
-            .with_inner_size([800.0, 600.0])
+            .with_maximized(true)
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };

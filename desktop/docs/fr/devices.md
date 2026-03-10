@@ -1,8 +1,10 @@
 # Périphériques
 
-Vous voulez du son. Chaque événement produit par votre code arrive dans un slot.
-Le périphérique qui occupe ce slot le transmet en MIDI, OSC ou audio. Pas de
-périphérique, pas de son.
+Sova se connecte à tout ce qui parle MIDI ou OSC : synthétiseurs matériels, DAW,
+logiciels modulaires, contrôleurs. Le moteur audio intégré (Doux) permet aussi
+de produire du son sans aucun équipement externe. Chaque événement produit par
+votre code arrive dans un slot. Le périphérique qui occupe ce slot le transmet
+en MIDI, OSC ou audio.
 
 ## Mise en route rapide
 
@@ -13,18 +15,19 @@ Ouvrez le panneau Périphériques. Trois possibilités :
 3. Utiliser le moteur audio intégré (Doux) si le serveur a été lancé avec le
    support audio.
 
-Chaque connexion est assignée à un slot (1--16). Le slot 1 est celui par
-défaut -- si votre code ne précise pas de périphérique, les événements vont là.
+Chaque connexion est assignée à un slot (1–16). Le slot 1 est celui par
+défaut — si votre code ne précise pas de périphérique, les événements y sont
+dirigés.
 
 ## Sortie MIDI
 
-Cliquez sur "Connecter MIDI" dans le panneau Périphériques. Les ports
+Cliquez sur « Connecter MIDI » dans le panneau Périphériques. Les ports
 disponibles sur votre système s'affichent. Cliquez pour connecter et assigner
 à un slot.
 
-Pour créer un port MIDI virtuel visible par d'autres applications (pratique
-pour router Sova vers un DAW sur la même machine), cliquez sur "Créer un MIDI
-virtuel".
+Pour créer un port MIDI virtuel visible par d'autres applications (utile pour
+router Sova vers un DAW sur la même machine), cliquez sur « Créer un MIDI
+virtuel ».
 
 En Cagire, envoyer une note vers un slot précis :
 
@@ -41,25 +44,25 @@ DEV 2
 
 ## Sortie OSC
 
-Cliquez sur "Créer une sortie OSC" dans le panneau Périphériques. Entrez un
+Cliquez sur « Créer une sortie OSC » dans le panneau Périphériques. Entrez un
 nom, une adresse IP cible et un port. Le point d'accès apparaît dans la liste,
 prêt à être assigné à un slot.
 
 Les événements OSC portent les mêmes paramètres que les événements MIDI.
-L'application réceptrice (SuperCollider, Max, Pure Data) les interprète comme
-elle l'entend.
+L'application réceptrice (SuperCollider, Max, Pure Data) les interprète selon
+ses propres conventions.
 
 ## Slots
 
-Sova dispose de 16 slots utilisateur (1--16) et d'un slot fixe :
+Sova dispose de 16 slots utilisateur (1–16) et d'un slot fixe :
 
 - Le slot 0 est le périphérique Log. Toujours présent. Les événements envoyés
   ici s'affichent dans le panneau Journaux. Utile pour le débogage.
-- Les slots 1--16 accueillent vos ports MIDI, points d'accès OSC et le moteur
+- Les slots 1–16 accueillent vos ports MIDI, points d'accès OSC et le moteur
   audio.
 
 Le slot 1 est le périphérique par défaut. Les assignations persistent pour la
-session, gardez-les cohérentes -- votre code fait référence aux numéros de slot
+session — gardez-les cohérentes, votre code fait référence aux numéros de slot
 directement.
 
 Un seul script peut adresser plusieurs slots :
@@ -85,13 +88,13 @@ les 16 canaux :
 
 ## Entrée MIDI
 
-Les périphériques d'entrée MIDI se connectent dans le panneau Périphériques
-mais n'occupent pas de slot. Ils alimentent le système en données entrantes. En
+Les périphériques d'entrée MIDI se connectent dans le panneau Périphériques mais
+n'occupent pas de slot. Ils alimentent le système en données entrantes. En
 Cagire, lire une valeur CC :
 
 ```forth
 1 1 ccval    ;; CC 1 (molette de modulation), canal 1
 ```
 
-Consultez l'article **MIDI** dans la documentation Cagire pour le détail
-complet de l'envoi et de la réception MIDI.
+Consultez l'article **MIDI** dans la documentation Cagire pour le détail complet
+de l'envoi et de la réception MIDI.

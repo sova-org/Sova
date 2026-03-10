@@ -32,9 +32,9 @@ fn general_articles() -> &'static [(&'static str, &'static str)] {
     let locale = rust_i18n::locale();
     match locale.as_ref() {
         "fr" => &[
-            ("Pour commencer", include_str!("../docs/fr/getting-started.md")),
-            ("La Scène", include_str!("../docs/fr/the-scene.md")),
-            ("La Grille", include_str!("../docs/fr/the-grid.md")),
+            ("Bienvenue", include_str!("../docs/fr/getting-started.md")),
+            ("La scène", include_str!("../docs/fr/the-scene.md")),
+            ("La grille", include_str!("../docs/fr/the-grid.md")),
             ("Langages", include_str!("../docs/fr/languages.md")),
             ("Périphériques", include_str!("../docs/fr/devices.md")),
             ("Timing", include_str!("../docs/fr/timing.md")),

@@ -1,12 +1,12 @@
 # Events
 
-Your code produces events. Events are MIDI messages, OSC messages, or audio
-commands sent to devices.
+Your code produces events: MIDI messages, OSC messages, or audio commands sent
+to devices.
 
 ## MIDI notes
 
-A note event fires a Note On, then a Note Off after the duration elapses.
-You never send note-offs yourself.
+A note event fires a Note On, then a Note Off after the duration elapses. You
+never send Note Offs yourself.
 
 Bob:
 
@@ -20,9 +20,8 @@ Cagire:
 60 note 100 vel 0.5 dur .
 ```
 
-Parameters: pitch (0-127), velocity (0-127), duration (beats), channel
-(1-16), device (1-16). Defaults: velocity 100, duration 0.5, channel 1,
-device 1.
+Parameters: pitch (0–127), velocity (0–127), duration (beats), channel (1–16),
+device (1–16). Defaults: velocity 100, duration 0.5, channel 1, device 1.
 
 ## Control Change
 
@@ -60,8 +59,8 @@ Range: -1.0 (full down) to 1.0 (full up), center 0.0.
 
 ## OSC messages
 
-OSC sends messages over UDP to SuperCollider, Max/MSP, Pure Data, or anything
-that speaks OSC.
+OSC sends messages over UDP to SuperCollider, Max/MSP, Pure Data, or any
+OSC-capable application.
 
 Bob:
 
@@ -69,8 +68,8 @@ Bob:
 >> [addr: "/synth" freq: 440 amp: 0.5]
 ```
 
-`addr` sets the OSC address. Every other key becomes an argument. Route to
-an OSC device slot with `dev`.
+`addr` sets the OSC address. Every other key becomes an argument. Route to an
+OSC device slot with `dev`.
 
 ## Device and channel routing
 
@@ -92,13 +91,13 @@ Cagire:
 2 dev 48 note 3 chan .
 ```
 
-Device selects the output slot (1-16). Channel selects the MIDI channel.
-Slot 0 is the log console -- use it to inspect events before routing to a
-real output. You can switch device and channel mid-script.
+Device selects the output slot (1–16). Channel selects the MIDI channel.
+Slot 0 is the log console — use it to inspect events before routing to a real
+output. You can switch device and channel mid-script.
 
 ## Chords and sequences
 
-Without waits, events fire simultaneously -- chords:
+Without waits, events fire simultaneously — chords:
 
 ```
 >> [note: 60] >> [note: 64] >> [note: 67]
@@ -117,7 +116,7 @@ In Cagire, `at` with `arp` places one note per time slot:
 c4 e4 g4 arp note sine snd .
 ```
 
-See the **Timing** article for details on `at` and `arp`.
+See **Timing** for details on `at` and `arp`.
 
 ## Reading MIDI input
 
@@ -127,5 +126,6 @@ Cagire reads incoming CC values from hardware controllers:
 74 1 ccval 127 / 200 2740 range lpf
 ```
 
-Reads CC 74 on channel 1, normalizes to 0.0-1.0, scales to 200-2740, applies
-as lowpass cutoff. See each language's reference for the full input API.
+Reads CC 74 on channel 1, normalizes to 0.0–1.0, scales to 200–2740, and
+applies the result as a lowpass cutoff. See each language's reference for the
+full input API.

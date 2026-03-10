@@ -1,19 +1,20 @@
 # Variables
 
-Variables store values that persist between events or between frames. Use
-them to coordinate scripts, accumulate state, and build evolving patterns.
+Variables store values that persist between events or between frames. Use them
+to coordinate scripts, accumulate state, and build evolving patterns — the
+foundation of any generative music.
 
 ## Scopes by example
 
 Four scopes. The scope determines who sees the variable and how long it lives.
 
-**Instance** -- local scratch. Resets every time the script runs.
+**Instance** — local scratch space. Resets every time the script runs.
 
 ```forth
 10 !x @x      ;; store 10, fetch it back
 ```
 
-**Frame** -- survives repetitions. Resets when the line advances. Good for
+**Frame** — survives repetitions. Resets when the line advances. Well suited to
 counters.
 
 ```forth
@@ -26,7 +27,7 @@ SET F.count ADD F.count 1
 >> [note: MOD F.count 12]
 ```
 
-**Line** -- shared across all frames in a line. One frame sets, another reads.
+**Line** — shared across all frames in a line. One frame sets, another reads.
 
 ```forth
 ;; frame A
@@ -42,7 +43,7 @@ SET L.root 60
 >> [note: ADD L.root 7]
 ```
 
-**Global** -- visible to every script in the session. Use sparingly.
+**Global** — visible to every script in the session. Use sparingly.
 
 ```forth
 c4 !G.key
@@ -84,7 +85,7 @@ IF GT F.n 16 : SET F.n 0 END
 
 ## Naming sounds
 
-Store a sound name, reuse across frames:
+Store a sound name and reuse it across frames:
 
 ```forth
 ;; frame A
@@ -93,17 +94,17 @@ Store a sound name, reuse across frames:
 c4 note @L.synth snd .
 ```
 
-Change one frame, all frames in the line follow.
+Change one frame and all frames in the line follow.
 
 ## Environment values
 
-Read-only values from the runtime. The most useful:
+Read-only values provided by the runtime. The most useful:
 
 - Beat position, tempo, random number
 - Frame index, line index, iteration counter
 
-Cagire: `iter` pushes iteration count, `rand` pushes a random value.
-Bob: `R` is random 0-127, `I` is loop index, `T` is tempo.
+Cagire: `iter` pushes the iteration count, `rand` pushes a random value.
+Bob: `R` is random 0–127, `I` is loop index, `T` is tempo.
 
 ## Visibility timing
 

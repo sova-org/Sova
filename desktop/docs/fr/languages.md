@@ -1,8 +1,14 @@
 # Langages
 
-Sova dispose de quatre langages intégrés. Chaque frame en choisit un. On peut
-les mélanger librement au sein d'une même ligne -- une mélodie Bob suivie d'un
-drone Cagire suivie d'un break Boinx.
+Sova est un environnement *polyglotte*. Plusieurs langages coexistent au sein
+de la même machine virtuelle, partageant le même ordonnanceur et les mêmes
+entrées-sorties. Chaque langage suit son propre paradigme et expose des
+abstractions différentes. Cette diversité encourage l'expérimentation : on
+choisit le langage qui correspond le mieux à l'idée musicale du moment.
+
+Quatre langages sont intégrés. Chaque frame en choisit un. On peut les mélanger
+librement au sein d'une même ligne — une mélodie Bob suivie d'un drone Cagire,
+puis d'une transition Boinx.
 
 ## Cagire
 
@@ -22,15 +28,15 @@ Un accord avec reverb :
 c4 min7 note 0.4 verb sine snd .
 ```
 
-Un pattern rythmique avec distribution euclidienne :
+Un motif rythmique avec distribution euclidienne :
 
 ```forth
 3 8 euclid at hat snd .
 ```
 
-Cagire intègre de la théorie musicale -- notes, intervalles, accords, gammes --
-plus de l'aléatoire, du cycling, des variables et des définitions utilisateur.
-Voir l'onglet **Cagire**.
+Cagire intègre de la théorie musicale — notes, intervalles, accords, gammes —
+ainsi que de l'aléatoire, du cycling, des variables et des définitions
+utilisateur. Voir l'onglet **Cagire**.
 
 ## Bob
 
@@ -64,9 +70,9 @@ SET G.NOTES '[60 64 67 72]
 >> [note: PICK G.NOTES vel: RRAND 60 127]
 ```
 
-Bob a des variables (globales, frame, ligne), des conditionnelles, des boucles,
-des fonctions et des générateurs de rythme euclidien/binaire. Voir l'onglet
-**Bob**.
+Bob dispose de variables (globales, frame, ligne), de conditionnelles, de
+boucles, de fonctions et de générateurs de rythme euclidien/binaire. Voir
+l'onglet **Bob**.
 
 ## BaLi
 
@@ -99,16 +105,16 @@ Rythme euclidien :
 ```
 
 Le style fonctionnel de BaLi le rend naturel pour la composition algorithmique
-et les patterns génératifs. Voir l'onglet **bali**.
+et les motifs génératifs. Voir l'onglet **BaLi**.
 
 ## Boinx
 
-Notation de patterns déclarative. On décrit *quoi* joue *où* dans le temps
-avec des crochets et des opérateurs. Les séquences `[...]` répartissent les
-éléments régulièrement dans la frame. Les événements simultanés utilisent
-`(...)`. Les données d'événement clé-valeur vont dans `<...>`.
+Notation de motifs déclarative. On décrit *quoi* joue *où* dans le temps avec
+des crochets et des opérateurs. Les séquences `[...]` répartissent les éléments
+régulièrement dans la frame. Les événements simultanés utilisent `(...)`. Les
+données d'événement clé-valeur vont dans `<...>`.
 
-Un pattern kick-hat :
+Un motif kick-hat :
 
 ```
 <s: 'kick'> | [. _ . _]
@@ -126,14 +132,14 @@ Notes cycliques sur une grille rythmique :
 (C4 E4 G4) ° [. . . .]
 ```
 
-Les opérateurs Boinx (`|`, `°`, `~`, `!`, `#`) contrôlent comment les données
-d'événement circulent dans les slots du pattern. La disposition visuelle du code
-reflète la structure rythmique. Voir l'onglet **Boinx**.
+Les opérateurs Boinx (`|`, `°`, `~`, `!`, `#`) contrôlent la circulation des
+données d'événement dans les emplacements du motif. La disposition visuelle du
+code reflète la structure rythmique. Voir l'onglet **Boinx**.
 
 ## Mélanger les langages
 
 Une seule ligne peut contenir des frames dans différents langages. La frame 1
-peut être un drone Cagire, la frame 2 une mélodie Bob, la frame 3 un fill Boinx.
-Le séquenceur les joue dans l'ordre quel que soit le langage. Pour changer le
-langage d'une frame, ouvrez l'éditeur et choisissez dans le menu déroulant en
-haut.
+peut être un drone Cagire, la frame 2 une mélodie Bob, la frame 3 un roulement
+Boinx. Le séquenceur les joue dans l'ordre quel que soit le langage. Pour
+changer le langage d'une frame, ouvrez l'éditeur et choisissez dans le menu
+déroulant en haut.
