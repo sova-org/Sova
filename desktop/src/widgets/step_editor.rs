@@ -161,20 +161,22 @@ impl StepEditor {
     }
 
     fn show_header(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
-        // Ctrl+L / Cmd+L shortcut to open language popup
-        let is_mac = ui.ctx().os().is_mac();
-        let shortcut_pressed = ui.input(|i| {
-            i.key_pressed(egui::Key::L)
-                && if is_mac {
-                    i.modifiers.mac_cmd
-                } else {
-                    i.modifiers.ctrl
-                }
-        });
-        if shortcut_pressed {
-            self.lang_popup_open = !self.lang_popup_open;
-            self.lang_filter.clear();
-            self.lang_popup_selection = 0;
+        // Ctrl+L / Cmd+L shortcut to open language popup (only if this editor is focused)
+        if self.has_editor_focus(ui) {
+            let is_mac = ui.ctx().os().is_mac();
+            let shortcut_pressed = ui.input(|i| {
+                i.key_pressed(egui::Key::L)
+                    && if is_mac {
+                        i.modifiers.mac_cmd
+                    } else {
+                        i.modifiers.ctrl
+                    }
+            });
+            if shortcut_pressed {
+                self.lang_popup_open = !self.lang_popup_open;
+                self.lang_filter.clear();
+                self.lang_popup_selection = 0;
+            }
         }
 
         egui::Frame::NONE
@@ -411,6 +413,9 @@ impl StepEditor {
     }
 
     fn handle_eval_shortcut(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        if !self.has_editor_focus(ui) {
+            return;
+        }
         let is_mac = ui.ctx().os().is_mac();
         let eval = ui.input(|i| {
             i.key_pressed(egui::Key::Enter)
@@ -423,6 +428,12 @@ impl StepEditor {
         if eval {
             self.evaluate(bridge);
         }
+    }
+
+    fn has_editor_focus(&self, ui: &egui::Ui) -> bool {
+        let editor_id =
+            egui::Id::new(("step_editor_body", self.line_idx, self.frame_idx)).with("editor");
+        ui.memory(|m| m.has_focus(editor_id))
     }
 
     fn evaluate(&mut self, bridge: &ClientBridge) {
