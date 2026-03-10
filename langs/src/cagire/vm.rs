@@ -977,14 +977,14 @@ impl CagireVM {
 
                 Op::Rec => {
                     let name = pop(stack)?;
-                    let path = format!("/doux/rec/sound/{}", name.as_str()?);
+                    let path = format!("/doux/rec/{}", name.as_str()?);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
 
                 Op::Overdub => {
                     let name = pop(stack)?;
-                    let path = format!("/doux/rec/sound/{}/overdub/1", name.as_str()?);
+                    let path = format!("/doux/rec/{}/overdub/1", name.as_str()?);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
@@ -992,7 +992,7 @@ impl CagireVM {
                 Op::Orec => {
                     let orbit = pop_int(stack)?;
                     let name = pop(stack)?;
-                    let path = format!("/doux/rec/sound/{}/orbit/{}", name.as_str()?, orbit);
+                    let path = format!("/doux/rec/{}/orbit/{}", name.as_str()?, orbit);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
@@ -1000,7 +1000,7 @@ impl CagireVM {
                 Op::Odub => {
                     let orbit = pop_int(stack)?;
                     let name = pop(stack)?;
-                    let path = format!("/doux/rec/sound/{}/overdub/1/orbit/{}", name.as_str()?, orbit);
+                    let path = format!("/doux/rec/{}/overdub/1/orbit/{}", name.as_str()?, orbit);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
