@@ -30,3 +30,7 @@ debug = true
 
 [patch."https://github.com/sova-org/sova"]
 core = { path = "core" }
+
+[patch."https://github.com/sova-org/doux"]
+doux-sova = { path = "/Users/bubo/doux/doux-sova" }
+doux = { path = "/Users/bubo/doux" }
