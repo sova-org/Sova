@@ -69,6 +69,7 @@ pub struct DocPanel {
     example_output: Option<Result<String, String>>,
     edited_example: String,
     scroll_to_top: bool,
+    scroll_toc: bool,
 }
 
 impl DocPanel {
@@ -85,6 +86,7 @@ impl DocPanel {
             example_output: None,
             edited_example: String::new(),
             scroll_to_top: false,
+            scroll_toc: false,
         }
     }
 
@@ -95,6 +97,7 @@ impl DocPanel {
     fn set_view(&mut self, view: DocView) {
         if self.view.as_ref() != Some(&view) {
             self.scroll_to_top = true;
+            self.scroll_toc = true;
         }
         self.view = Some(view);
     }
@@ -325,8 +328,9 @@ impl DocPanel {
             }
             let selected = self.view == Some(DocView::GeneralArticle(i));
             let r = ui.selectable_label(selected, *title);
-            if selected {
+            if selected && self.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
+                self.scroll_toc = false;
             }
             if r.clicked() {
                 self.set_view(DocView::GeneralArticle(i));
@@ -390,8 +394,9 @@ impl DocPanel {
                 }
                 let selected = self.view == Some(DocView::LangArticle(i));
                 let r = ui.selectable_label(selected, title);
-                if selected {
+                if selected && self.scroll_toc {
                     r.scroll_to_me(Some(egui::Align::Center));
+                    self.scroll_toc = false;
                 }
                 if r.clicked() {
                     self.set_view(DocView::LangArticle(i));
@@ -463,8 +468,9 @@ impl DocPanel {
         let show_item = |panel: &mut DocPanel, ui: &mut egui::Ui, item: &TocItem| {
             let selected = panel.view == Some(DocView::LangReference(item.index));
             let r = ui.selectable_label(selected, &item.label);
-            if selected {
+            if selected && panel.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
+                panel.scroll_toc = false;
             }
             if r.clicked() {
                 panel.set_view(DocView::LangReference(item.index));

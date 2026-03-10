@@ -139,7 +139,9 @@ impl SampleBrowserPanel {
         let search_focused = search_resp.has_focus();
 
         // Handle keyboard input
+        let prev_cursor = state.cursor;
         let (activate, focus_search) = handle_keyboard(ui, state, search_focused);
+        let cursor_changed = state.cursor != prev_cursor;
         if focus_search {
             search_resp.request_focus();
         }
@@ -257,7 +259,7 @@ impl SampleBrowserPanel {
                         }
                     }
 
-                    if selected {
+                    if selected && cursor_changed {
                         resp.scroll_to_me(None);
                     }
                 }
