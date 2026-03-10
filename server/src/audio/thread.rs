@@ -187,25 +187,18 @@ pub fn spawn_audio_thread(
                     }
                 }
 
-                if frame_counter.is_multiple_of(6)
-                    && let Ok(engine) = mgr.engine_handle().lock()
-                    && let Ok(mut cache) = state_cache.lock()
-                {
-                    cache.cpu_load = engine.metrics.load.get_load();
-                    cache.active_voices = engine.active_voices;
-                    cache.peak_voices =
-                        engine.metrics.peak_voices.load(Ordering::Relaxed) as usize;
-                    cache.schedule_depth =
-                        engine.metrics.schedule_depth.load(Ordering::Relaxed) as usize;
-                    cache.sample_pool_mb = engine.metrics.sample_pool_mb();
-
-                    let msg = ServerMessage::AudioEngineState(cache.clone());
-                    drop(cache);
-                    if let Ok(bytes) = serialize_to_wire_frame(&msg) {
-                        client_registry.broadcast(BroadcastItem::Raw {
-                            bytes: Arc::new(bytes),
-                            droppable: true,
-                        });
+                if frame_counter.is_multiple_of(6) {
+                    let new_state = mgr.state();
+                    if let Ok(mut cache) = state_cache.lock() {
+                        *cache = new_state;
+                        let msg = ServerMessage::AudioEngineState(cache.clone());
+                        drop(cache);
+                        if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                            client_registry.broadcast(BroadcastItem::Raw {
+                                bytes: Arc::new(bytes),
+                                droppable: true,
+                            });
+                        }
                     }
                 }
             }
