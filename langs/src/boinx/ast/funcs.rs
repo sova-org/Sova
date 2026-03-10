@@ -45,7 +45,7 @@ pub fn audio_rate_modulation_string(
 ) -> String {
     let mut args = unpack_if_one(args);
     let n_args = args.len();
-    let default_period = TimeSpan::Beats(1.0).as_secs(ctx.clock, ctx.frame_len);
+    let default_period = TimeSpan::Beats(ctx.frame_len).as_secs(ctx.clock, ctx.frame_len);
     let (start, end, period) = match n_args {
         1 => {
             let end = args.pop().unwrap();
@@ -225,11 +225,33 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
-                    log_warn!("Argument for 'after' is not a duration !");
+                    log_warn!("Argument for 'secs' is not a duration !");
                     TimeSpan::default()
                 }
             };
             Number(dur.as_secs(ctx.clock, ctx.frame_len))
+        }
+    ));
+    funcs.insert("frames".to_owned(), ItemFunc::define(
+        "Converts specified duration into seconds", 
+        |ctx, mut args| {
+            if args.len() > 1 {
+                log_warn!("Too many arguments for 'secs' function ! Taking only last !");
+            }
+            let dur = match args.pop().unwrap() {
+                Duration(d) => {
+                    let beats = d.as_beats(ctx.clock, ctx.frame_len);
+                    let f_relative = beats / ctx.frame_len;
+                    TimeSpan::Frames(f_relative)
+                }
+                Number(f) => TimeSpan::Frames(f),
+                Note(i) => TimeSpan::Frames(i as f64),
+                _ => {
+                    log_warn!("Argument for 'frames' is not a number !");
+                    TimeSpan::Frames(1.0)
+                }
+            };
+            Duration(dur)
         }
     ));
     funcs.insert("len".to_owned(), ItemFunc::define(
