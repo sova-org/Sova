@@ -18,6 +18,7 @@ struct ProgramState {
     loc_tempo: Option<glow::UniformLocation>,
     loc_phase: Option<glow::UniformLocation>,
     loc_buffers: [Option<glow::UniformLocation>; NUM_BUFFERS],
+    loc_text0: Option<glow::UniformLocation>,
 }
 
 #[derive(Clone, Copy)]
@@ -33,6 +34,7 @@ pub struct RenderSnapshot {
     display: ProgramState,
     vao: glow::VertexArray,
     render_mode: RenderMode,
+    text_texture: Option<glow::Texture>,
 }
 
 pub struct ShaderRenderer {
@@ -58,6 +60,9 @@ impl Drop for ShaderRenderer {
                 self.gl.delete_program(prog.program);
             }
             self.gl.delete_program(self.snapshot.display.program);
+            if let Some(tex) = self.snapshot.text_texture {
+                self.gl.delete_texture(tex);
+            }
             self.gl.delete_vertex_array(self.snapshot.vao);
             self.gl.delete_buffer(self.vbo);
         }
@@ -85,6 +90,7 @@ impl ShaderRenderer {
                 display,
                 vao,
                 render_mode: RenderMode::Single0,
+                text_texture: None,
             },
             vbo,
             gl,
@@ -128,6 +134,51 @@ impl ShaderRenderer {
         }
     }
 
+    pub fn upload_text(&mut self, data: &super::text::TextData) {
+        unsafe {
+            let tex = self.snapshot.text_texture.unwrap_or_else(|| {
+                let tex = self.gl.create_texture().expect("create text texture");
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MIN_FILTER,
+                    glow::LINEAR as i32,
+                );
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MAG_FILTER,
+                    glow::LINEAR as i32,
+                );
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_WRAP_S,
+                    glow::CLAMP_TO_EDGE as i32,
+                );
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_WRAP_T,
+                    glow::CLAMP_TO_EDGE as i32,
+                );
+                tex
+            });
+
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA8 as i32,
+                data.width as i32,
+                data.height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelUnpackData::Slice(Some(&data.pixels)),
+            );
+            self.gl.bind_texture(glow::TEXTURE_2D, None);
+            self.snapshot.text_texture = Some(tex);
+        }
+    }
+
     pub fn compile_buffers(
         &mut self,
         shaders: &[Option<String>; NUM_BUFFERS],
@@ -165,6 +216,7 @@ fn resolve_program_state(gl: &glow::Context, program: glow::Program) -> ProgramS
                 gl.get_uniform_location(program, "iBuffer2"),
                 gl.get_uniform_location(program, "iBuffer3"),
             ],
+            loc_text0: gl.get_uniform_location(program, "iText0"),
         }
     }
 }
@@ -239,6 +291,7 @@ pub fn render_multipass(
     ping: &AtomicBool,
     time: f32,
     resolution: [f32; 2],
+    mouse: [f32; 2],
     beat: f32,
     tempo: f32,
     phase: f32,
@@ -250,6 +303,11 @@ pub fn render_multipass(
         let saved_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
         let mut saved_vp = [0_i32; 4];
         gl.get_parameter_i32_slice(glow::VIEWPORT, &mut saved_vp);
+        let blend_was_on = gl.is_enabled(glow::BLEND);
+
+        // Compute passes write directly to FBOs — blending must be off.
+        // Hydra handles blending in the shader (layer, blend, etc.), not via GL state.
+        gl.disable(glow::BLEND);
 
         let res_w = resolution[0] as i32;
         let res_h = resolution[1] as i32;
@@ -277,7 +335,7 @@ pub fn render_multipass(
                 gl.uniform_2_f32(Some(loc), resolution[0], resolution[1]);
             }
             if let Some(ref loc) = p.loc_mouse {
-                gl.uniform_2_f32(Some(loc), 0.0, 0.0);
+                gl.uniform_2_f32(Some(loc), mouse[0], mouse[1]);
             }
 
             for (j, loc) in p.loc_buffers.iter().enumerate() {
@@ -291,6 +349,12 @@ pub fn render_multipass(
                 }
             }
 
+            if let (Some(tex), Some(loc)) = (snap.text_texture, &p.loc_text0) {
+                gl.active_texture(glow::TEXTURE0 + NUM_BUFFERS as u32);
+                gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                gl.uniform_1_i32(Some(loc), NUM_BUFFERS as i32);
+            }
+
             gl.bind_vertex_array(Some(snap.vao));
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
         }
@@ -298,11 +362,14 @@ pub fn render_multipass(
         // Flip ping-pong
         ping.store(write == 0, Ordering::Relaxed);
 
-        // Restore original FBO
+        // Restore original FBO and blending for the display pass
         let restored_fbo = std::num::NonZeroU32::new(saved_fbo as u32)
             .map(glow::NativeFramebuffer);
         gl.bind_framebuffer(glow::FRAMEBUFFER, restored_fbo);
         gl.viewport(saved_vp[0], saved_vp[1], saved_vp[2], saved_vp[3]);
+        if blend_was_on {
+            gl.enable(glow::BLEND);
+        }
 
         // Display pass
         let d = &snap.display;

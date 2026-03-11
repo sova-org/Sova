@@ -7,7 +7,7 @@ pub fn syntax() -> LanguageSyntax {
             SyntaxRule::new(Comment, r"//[^\n]*"),
             SyntaxRule::new(Comment, r"/\*[^*]*\*+(?:[^/*][^*]*\*+)*/"),
             SyntaxRule::new(Number, r"\b\d+(\.\d+)?\b"),
-            SyntaxRule::new(Builtin, r"\b(osc|noise|voronoi|shape|gradient|solid|src)\b"),
+            SyntaxRule::new(Builtin, r"\b(osc|noise|voronoi|shape|gradient|solid|src|text)\b"),
             SyntaxRule::new(Keyword, r"\b(add|mult|blend|diff|layer|mask|sub|modulate|modulateScale|modulateRotate|modulateRepeat|modulateRepeatX|modulateRepeatY|modulateKaleid|modulateScrollX|modulateScrollY|modulatePixelate|modulateHue)\b"),
             SyntaxRule::new(Operator, r"\b(rotate|scale|scroll|kaleid|pixelate|repeat|scrollX|scrollY|repeatX|repeatY)\b"),
             SyntaxRule::new(Variable, r"\b(color|invert|contrast|brightness|saturate|hue|posterize|luma|colorama|shift|thresh)\b"),

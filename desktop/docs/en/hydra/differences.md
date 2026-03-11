@@ -5,7 +5,8 @@ Unlike browser Hydra which uses arrow functions (`() => time * 0.1`), Sova
 embeds these as GLSL uniform references. Write `osc(60.0, sin(time))` directly.
 `beat` and `phase` sync to the musical clock via Ableton Link.
 
-No `mouse` reactivity. Mouse position is not connected to the visual engine.
+`mouseX` and `mouseY` expose the cursor position over the central panel,
+normalized to `[0, 1]`. See **Animation** for details.
 
 No external inputs. Camera, video, and image sources are not available.
 

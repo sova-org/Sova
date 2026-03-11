@@ -1,6 +1,6 @@
-Four variables are available for animation: `time`, `beat`, `tempo`, and
-`phase`. They produce dynamic GLSL expressions — the shader evaluates them
-every frame, so visuals animate continuously.
+Six variables are available for animation: `time`, `beat`, `tempo`, `phase`,
+`mouseX`, and `mouseY`. They produce dynamic GLSL expressions — the shader
+evaluates them every frame, so visuals animate continuously.
 
 ## time
 
@@ -32,6 +32,26 @@ noise(10.0, 0.1).colorama(phase * 0.1).out()
 
 Current tempo in BPM. Useful for scaling animation speeds relative to the
 musical tempo.
+
+## mouseX
+
+Horizontal cursor position over the central panel, normalized to `[0, 1]`.
+0 at the left edge, 1 at the right edge. Falls back to 0 when the pointer
+is outside the panel.
+
+```
+osc(mouseX * 100.0, 0.1).out()
+```
+
+## mouseY
+
+Vertical cursor position over the central panel, normalized to `[0, 1]`.
+0 at the bottom, 1 at the top (GL convention). Falls back to 0 when the
+pointer is outside the panel.
+
+```
+noise(10.0, mouseY).colorama(mouseX * 0.1).out()
+```
 
 ## Arithmetic
 

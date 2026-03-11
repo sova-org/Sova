@@ -22,6 +22,7 @@ uniform sampler2D iBuffer0;
 uniform sampler2D iBuffer1;
 uniform sampler2D iBuffer2;
 uniform sampler2D iBuffer3;
+uniform sampler2D iText0;
 out vec4 fragColor;
 ";
 

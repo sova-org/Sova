@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use rhai::{Array, CustomType, Dynamic, Engine, Scope, TypeBuilder};
+use rhai::{Array, CustomType, Dynamic, Engine, ImmutableString, Scope, TypeBuilder};
+
+use super::text::{self, TextData};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum RenderMode {
@@ -13,6 +15,7 @@ pub enum RenderMode {
 pub struct EvalResult {
     pub shaders: [Option<String>; 4],
     pub render_mode: RenderMode,
+    pub text_data: Option<TextData>,
 }
 
 #[derive(Debug, Clone)]
@@ -342,6 +345,10 @@ impl Emitter {
             self.lines.push(format!(
                 "  vec4 {current_var} = texture(iBuffer{buf_idx}, {current_st});"
             ));
+        } else if *func == "text_src" {
+            self.lines.push(format!(
+                "  vec4 {current_var} = texture(iText0, vec2({current_st}.x, 1.0 - {current_st}.y));"
+            ));
         } else {
             let a = fmt_args(args);
             let sep = if a.is_empty() { "" } else { ", " };
@@ -393,6 +400,7 @@ fn compile_node(node: &Node) -> Result<String, String> {
 struct PatchState {
     buffers: [Option<Node>; 4],
     render_mode: RenderMode,
+    text_data: Option<TextData>,
 }
 
 fn register_functions(engine: &mut Engine) {
@@ -501,6 +509,7 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     let state = Arc::new(Mutex::new(PatchState {
         buffers: [None, None, None, None],
         render_mode: RenderMode::default(),
+        text_data: None,
     }));
 
     let mut engine = Engine::new();
@@ -530,6 +539,15 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     engine.register_fn("src", |idx: i64| -> Node {
         Node::source("src", vec![Arg::Lit(idx as f64)])
     });
+    // text("string") → rasterize text to iText0 texture
+    {
+        let s = state.clone();
+        engine.register_fn("text", move |txt: ImmutableString| -> Node {
+            let data = text::rasterize(&txt);
+            s.lock().unwrap().text_data = Some(data);
+            Node::source("text_src", vec![])
+        });
+    }
     // render() → 2x2 grid
     {
         let s = state.clone();
@@ -554,6 +572,8 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     scope.push_constant("beat", GlslExpr("iBeat".to_string()));
     scope.push_constant("tempo", GlslExpr("iTempo".to_string()));
     scope.push_constant("phase", GlslExpr("iPhase".to_string()));
+    scope.push_constant("mouseX", GlslExpr("iMouse.x".to_string()));
+    scope.push_constant("mouseY", GlslExpr("iMouse.y".to_string()));
 
     let result = engine
         .eval_with_scope::<Dynamic>(&mut scope, code)
@@ -576,6 +596,7 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     Ok(EvalResult {
         shaders,
         render_mode: patch.render_mode,
+        text_data: patch.text_data.take(),
     })
 }
 

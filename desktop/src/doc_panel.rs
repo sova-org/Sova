@@ -44,6 +44,7 @@ const HYDRA_ARTICLES: &[(&str, &str)] = &[
     ("Buffers", include_str!("../docs/en/hydra/buffers.md")),
     ("Feedback", include_str!("../docs/en/hydra/feedback.md")),
     ("Animation", include_str!("../docs/en/hydra/animation.md")),
+    ("Text", include_str!("../docs/en/hydra/text.md")),
     ("Differences", include_str!("../docs/en/hydra/differences.md")),
 ];
 fn hydra_articles() -> &'static [(&'static str, &'static str)] {
