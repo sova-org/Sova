@@ -30,4 +30,4 @@ rhai = { version = "1", features = ["no_module", "no_time"] }
 ab_glyph = "0.2"
 
 [build-dependencies]
-winres = "0.1"
+winresource = "0.1"
