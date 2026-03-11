@@ -147,7 +147,7 @@ impl ClientBridge {
         }
     }
 
-    pub fn connect(&mut self, ip: &str, port: u16, username: &str, feedback: bool) {
+    pub fn connect(&mut self, ip: &str, port: u16, username: &str, password: &str, feedback: bool) {
         if matches!(
             self.status,
             ConnectionStatus::Connecting | ConnectionStatus::Connected
@@ -157,6 +157,7 @@ impl ClientBridge {
 
         let ip = ip.to_owned();
         let username = username.to_owned();
+        let password = if password.is_empty() { None } else { Some(password.to_owned()) };
         let (send_tx, mut send_rx) = tokio_mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::channel();
         let ctx = self.ctx.clone();
@@ -191,7 +192,7 @@ impl ClientBridge {
                 Ok(Ok(())) => {}
             }
 
-            if let Err(e) = client.send(ClientMessage::SetName(username)).await {
+            if let Err(e) = client.send(ClientMessage::SetName { name: username, password }).await {
                 let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                 ctx.request_repaint();
                 return;

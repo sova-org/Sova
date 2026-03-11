@@ -22,6 +22,7 @@ pub struct ClientPanel {
     ip: String,
     port: String,
     username: String,
+    password: String,
     feedback: bool,
 }
 
@@ -31,6 +32,7 @@ impl ClientPanel {
             ip: settings.ip,
             port: settings.port,
             username: settings.username,
+            password: String::new(),
             feedback: settings.feedback,
         }
     }
@@ -121,6 +123,13 @@ impl ClientPanel {
                                 }
                                 ui.end_row();
 
+                                let label = ui.label(t!("client.password"));
+                                let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                                if label.hovered() || field.hovered() {
+                                    crate::widgets::hint::set(ui.ctx(), t!("client.hint.password"));
+                                }
+                                ui.end_row();
+
                                 ui.label("");
                                 let r = ui.checkbox(&mut self.feedback, t!("client.local_audio"));
                                 if r.hovered() {
@@ -188,7 +197,7 @@ impl ClientPanel {
                         if r.clicked()
                             && let Ok(port) = self.port.parse::<u16>()
                         {
-                            bridge.connect(&self.ip, port, &self.username, self.feedback);
+                            bridge.connect(&self.ip, port, &self.username, &self.password, self.feedback);
                         }
                     }
                     ConnectionStatus::Connecting => {

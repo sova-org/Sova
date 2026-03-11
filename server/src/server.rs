@@ -130,6 +130,7 @@ pub struct ServerState {
     pub is_playing: Arc<AtomicBool>,
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+    pub password: Option<String>,
 }
 
 impl ServerState {
@@ -143,6 +144,7 @@ impl ServerState {
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+        password: Option<String>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -156,6 +158,7 @@ impl ServerState {
             is_playing: Arc::new(AtomicBool::new(false)),
             audio_engine_state,
             audio_restart_tx,
+            password,
         }
     }
 
@@ -208,7 +211,7 @@ async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::SetName(new_name) => {
+        ClientMessage::SetName { name: new_name, .. } => {
             let mut clients_guard = state.clients.lock().await;
             let old_name = client_name.clone();
             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
@@ -780,7 +783,23 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let hello_msg: ServerMessage;
 
     match read_message_internal(&mut reader, &client_addr_str).await {
-        Ok(Some(ClientMessage::SetName(new_name))) => {
+        Ok(Some(ClientMessage::SetName { name: new_name, password })) => {
+            if let Some(required) = &state.password {
+                if password.as_deref() != Some(required.as_str()) {
+                    eprintln!(
+                        "Connection rejected: Invalid password from {}",
+                        client_addr_str
+                    );
+                    let refuse_msg =
+                        ServerMessage::ConnectionRefused("Invalid password.".to_string());
+                    let _ = send_msg(&mut writer, refuse_msg).await;
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Invalid password",
+                    ));
+                }
+            }
+
             if new_name.is_empty() || new_name == DEFAULT_CLIENT_NAME {
                 eprintln!(
                     "Connection rejected: Invalid username '{}' from {}",

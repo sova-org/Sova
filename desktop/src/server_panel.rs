@@ -49,6 +49,7 @@ pub struct ServerPanel {
     port: String,
     tempo: String,
     quantum: String,
+    password: String,
     status: ServerStatus,
     runtime: tokio::runtime::Handle,
     embedded: Option<EmbeddedServer>,
@@ -69,6 +70,7 @@ impl ServerPanel {
             port: settings.port,
             tempo: settings.tempo,
             quantum: settings.quantum,
+            password: String::new(),
             status: ServerStatus::Stopped,
             runtime,
             embedded: None,
@@ -192,6 +194,8 @@ impl ServerPanel {
         );
         let audio_restart_tx = Some(audio_thread.restart_tx.clone());
 
+        let password = if self.password.is_empty() { None } else { Some(self.password.clone()) };
+
         let server_state = ServerState::new(
             Arc::clone(&scene_image),
             clock_server,
@@ -202,6 +206,7 @@ impl ServerPanel {
             languages,
             audio_engine_state,
             audio_restart_tx,
+            password,
         );
 
         let ip = self.ip.clone();
@@ -289,6 +294,13 @@ impl ServerPanel {
                             let field = ui.text_edit_singleline(&mut self.quantum);
                             if label.hovered() || field.hovered() {
                                 crate::widgets::hint::set(ctx, t!("server.hint.quantum"));
+                            }
+                            ui.end_row();
+
+                            let label = ui.label(t!("server.password"));
+                            let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, t!("server.hint.password"));
                             }
                             ui.end_row();
                         });

@@ -528,7 +528,7 @@ impl eframe::App for SovaApp {
                             if r.lost_focus() {
                                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !input.trim().is_empty() {
                                     let new_name = input.trim().to_owned();
-                                    self.bridge.send(ClientMessage::SetName(new_name.clone()));
+                                    self.bridge.send(ClientMessage::SetName { name: new_name.clone(), password: None });
                                     self.bridge.set_confirmed_username(new_name);
                                     self.rename_input = None;
                                     ui.close();

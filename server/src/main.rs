@@ -61,6 +61,10 @@ struct Cli {
     #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
     quantum: f64,
 
+    /// Require a password to connect (open access if not set)
+    #[arg(long, value_name = "PASSWORD")]
+    password: Option<String>,
+
     #[cfg(feature = "audio")]
     /// Disable audio engine (no Doux)
     #[arg(long, default_value_t = false)]
@@ -200,6 +204,7 @@ async fn main() {
         languages,
         audio_engine_state,
         audio_restart_tx,
+        cli.password,
     );
 
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
