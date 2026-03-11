@@ -6,6 +6,7 @@ extern crate rust_i18n;
 i18n!("locales", fallback = "en");
 
 mod audio_panel;
+mod chat_overlay;
 mod chat_panel;
 mod client_bridge;
 mod client_panel;
@@ -174,6 +175,7 @@ fn main() -> eframe::Result {
                 recent_scenes: s.recent_scenes,
                 dismissed_tips: s.dismissed_tips,
                 visuals,
+                chat_overlay: chat_overlay::ChatOverlay::new(),
                 rename_input: None,
             };
 
@@ -215,6 +217,7 @@ struct SovaApp {
     recent_scenes: Vec<std::path::PathBuf>,
     dismissed_tips: Vec<String>,
     visuals: visuals::VisualsEngine,
+    chat_overlay: chat_overlay::ChatOverlay,
     rename_input: Option<String>,
 }
 
@@ -842,6 +845,8 @@ impl eframe::App for SovaApp {
 
         self.chat_panel
             .show(ctx, &mut self.bridge, &self.appearance);
+        self.chat_overlay.poll(self.bridge.chat_messages());
+        self.chat_overlay.show(ctx);
         self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
