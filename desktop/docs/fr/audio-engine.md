@@ -12,8 +12,9 @@ dès le démarrage.
 Oscillateurs (sinus, dent de scie, carré, triangle, bruit), lecture
 d'échantillons, filtres (passe-bas, passe-haut, passe-bande, variantes
 ladder), reverb, delay, distorsion, chorus, phaser, synthèse FM, compression
-et enregistrement en direct vers des échantillons réutilisables. La liste
-complète des paramètres se trouve dans la référence de langage Cagire.
+et enregistrement en direct vers des échantillons réutilisables. Cagire offre
+l'intégration la plus profonde avec Doux — voir l'onglet Cagire pour la liste
+complète des paramètres.
 
 ## Panneau audio
 
@@ -36,57 +37,23 @@ Trois panneaux de visualisation surveillent la sortie audio :
 Ils se mettent à jour en temps réel depuis le serveur. Utiles pour le sound
 design et comme élément visuel en performance.
 
-## Utiliser Doux depuis Cagire
+## Utiliser Doux
 
-Cagire est le langage principal pour piloter Doux. Un échantillon :
-
-```forth
-"kick" snd .
-```
-
-Un son en dent de scie filtré avec reverb :
-
-```forth
-"saw" snd c4 note 0.5 gain 800 lpf 0.3 verb .
-```
-
-Synthèse FM avec enveloppe :
-
-```forth
-"sine" snd c4 note 200 fm 2 fmh 0.01 att 0.3 dec .
-```
-
-Enregistrement en direct, puis lecture avec effets :
-
-```forth
-"loop" rec              ;; démarrer l'enregistrement
-```
-
-```forth
-"loop" rec              ;; arrêter, l'échantillon est enregistré
-loop snd 0.5 speed 800 lpf 0.4 verb .
-```
-
-Compression sidechain entre orbites :
-
-```forth
-0 orbit "kick" snd .                 ;; kick sur l'orbite 0
-1 orbit "saw" snd c3 note 0.8 comp 0 corbit .  ;; ducker le synthé depuis l'orbite 0
-```
-
-## Utiliser Doux depuis d'autres langages
+Cagire est le langage principal pour piloter Doux, offrant un contrôle direct
+sur chaque paramètre de synthèse : type d'oscillateur, hauteur, gain, fréquence
+de coupure, forme d'enveloppe, profondeur FM, effets, orbites et compression
+sidechain. Voir l'onglet Cagire pour l'API de synthèse complète.
 
 Bob, Boinx et BaLi peuvent envoyer des événements de notes au slot de Doux.
-Doux répond aux messages MIDI Note On/Off avec sa voix par défaut :
+Doux répond aux messages MIDI Note On/Off avec sa voix par défaut. Pour un
+contrôle complet de la synthèse (filtres, effets, FM), utilisez Cagire.
 
-```
-DEV 2
->> [note: 60 vel: 100]
-WAIT 1
->> [note: 64 vel: 80]
-```
+## Enregistrement
 
-Pour un contrôle complet de la synthèse (filtres, effets, FM), utilisez Cagire.
+Doux peut enregistrer sa propre sortie en échantillons que l'on rejoue et
+manipule immédiatement avec des effets. On démarre l'enregistrement, on
+l'arrête, et l'audio capturé devient un sample nommé disponible pour tous les
+scripts de la session.
 
 ## Mise en route
 

@@ -749,8 +749,14 @@ impl eframe::App for SovaApp {
         }
 
         // Render visuals shader as background layer
-        self.visuals
-            .paint_background_central(ctx, self.appearance.visuals_enabled);
+        let clock = self.bridge.clock();
+        self.visuals.paint_background_central(
+            ctx,
+            self.appearance.visuals_enabled,
+            clock.beat as f32,
+            clock.tempo as f32,
+            clock.phase as f32,
+        );
 
         let central_frame = if self.appearance.visuals_enabled {
             egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT)

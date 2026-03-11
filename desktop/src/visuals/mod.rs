@@ -3,6 +3,7 @@ mod hydra;
 mod renderer;
 mod shader;
 mod syntax;
+pub use syntax::syntax as hydra_syntax;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -223,7 +224,7 @@ impl VisualsEngine {
         }
     }
 
-    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool) {
+    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool, beat: f32, tempo: f32, phase: f32) {
         if !enabled {
             return;
         }
@@ -245,7 +246,7 @@ impl VisualsEngine {
         let resolution = [res_w as f32, res_h as f32];
 
         let cb = eframe::egui_glow::CallbackFn::new(move |_info, painter| {
-            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution);
+            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution, beat, tempo, phase);
         });
 
         let painter = ctx.layer_painter(egui::LayerId::background());

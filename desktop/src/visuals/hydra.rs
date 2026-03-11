@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use rhai::{CustomType, Dynamic, Engine, Scope, TypeBuilder};
+use rhai::{Array, CustomType, Dynamic, Engine, Scope, TypeBuilder};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum RenderMode {
@@ -15,6 +15,83 @@ pub struct EvalResult {
     pub render_mode: RenderMode,
 }
 
+#[derive(Debug, Clone)]
+enum Arg {
+    Lit(f64),
+    Expr(String),
+}
+
+#[derive(Debug, Clone)]
+struct GlslExpr(String);
+
+#[derive(Debug, Clone)]
+struct Pattern {
+    values: Vec<f64>,
+    speed: f64,
+    offset: f64,
+    smooth: bool,
+}
+
+impl Pattern {
+    fn from_array(arr: Array) -> Self {
+        let values = arr
+            .iter()
+            .map(|d| {
+                d.as_float()
+                    .unwrap_or_else(|_| d.as_int().map(|i| i as f64).unwrap_or(0.0))
+            })
+            .collect();
+        Self { values, speed: 1.0, offset: 0.0, smooth: false }
+    }
+
+    fn to_glsl(&self) -> String {
+        let n = self.values.len();
+        if n == 0 {
+            return "0.0".into();
+        }
+        if n == 1 {
+            return fmt_f(self.values[0]);
+        }
+
+        let offset_part = if self.offset != 0.0 {
+            format!(" + {}", fmt_f(self.offset))
+        } else {
+            String::new()
+        };
+        let base = format!("mod(iTime * {}{}, {}.0)", fmt_f(self.speed), offset_part, n);
+
+        let terms: Vec<String> = if self.smooth {
+            self.values
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    let next = self.values[(i + 1) % n];
+                    format!(
+                        "mix({}, {}, fract({base})) * step(abs(floor({base}) - {}.0), 0.5)",
+                        fmt_f(*v),
+                        fmt_f(next),
+                        i
+                    )
+                })
+                .collect()
+        } else {
+            self.values
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    format!(
+                        "{} * step(abs(floor({base}) - {}.0), 0.5)",
+                        fmt_f(*v),
+                        i
+                    )
+                })
+                .collect()
+        };
+
+        format!("({})", terms.join(" + "))
+    }
+}
+
 #[derive(Debug, Clone, CustomType)]
 pub struct Node {
     ops: Vec<Op>,
@@ -24,25 +101,25 @@ pub struct Node {
 enum Op {
     Source {
         func: &'static str,
-        args: Vec<f64>,
+        args: Vec<Arg>,
     },
     Geo {
         func: &'static str,
-        args: Vec<f64>,
+        args: Vec<Arg>,
     },
     Color {
         func: &'static str,
-        args: Vec<f64>,
+        args: Vec<Arg>,
     },
     Blend {
         func: &'static str,
         other: Node,
-        args: Vec<f64>,
+        args: Vec<Arg>,
     },
     Modulate {
         func: &'static str,
         other: Node,
-        args: Vec<f64>,
+        args: Vec<Arg>,
     },
 }
 
@@ -113,51 +190,68 @@ const FUNCTIONS: &[FnMeta] = &[
 ];
 
 impl Node {
-    fn source(func: &'static str, args: Vec<f64>) -> Self {
+    fn source(func: &'static str, args: Vec<Arg>) -> Self {
         Self { ops: vec![Op::Source { func, args }] }
     }
 
-    fn push_geo(mut self, func: &'static str, args: Vec<f64>) -> Self {
+    fn push_geo(mut self, func: &'static str, args: Vec<Arg>) -> Self {
         self.ops.push(Op::Geo { func, args });
         self
     }
 
-    fn push_color(mut self, func: &'static str, args: Vec<f64>) -> Self {
+    fn push_color(mut self, func: &'static str, args: Vec<Arg>) -> Self {
         self.ops.push(Op::Color { func, args });
         self
     }
 
-    fn push_blend(mut self, func: &'static str, other: Node, args: Vec<f64>) -> Self {
+    fn push_blend(mut self, func: &'static str, other: Node, args: Vec<Arg>) -> Self {
         self.ops.push(Op::Blend { func, other, args });
         self
     }
 
-    fn push_modulate(mut self, func: &'static str, other: Node, args: Vec<f64>) -> Self {
+    fn push_modulate(mut self, func: &'static str, other: Node, args: Vec<Arg>) -> Self {
         self.ops.push(Op::Modulate { func, other, args });
         self
     }
 }
 
-fn fill_args(provided: &[f64], defaults: &'static [f64]) -> Vec<f64> {
+fn fill_args(provided: &[Arg], defaults: &'static [f64]) -> Vec<Arg> {
     let mut args = provided.to_vec();
     for d in defaults.iter().skip(args.len()) {
-        args.push(*d);
+        args.push(Arg::Lit(*d));
     }
     args
 }
 
-fn as_f64(d: Dynamic) -> f64 {
-    if let Ok(v) = d.as_float() { v }
-    else if let Ok(v) = d.as_int() { v as f64 }
-    else { 0.0 }
+fn as_arg(d: Dynamic) -> Arg {
+    if let Ok(v) = d.as_float() {
+        Arg::Lit(v)
+    } else if let Ok(v) = d.as_int() {
+        Arg::Lit(v as f64)
+    } else if d.is::<GlslExpr>() {
+        Arg::Expr(d.cast::<GlslExpr>().0)
+    } else if d.is::<Pattern>() {
+        Arg::Expr(d.cast::<Pattern>().to_glsl())
+    } else if d.is_array() {
+        Arg::Expr(Pattern::from_array(d.into_array().unwrap()).to_glsl())
+    } else {
+        Arg::Lit(0.0)
+    }
 }
 
 fn fmt_f(v: f64) -> String {
     if v.fract() == 0.0 { format!("{v:.1}") } else { format!("{v}") }
 }
 
-fn fmt_args(args: &[f64]) -> String {
-    args.iter().map(|a| fmt_f(*a)).collect::<Vec<_>>().join(", ")
+fn fmt_arg(a: &Arg) -> String {
+    match a {
+        Arg::Lit(v) => fmt_f(*v),
+        Arg::Expr(s) => s.clone(),
+    }
+}
+
+fn fmt_args(args: &[Arg]) -> String {
+    args.iter().map(fmt_arg).collect::<Vec<_>>().join(", ")
 }
 
 struct Emitter {
@@ -241,7 +335,10 @@ impl Emitter {
         let current_var = self.next_var();
 
         if *func == "src" {
-            let buf_idx = args.first().map(|a| *a as usize).unwrap_or(0).min(3);
+            let buf_idx = match args.first() {
+                Some(Arg::Lit(v)) => (*v as usize).min(3),
+                _ => 0,
+            };
             self.lines.push(format!(
                 "  vec4 {current_var} = texture(iBuffer{buf_idx}, {current_st});"
             ));
@@ -310,6 +407,90 @@ fn register_functions(engine: &mut Engine) {
     }
 }
 
+fn register_glsl_ops(engine: &mut Engine) {
+    macro_rules! binop {
+        ($op:literal) => {
+            engine.register_fn($op, |a: GlslExpr, b: GlslExpr| -> GlslExpr {
+                GlslExpr(format!(concat!("({} ", $op, " {})"), a.0, b.0))
+            });
+            engine.register_fn($op, |a: GlslExpr, b: f64| -> GlslExpr {
+                GlslExpr(format!(concat!("({} ", $op, " {})"), a.0, fmt_f(b)))
+            });
+            engine.register_fn($op, |a: f64, b: GlslExpr| -> GlslExpr {
+                GlslExpr(format!(concat!("({} ", $op, " {})"), fmt_f(a), b.0))
+            });
+            engine.register_fn($op, |a: GlslExpr, b: i64| -> GlslExpr {
+                GlslExpr(format!(concat!("({} ", $op, " {})"), a.0, fmt_f(b as f64)))
+            });
+            engine.register_fn($op, |a: i64, b: GlslExpr| -> GlslExpr {
+                GlslExpr(format!(concat!("({} ", $op, " {})"), fmt_f(a as f64), b.0))
+            });
+        };
+    }
+
+    binop!("+");
+    binop!("-");
+    binop!("*");
+    binop!("/");
+
+    engine.register_fn("-", |a: GlslExpr| -> GlslExpr {
+        GlslExpr(format!("(-{})", a.0))
+    });
+
+    macro_rules! glsl_fn {
+        ($name:literal) => {
+            engine.register_fn($name, |a: GlslExpr| -> GlslExpr {
+                GlslExpr(format!(concat!($name, "({})"), a.0))
+            });
+        };
+    }
+
+    glsl_fn!("sin");
+    glsl_fn!("cos");
+    glsl_fn!("abs");
+    glsl_fn!("fract");
+
+    engine.register_fn("fract", |x: f64| -> f64 { x.fract() });
+}
+
+fn register_patterns(engine: &mut Engine) {
+    engine.register_fn("fast", |arr: Array, speed: f64| -> Pattern {
+        let mut p = Pattern::from_array(arr);
+        p.speed = speed;
+        p
+    });
+    engine.register_fn("fast", |arr: Array, speed: i64| -> Pattern {
+        let mut p = Pattern::from_array(arr);
+        p.speed = speed as f64;
+        p
+    });
+    engine.register_fn("smooth", |arr: Array| -> Pattern {
+        let mut p = Pattern::from_array(arr);
+        p.smooth = true;
+        p
+    });
+    engine.register_fn("fast", |mut p: Pattern, speed: f64| -> Pattern {
+        p.speed = speed;
+        p
+    });
+    engine.register_fn("fast", |mut p: Pattern, speed: i64| -> Pattern {
+        p.speed = speed as f64;
+        p
+    });
+    engine.register_fn("smooth", |mut p: Pattern| -> Pattern {
+        p.smooth = true;
+        p
+    });
+    engine.register_fn("offset", |mut p: Pattern, o: f64| -> Pattern {
+        p.offset = o;
+        p
+    });
+    engine.register_fn("offset", |mut p: Pattern, o: i64| -> Pattern {
+        p.offset = o as f64;
+        p
+    });
+}
+
 pub const DEFAULT_SCRIPT: &str = "\
 osc(60.0, 0.1).rotate(0.0, 0.1)
     .add(voronoi(8.0, 0.3, 0.3), 0.5)
@@ -325,6 +506,8 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     let mut engine = Engine::new();
     engine.build_type::<Node>();
     register_functions(&mut engine);
+    register_glsl_ops(&mut engine);
+    register_patterns(&mut engine);
 
     // .out() → buffer 0
     {
@@ -345,7 +528,7 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     }
     // src(oN) → texture read from buffer N
     engine.register_fn("src", |idx: i64| -> Node {
-        Node::source("src", vec![idx as f64])
+        Node::source("src", vec![Arg::Lit(idx as f64)])
     });
     // render() → 2x2 grid
     {
@@ -367,6 +550,10 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
     scope.push_constant("o1", 1_i64);
     scope.push_constant("o2", 2_i64);
     scope.push_constant("o3", 3_i64);
+    scope.push_constant("time", GlslExpr("iTime".to_string()));
+    scope.push_constant("beat", GlslExpr("iBeat".to_string()));
+    scope.push_constant("tempo", GlslExpr("iTempo".to_string()));
+    scope.push_constant("phase", GlslExpr("iPhase".to_string()));
 
     let result = engine
         .eval_with_scope::<Dynamic>(&mut scope, code)
@@ -400,22 +587,22 @@ fn register_source(engine: &mut Engine, meta: &FnMeta) {
     engine.register_fn(name, move || Node::source(name, fill_args(&[], defaults)));
     if n >= 1 {
         engine.register_fn(name, move |a: Dynamic| {
-            Node::source(name, fill_args(&[as_f64(a)], defaults))
+            Node::source(name, fill_args(&[as_arg(a)], defaults))
         });
     }
     if n >= 2 {
         engine.register_fn(name, move |a: Dynamic, b: Dynamic| {
-            Node::source(name, fill_args(&[as_f64(a), as_f64(b)], defaults))
+            Node::source(name, fill_args(&[as_arg(a), as_arg(b)], defaults))
         });
     }
     if n >= 3 {
         engine.register_fn(name, move |a: Dynamic, b: Dynamic, c: Dynamic| {
-            Node::source(name, fill_args(&[as_f64(a), as_f64(b), as_f64(c)], defaults))
+            Node::source(name, fill_args(&[as_arg(a), as_arg(b), as_arg(c)], defaults))
         });
     }
     if n >= 4 {
         engine.register_fn(name, move |a: Dynamic, b: Dynamic, c: Dynamic, d: Dynamic| {
-            Node::source(name, fill_args(&[as_f64(a), as_f64(b), as_f64(c), as_f64(d)], defaults))
+            Node::source(name, fill_args(&[as_arg(a), as_arg(b), as_arg(c), as_arg(d)], defaults))
         });
     }
 }
@@ -428,24 +615,24 @@ fn register_geo(engine: &mut Engine, meta: &FnMeta) {
     engine.register_fn(name, move |node: Node| node.push_geo(name, fill_args(&[], defaults)));
     if n >= 1 {
         engine.register_fn(name, move |node: Node, a: Dynamic| {
-            node.push_geo(name, fill_args(&[as_f64(a)], defaults))
+            node.push_geo(name, fill_args(&[as_arg(a)], defaults))
         });
     }
     if n >= 2 {
         engine.register_fn(name, move |node: Node, a: Dynamic, b: Dynamic| {
-            node.push_geo(name, fill_args(&[as_f64(a), as_f64(b)], defaults))
+            node.push_geo(name, fill_args(&[as_arg(a), as_arg(b)], defaults))
         });
     }
     if n >= 3 {
         engine.register_fn(name, move |node: Node, a: Dynamic, b: Dynamic, c: Dynamic| {
-            node.push_geo(name, fill_args(&[as_f64(a), as_f64(b), as_f64(c)], defaults))
+            node.push_geo(name, fill_args(&[as_arg(a), as_arg(b), as_arg(c)], defaults))
         });
     }
     if n >= 4 {
         engine.register_fn(
             name,
             move |node: Node, a: Dynamic, b: Dynamic, c: Dynamic, d: Dynamic| {
-                node.push_geo(name, fill_args(&[as_f64(a), as_f64(b), as_f64(c), as_f64(d)], defaults))
+                node.push_geo(name, fill_args(&[as_arg(a), as_arg(b), as_arg(c), as_arg(d)], defaults))
             },
         );
     }
@@ -455,7 +642,7 @@ fn register_geo(engine: &mut Engine, meta: &FnMeta) {
             move |node: Node, a: Dynamic, b: Dynamic, c: Dynamic, d: Dynamic, e: Dynamic| {
                 node.push_geo(
                     name,
-                    fill_args(&[as_f64(a), as_f64(b), as_f64(c), as_f64(d), as_f64(e)], defaults),
+                    fill_args(&[as_arg(a), as_arg(b), as_arg(c), as_arg(d), as_arg(e)], defaults),
                 )
             },
         );
@@ -470,17 +657,17 @@ fn register_color(engine: &mut Engine, meta: &FnMeta) {
     engine.register_fn(name, move |node: Node| node.push_color(name, fill_args(&[], defaults)));
     if n >= 1 {
         engine.register_fn(name, move |node: Node, a: Dynamic| {
-            node.push_color(name, fill_args(&[as_f64(a)], defaults))
+            node.push_color(name, fill_args(&[as_arg(a)], defaults))
         });
     }
     if n >= 2 {
         engine.register_fn(name, move |node: Node, a: Dynamic, b: Dynamic| {
-            node.push_color(name, fill_args(&[as_f64(a), as_f64(b)], defaults))
+            node.push_color(name, fill_args(&[as_arg(a), as_arg(b)], defaults))
         });
     }
     if n >= 3 {
         engine.register_fn(name, move |node: Node, a: Dynamic, b: Dynamic, c: Dynamic| {
-            node.push_color(name, fill_args(&[as_f64(a), as_f64(b), as_f64(c)], defaults))
+            node.push_color(name, fill_args(&[as_arg(a), as_arg(b), as_arg(c)], defaults))
         });
     }
     if n >= 4 {
@@ -489,7 +676,7 @@ fn register_color(engine: &mut Engine, meta: &FnMeta) {
             move |node: Node, a: Dynamic, b: Dynamic, c: Dynamic, d: Dynamic| {
                 node.push_color(
                     name,
-                    fill_args(&[as_f64(a), as_f64(b), as_f64(c), as_f64(d)], defaults),
+                    fill_args(&[as_arg(a), as_arg(b), as_arg(c), as_arg(d)], defaults),
                 )
             },
         );
@@ -506,7 +693,7 @@ fn register_blend(engine: &mut Engine, meta: &FnMeta) {
     });
     if n >= 1 {
         engine.register_fn(name, move |node: Node, other: Node, a: Dynamic| {
-            node.push_blend(name, other, fill_args(&[as_f64(a)], defaults))
+            node.push_blend(name, other, fill_args(&[as_arg(a)], defaults))
         });
     }
 }
@@ -521,12 +708,12 @@ fn register_modulate(engine: &mut Engine, meta: &FnMeta) {
     });
     if n >= 1 {
         engine.register_fn(name, move |node: Node, other: Node, a: Dynamic| {
-            node.push_modulate(name, other, fill_args(&[as_f64(a)], defaults))
+            node.push_modulate(name, other, fill_args(&[as_arg(a)], defaults))
         });
     }
     if n >= 2 {
         engine.register_fn(name, move |node: Node, other: Node, a: Dynamic, b: Dynamic| {
-            node.push_modulate(name, other, fill_args(&[as_f64(a), as_f64(b)], defaults))
+            node.push_modulate(name, other, fill_args(&[as_arg(a), as_arg(b)], defaults))
         });
     }
     if n >= 3 {
@@ -536,7 +723,7 @@ fn register_modulate(engine: &mut Engine, meta: &FnMeta) {
                 node.push_modulate(
                     name,
                     other,
-                    fill_args(&[as_f64(a), as_f64(b), as_f64(c)], defaults),
+                    fill_args(&[as_arg(a), as_arg(b), as_arg(c)], defaults),
                 )
             },
         );
@@ -548,7 +735,7 @@ fn register_modulate(engine: &mut Engine, meta: &FnMeta) {
                 node.push_modulate(
                     name,
                     other,
-                    fill_args(&[as_f64(a), as_f64(b), as_f64(c), as_f64(d)], defaults),
+                    fill_args(&[as_arg(a), as_arg(b), as_arg(c), as_arg(d)], defaults),
                 )
             },
         );

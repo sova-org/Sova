@@ -11,7 +11,8 @@ full-featured tool for advanced sound design. If the server has audio enabled
 Oscillators (sine, saw, square, triangle, noise), sample playback, filters
 (lowpass, highpass, bandpass, ladder variants), reverb, delay, distortion,
 chorus, phaser, FM synthesis, compression, and live recording into reusable
-samples. The full parameter list is in the Cagire language reference.
+samples. Cagire has the deepest integration with Doux — see the Cagire language
+tab for the full parameter list.
 
 ## Audio panel
 
@@ -34,57 +35,22 @@ Three visualization panels monitor the audio output:
 They update in real time from the server. Useful for sound design and as a
 visual element during performance.
 
-## Using Doux from Cagire
+## Using Doux
 
-Cagire is the primary language for Doux. A sample:
-
-```forth
-"kick" snd .
-```
-
-A filtered sawtooth with reverb:
-
-```forth
-"saw" snd c4 note 0.5 gain 800 lpf 0.3 verb .
-```
-
-FM synthesis with envelope:
-
-```forth
-"sine" snd c4 note 200 fm 2 fmh 0.01 att 0.3 dec .
-```
-
-Live recording, then playback with effects:
-
-```forth
-"loop" rec              ;; start recording
-```
-
-```forth
-"loop" rec              ;; stop, sample is registered
-loop snd 0.5 speed 800 lpf 0.4 verb .
-```
-
-Sidechain compression between orbits:
-
-```forth
-0 orbit "kick" snd .                 ;; kick on orbit 0
-1 orbit "saw" snd c3 note 0.8 comp 0 corbit .  ;; duck synth from orbit 0
-```
-
-## Using Doux from other languages
+Cagire is the primary language for Doux, offering direct control over every
+synthesis parameter: oscillator type, pitch, gain, filter cutoff, envelope
+shape, FM depth, effects, orbits, and sidechain compression. See the Cagire
+language tab for the full synthesis API.
 
 Bob, Boinx, and BaLi can send note events to the Doux device slot. Doux
-responds to MIDI-style Note On/Off with its default voice:
+responds to MIDI-style Note On/Off with its default voice. For full synthesis
+control (filters, effects, FM), use Cagire.
 
-```
-DEV 2
->> [note: 60 vel: 100]
-WAIT 1
->> [note: 64 vel: 80]
-```
+## Recording
 
-For full synthesis control (filters, effects, FM), use Cagire.
+Doux can record its own output into samples that you immediately play back and
+manipulate with effects. Start recording, stop it, and the captured audio
+becomes a named sample available to all scripts in the session.
 
 ## Setup
 

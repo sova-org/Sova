@@ -16,22 +16,8 @@ puis d'une transition Boinx.
 consomment et produisent des valeurs sur la pile. `.` émet la commande sonore
 courante.
 
-Un kick :
-
-```forth
-kick snd .
-```
-
-Un accord avec reverb :
-
 ```forth
 c4 min7 note 0.4 verb sine snd .
-```
-
-Un motif rythmique avec distribution euclidienne :
-
-```forth
-3 8 euclid at hat snd .
 ```
 
 Cagire intègre de la théorie musicale — notes, intervalles, accords, gammes —
@@ -40,34 +26,15 @@ utilisateur. Voir l'onglet **Cagire**.
 
 ## Bob
 
-Impératif, notation polonaise. Les opérateurs précèdent les opérandes :
-`ADD 2 3` au lieu de `2 + 3`. Les événements sont des maps clé-valeur émis avec
-`>>`. Le temps avance avec `WAIT`.
-
-Une séquence de quatre notes :
+Impératif, notation polonaise. Les opérateurs précèdent les opérandes. Les
+événements sont des maps clé-valeur émis avec `>>`. Le temps avance avec
+`WAIT`.
 
 ```
 RANGE 0 3 :
   >> [note: ADD 60 MUL I 4 vel: 100]
   WAIT 0.25
 END
-```
-
-Rythme euclidien avec notes fantômes :
-
-```
-EU 3 8 0.125 :
-  >> [note: 36 vel: 100]
-ELSE :
-  >> [note: 36 vel: 20]
-END
-```
-
-Sélection aléatoire dans une liste :
-
-```
-SET G.NOTES '[60 64 67 72]
->> [note: PICK G.NOTES vel: RRAND 60 127]
 ```
 
 Bob dispose de variables (globales, frame, ligne), de conditionnelles, de
@@ -80,28 +47,10 @@ Style Lisp, à base d'expressions. Tout est une S-expression entre parenthèses.
 Boucles, notes et effets se composent par imbrication. Les fractions comme
 `1//4` expriment les durées directement.
 
-Une séquence de notes en boucle :
-
 ```
 (loop 4
   (note (+ 60 (* $i 3)) 90)
   1//4)
-```
-
-Un accord sur le temps :
-
-```
-(note 60 100 dev:1 ch:1)
-(note 64 100 dev:1 ch:1)
-(note 67 100 dev:1 ch:1)
-```
-
-Rythme euclidien :
-
-```
-(eucloop 3 8
-  (note 36 100)
-  1//8)
 ```
 
 Le style fonctionnel de BaLi le rend naturel pour la composition algorithmique
@@ -114,22 +63,8 @@ des crochets et des opérateurs. Les séquences `[...]` répartissent les élém
 régulièrement dans la frame. Les événements simultanés utilisent `(...)`. Les
 données d'événement clé-valeur vont dans `<...>`.
 
-Un motif kick-hat :
-
 ```
 <s: 'kick'> | [. _ . _]
-```
-
-Batterie en couches avec kick et hat simultanés :
-
-```
-(<s: 'kick'> <s: 'hat'>) | [. _ . _]
-```
-
-Notes cycliques sur une grille rythmique :
-
-```
-(C4 E4 G4) ° [. . . .]
 ```
 
 Les opérateurs Boinx (`|`, `°`, `~`, `!`, `#`) contrôlent la circulation des

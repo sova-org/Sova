@@ -11,7 +11,7 @@ pub fn syntax() -> LanguageSyntax {
             SyntaxRule::new(Keyword, r"\b(add|mult|blend|diff|layer|mask|sub|modulate|modulateScale|modulateRotate|modulateRepeat|modulateRepeatX|modulateRepeatY|modulateKaleid|modulateScrollX|modulateScrollY|modulatePixelate|modulateHue)\b"),
             SyntaxRule::new(Operator, r"\b(rotate|scale|scroll|kaleid|pixelate|repeat|scrollX|scrollY|repeatX|repeatY)\b"),
             SyntaxRule::new(Variable, r"\b(color|invert|contrast|brightness|saturate|hue|posterize|luma|colorama|shift|thresh)\b"),
-            SyntaxRule::new(Special, r"\b(out|r|g|b|render|o0|o1|o2|o3)\b"),
+            SyntaxRule::new(Special, r"\b(out|r|g|b|render|o0|o1|o2|o3|time|beat|tempo|phase|fast|smooth)\b"),
             SyntaxRule::new(Symbol, r"\b(let|const|if|else|while|loop|for|in|fn|return|true|false)\b"),
             SyntaxRule::new(Operator, r"[+\-*/%]=?|[=!<>]=|&&|\|\||!"),
             SyntaxRule::new(Punctuation, r"[.(),;]"),

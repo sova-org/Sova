@@ -38,25 +38,12 @@ Cliquez sur le BPM pour saisir une nouvelle valeur. Minimum 20 BPM.
 ## Espacer les événements dans le code
 
 Sans timing explicite, tous les événements d'un script se déclenchent en même
-temps — au beat zéro de la frame. On les espace avec des attentes.
-
-En Cagire, `at` définit des décalages de timing en fractions de la durée de
-frame :
-
-```forth
-0 0.5 at kick snd .       ;; kick au début et à la moitié
-0 0.25 0.5 0.75 at hat snd .  ;; quatre hats, espacés régulièrement
-```
-
-En Bob, `WAIT` avance le temps en beats :
-
-```
->> [note: 60 vel: 100]
-WAIT 0.5
->> [note: 64 vel: 80]
-WAIT 0.5
->> [note: 67 vel: 100]
-```
+temps — au beat zéro de la frame. Chaque langage fournit son propre mécanisme
+pour distribuer les événements dans la durée de la frame. Certains utilisent
+des décalages fractionnaires, d'autres avancent une horloge explicitement. Le
+principe est le même : on place les événements à des moments précis dans la
+fenêtre temporelle offerte par la frame. Voir les onglets de langage pour la
+syntaxe.
 
 ## Frames, durée et répétitions
 
@@ -65,19 +52,8 @@ script 2 beats à remplir d'événements.
 
 Les répétitions subdivisent cette durée. Une frame de 4 beats avec 4 répétitions
 exécute le script 4 fois, une fois par beat. Cela produit des boucles rythmiques
-sans code de boucle explicite :
-
-```
--- Bob : un kick par beat pendant 4 beats (durée frame=4, reps=4)
->> [note: 36 vel: 100]
-```
-
-```forth
-;; Cagire : même principe
-36 note 100 vel .
-```
-
-Une seule ligne de code, quatre kicks. Le séquenceur gère la répétition.
+sans code de boucle explicite — une seule instruction d'événement, quatre kicks.
+Le séquenceur gère la répétition.
 
 ## Vitesse de ligne
 

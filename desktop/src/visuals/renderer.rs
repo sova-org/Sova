@@ -14,6 +14,9 @@ struct ProgramState {
     loc_time: Option<glow::UniformLocation>,
     loc_resolution: Option<glow::UniformLocation>,
     loc_mouse: Option<glow::UniformLocation>,
+    loc_beat: Option<glow::UniformLocation>,
+    loc_tempo: Option<glow::UniformLocation>,
+    loc_phase: Option<glow::UniformLocation>,
     loc_buffers: [Option<glow::UniformLocation>; NUM_BUFFERS],
 }
 
@@ -153,6 +156,9 @@ fn resolve_program_state(gl: &glow::Context, program: glow::Program) -> ProgramS
             loc_time: gl.get_uniform_location(program, "iTime"),
             loc_resolution: gl.get_uniform_location(program, "iResolution"),
             loc_mouse: gl.get_uniform_location(program, "iMouse"),
+            loc_beat: gl.get_uniform_location(program, "iBeat"),
+            loc_tempo: gl.get_uniform_location(program, "iTempo"),
+            loc_phase: gl.get_uniform_location(program, "iPhase"),
             loc_buffers: [
                 gl.get_uniform_location(program, "iBuffer0"),
                 gl.get_uniform_location(program, "iBuffer1"),
@@ -233,6 +239,9 @@ pub fn render_multipass(
     ping: &AtomicBool,
     time: f32,
     resolution: [f32; 2],
+    beat: f32,
+    tempo: f32,
+    phase: f32,
 ) {
     let write = ping.load(Ordering::Relaxed) as usize;
     let read = 1 - write;
@@ -254,6 +263,15 @@ pub fn render_multipass(
 
             if let Some(ref loc) = p.loc_time {
                 gl.uniform_1_f32(Some(loc), time);
+            }
+            if let Some(ref loc) = p.loc_beat {
+                gl.uniform_1_f32(Some(loc), beat);
+            }
+            if let Some(ref loc) = p.loc_tempo {
+                gl.uniform_1_f32(Some(loc), tempo);
+            }
+            if let Some(ref loc) = p.loc_phase {
+                gl.uniform_1_f32(Some(loc), phase);
             }
             if let Some(ref loc) = p.loc_resolution {
                 gl.uniform_2_f32(Some(loc), resolution[0], resolution[1]);
