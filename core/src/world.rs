@@ -10,8 +10,7 @@ use crate::{
 };
 use crate::{get_logger, log_eprintln};
 
-pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
-pub const TIMEBASE_CAIBRATION_INTERVAL: SyncTime = 1_000_000;
+pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 20;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 

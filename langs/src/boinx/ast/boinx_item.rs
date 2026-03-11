@@ -365,8 +365,9 @@ impl BoinxItem {
                         durations[i]
                     };
                     if rem_share > 0 {
-                        dur += item.weight();
-                        rem_share -= item.weight();
+                        let add_part = cmp::min(rem_share, item.weight());
+                        dur += add_part;
+                        rem_share -= add_part;
                     }
                     slices.push(dur);
                 }
