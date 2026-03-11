@@ -551,7 +551,11 @@ impl ClientBridge {
                     }
                 }
                 ServerMessage::CoreRestarted => {
-                    self.send(ClientMessage::GetScene);
+                    self.errors.clear();
+                    self.compilation_flashes.clear();
+                    self.mutation_flashes.clear();
+                    self.positions.clear();
+                    self.position_start.clear();
                 }
                 ServerMessage::Snapshot(snapshot) => {
                     self.scene = Some(snapshot.scene);

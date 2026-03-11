@@ -231,12 +231,18 @@ impl ServerPanel {
             );
 
             while let Ok(req) = core_restart_rx.recv() {
+                let mut requestors = vec![req];
+                while let Ok(extra) = core_restart_rx.try_recv() {
+                    requestors.push(extra);
+                }
+
                 {
                     let iface = orch_sched_iface.read().unwrap();
                     let _ = iface.send(SchedulerMessage::Shutdown);
                 }
                 let _ = sched_handle.join();
                 let _ = world_handle.join();
+                orch_is_playing.store(false, std::sync::atomic::Ordering::Relaxed);
 
                 let (new_world, new_sched, new_iface, new_update) =
                     sova_core::init::start_scheduler_and_world(
@@ -248,11 +254,15 @@ impl ServerPanel {
                 sched_handle = new_sched;
 
                 let scene = orch_scene_image.blocking_lock().clone();
-                if let Err(e) = new_iface.send(SchedulerMessage::SetScene(
+                let result = new_iface.send(SchedulerMessage::SetScene(
                     scene.clone(),
                     ActionTiming::Immediate,
-                )) {
-                    let _ = req.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                ));
+
+                if let Err(e) = result {
+                    for r in requestors {
+                        let _ = r.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                    }
                     continue;
                 }
 
@@ -282,7 +292,9 @@ impl ServerPanel {
                     });
                 }
 
-                let _ = req.response_tx.send(Ok(()));
+                for r in requestors {
+                    let _ = r.response_tx.send(Ok(()));
+                }
             }
 
             {
@@ -296,12 +308,9 @@ impl ServerPanel {
         let ip = self.ip.clone();
         let server = SovaCoreServer::new(ip, port, server_state);
 
-        let (_dummy_tx, dummy_rx) = crossbeam_channel::bounded::<SovaNotification>(0);
-        drop(_dummy_tx);
-
         let server_task = self
             .runtime
-            .spawn(async move { server.start(dummy_rx).await });
+            .spawn(async move { server.start(None).await });
 
         self.embedded = Some(EmbeddedServer {
             server_task,

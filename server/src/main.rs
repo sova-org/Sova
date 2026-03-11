@@ -234,7 +234,11 @@ async fn main() {
         );
 
         while let Ok(req) = core_restart_rx.recv() {
-            eprintln!("[orchestrator] Core restart requested");
+            let mut requestors = vec![req];
+            while let Ok(extra) = core_restart_rx.try_recv() {
+                requestors.push(extra);
+            }
+            eprintln!("[orchestrator] Core restart requested ({} queued)", requestors.len());
 
             // Shut down old core
             {
@@ -243,6 +247,7 @@ async fn main() {
             }
             let _ = sched_handle.join();
             let _ = world_handle.join();
+            orch_is_playing.store(false, Ordering::Relaxed);
 
             // Start new core
             let (new_world, new_sched, new_iface, new_update) =
@@ -256,11 +261,15 @@ async fn main() {
 
             // Resend scene to new scheduler
             let scene = orch_scene_image.blocking_lock().clone();
-            if let Err(e) = new_iface.send(SchedulerMessage::SetScene(
+            let result = new_iface.send(SchedulerMessage::SetScene(
                 scene.clone(),
                 ActionTiming::Immediate,
-            )) {
-                let _ = req.response_tx.send(Err(format!("Failed to set scene: {e}")));
+            ));
+
+            if let Err(e) = result {
+                for r in requestors {
+                    let _ = r.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                }
                 continue;
             }
 
@@ -293,7 +302,9 @@ async fn main() {
                 });
             }
 
-            let _ = req.response_tx.send(Ok(()));
+            for r in requestors {
+                let _ = r.response_tx.send(Ok(()));
+            }
             eprintln!("[orchestrator] Core restarted successfully");
         }
 
@@ -309,12 +320,7 @@ async fn main() {
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
-    // The server's start_image_maintainer is now handled by the orchestrator,
-    // so we pass a dummy channel that immediately disconnects.
-    let (_dummy_tx, dummy_rx) = crossbeam_channel::bounded::<SovaNotification>(0);
-    drop(_dummy_tx);
-
-    match server.start(dummy_rx).await {
+    match server.start(None).await {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {

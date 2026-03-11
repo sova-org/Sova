@@ -547,14 +547,20 @@ async fn on_message(
             let Some(ref restart_tx) = state.core_restart_tx else {
                 return ServerMessage::InternalError("Core restart not available".into());
             };
-            let (response_tx, response_rx) = crossbeam_channel::bounded(1);
-            if restart_tx.send(CoreRestartRequest { response_tx }).is_err() {
-                return ServerMessage::InternalError("Core restart channel closed".into());
-            }
-            match response_rx.recv() {
-                Ok(Ok(())) => ServerMessage::Success,
-                Ok(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
-                Err(_) => ServerMessage::InternalError("Core restart channel closed".into()),
+            let restart_tx = restart_tx.clone();
+            match tokio::task::spawn_blocking(move || {
+                let (response_tx, response_rx) = crossbeam_channel::bounded(1);
+                if restart_tx.send(CoreRestartRequest { response_tx }).is_err() {
+                    return ServerMessage::InternalError("Core restart channel closed".into());
+                }
+                match response_rx.recv() {
+                    Ok(Ok(())) => ServerMessage::Success,
+                    Ok(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
+                    Err(_) => ServerMessage::InternalError("Core restart channel closed".into()),
+                }
+            }).await {
+                Ok(msg) => msg,
+                Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
             }
         }
         ClientMessage::EnableFeedback => {
@@ -627,12 +633,14 @@ impl SovaCoreServer {
 
     pub async fn start(
         &self,
-        scheduler_notifications: Receiver<SovaNotification>,
+        scheduler_notifications: Option<Receiver<SovaNotification>>,
     ) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
         println!("Server listening on {}", addr);
-        self.start_image_maintainer(scheduler_notifications);
+        if let Some(rx) = scheduler_notifications {
+            self.start_image_maintainer(rx);
+        }
 
         // Bridge logger notifications (from core) to per-client channels
         let mut log_rx = self.state.update_sender.subscribe();
