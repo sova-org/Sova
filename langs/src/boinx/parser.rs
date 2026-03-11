@@ -190,7 +190,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 let args = pairs
                     .map(|p| parse_compo(p.into_inner()).extract())
                     .collect();
-                BoinxItem::Func(name, args).into()
+                BoinxItem::Func(name, args, None).into()
             }
             Rule::map => {
                 let mut value_map = HashMap::new();

@@ -174,7 +174,7 @@ impl BoinxIdent {
             return BoinxItem::Str(self.0.clone());
         }
         let obj = ctx.evaluate(&var);
-        let compo = BoinxCompo::from(obj);
+        let mut compo = BoinxCompo::from(obj);
         forbidden.insert(self.clone());
         let res = compo.evaluate_vars(ctx, forbidden).flatten();
         forbidden.remove(self);
