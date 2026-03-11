@@ -550,6 +550,9 @@ impl ClientBridge {
                         engine.send(msg);
                     }
                 }
+                ServerMessage::CoreRestarted => {
+                    self.send(ClientMessage::GetScene);
+                }
                 ServerMessage::Snapshot(snapshot) => {
                     self.scene = Some(snapshot.scene);
                     self.clock.tempo = snapshot.tempo;

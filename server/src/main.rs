@@ -11,7 +11,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
-use sova_server::{AudioEngineState, AudioRestartConfig, ClientRegistry, ServerState, SovaCoreServer};
+use sova_server::{
+    AudioEngineState, AudioRestartConfig, ClientRegistry, CoreRestartRequest, ServerState,
+    SovaCoreServer, start_image_maintainer,
+};
 
 #[cfg(feature = "audio")]
 use sova_server::audio::spawn_audio_thread;
@@ -194,22 +197,124 @@ async fn main() {
         std::process::exit(1);
     }
 
+    let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
+
     let server_state = ServerState::new(
-        scene_image,
-        clock_server,
+        scene_image.clone(),
+        clock_server.clone(),
         devices.clone(),
-        sched_iface.clone(),
+        sched_iface,
         update_sender.clone(),
-        client_registry,
-        languages,
+        client_registry.clone(),
+        languages.clone(),
         audio_engine_state,
         audio_restart_tx,
+        Some(core_restart_tx),
         cli.password,
     );
 
+    // Orchestrator thread: owns core thread handles, handles restart requests
+    let orch_sched_iface = server_state.sched_iface.clone();
+    let orch_scene_image = scene_image;
+    let orch_client_registry = client_registry;
+    let orch_is_playing = server_state.is_playing.clone();
+    let orch_clock = clock_server.clone();
+    let orch_devices = devices.clone();
+    let orch_languages = languages;
+    std::thread::spawn(move || {
+        let mut world_handle = world_handle;
+        let mut sched_handle = sched_handle;
+
+        // Start initial image maintainer
+        start_image_maintainer(
+            sched_update,
+            orch_scene_image.clone(),
+            orch_client_registry.clone(),
+            orch_is_playing.clone(),
+        );
+
+        while let Ok(req) = core_restart_rx.recv() {
+            eprintln!("[orchestrator] Core restart requested");
+
+            // Shut down old core
+            {
+                let iface = orch_sched_iface.read().unwrap();
+                let _ = iface.send(SchedulerMessage::Shutdown);
+            }
+            let _ = sched_handle.join();
+            let _ = world_handle.join();
+
+            // Start new core
+            let (new_world, new_sched, new_iface, new_update) =
+                sova_core::init::start_scheduler_and_world(
+                    orch_clock.clone(),
+                    orch_devices.clone(),
+                    orch_languages.clone(),
+                );
+            world_handle = new_world;
+            sched_handle = new_sched;
+
+            // Resend scene to new scheduler
+            let scene = orch_scene_image.blocking_lock().clone();
+            if let Err(e) = new_iface.send(SchedulerMessage::SetScene(
+                scene.clone(),
+                ActionTiming::Immediate,
+            )) {
+                let _ = req.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                continue;
+            }
+
+            // Swap the sender
+            *orch_sched_iface.write().unwrap() = new_iface;
+
+            // Start new image maintainer
+            start_image_maintainer(
+                new_update,
+                orch_scene_image.clone(),
+                orch_client_registry.clone(),
+                orch_is_playing.clone(),
+            );
+
+            // Broadcast CoreRestarted + scene resync to all clients
+            if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
+                &sova_server::ServerMessage::CoreRestarted,
+            ) {
+                orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
+                    bytes: Arc::new(bytes),
+                    droppable: false,
+                });
+            }
+            if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
+                &sova_server::ServerMessage::SceneValue(scene),
+            ) {
+                orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
+                    bytes: Arc::new(bytes),
+                    droppable: false,
+                });
+            }
+
+            let _ = req.response_tx.send(Ok(()));
+            eprintln!("[orchestrator] Core restarted successfully");
+        }
+
+        // Channel closed — server shutting down
+        {
+            let iface = orch_sched_iface.read().unwrap();
+            let _ = iface.send(SchedulerMessage::Shutdown);
+        }
+        let _ = sched_handle.join();
+        let _ = world_handle.join();
+    });
+
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
-    match server.start(sched_update).await {
+
+    // The server's start_image_maintainer is now handled by the orchestrator,
+    // so we pass a dummy channel that immediately disconnects.
+    let (_dummy_tx, dummy_rx) = crossbeam_channel::bounded::<SovaNotification>(0);
+    drop(_dummy_tx);
+
+    match server.start(dummy_rx).await {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
@@ -235,9 +340,4 @@ async fn main() {
     }
 
     devices.panic_all_midi_outputs();
-
-    let _ = sched_iface.send(SchedulerMessage::Shutdown);
-
-    let _ = sched_handle.join();
-    let _ = world_handle.join();
 }

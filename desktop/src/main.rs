@@ -559,6 +559,13 @@ impl eframe::App for SovaApp {
                         ui.close();
                         self.bridge.send(self.audio.restart_message());
                     }
+                    if ui
+                        .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.bridge.send(ClientMessage::RestartCore);
+                    }
                 });
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.engine_menu"));
@@ -949,6 +956,11 @@ impl SovaApp {
                 }
             }
             Visuals => self.visuals.open = !self.visuals.open,
+            RestartCore => {
+                if self.bridge.is_connected() {
+                    self.bridge.send(ClientMessage::RestartCore);
+                }
+            }
             PlayPause => {
                 if self.bridge.is_connected() {
                     let clock = self.bridge.clock();

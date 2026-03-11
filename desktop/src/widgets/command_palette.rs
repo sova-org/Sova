@@ -19,6 +19,8 @@ pub enum CommandId {
     SampleBrowser,
     Documentation,
     Visuals,
+    // Engine
+    RestartCore,
     // Transport
     PlayPause,
     // File
@@ -82,6 +84,15 @@ fn commands() -> Vec<Command> {
         panel(CommandId::Debug, "cmd.debug", "cmd.debug.desc", format!("{m}+Shift+B")),
         panel(CommandId::Keybindings, "cmd.keybindings", "cmd.keybindings.desc", "F1".into()),
         panel(CommandId::About, "cmd.about", "cmd.about.desc", String::new()),
+        // Engine
+        Command {
+            id: CommandId::RestartCore,
+            label: t!("cmd.restart_core").into(),
+            category: t!("cmd.category.engine").into(),
+            desc: t!("cmd.restart_core.desc").into(),
+            shortcut: None,
+            active: false,
+        },
         // Transport
         Command {
             id: CommandId::PlayPause,

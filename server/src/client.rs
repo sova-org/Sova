@@ -137,6 +137,7 @@ pub enum ClientMessage {
         begin: f64,
     },
     EnableFeedback,
+    RestartCore,
 }
 
 impl ClientMessage {
@@ -909,6 +910,7 @@ mod tests {
                 begin: 0.0,
             },
             ClientMessage::EnableFeedback,
+            ClientMessage::RestartCore,
         ];
 
         for msg in &variants {
