@@ -252,8 +252,6 @@ impl CommandPalette {
             .fixed_pos(screen.min)
             .show(ctx, |ui| {
                 let resp = ui.allocate_response(screen.size(), egui::Sense::click());
-                ui.painter()
-                    .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(120));
                 if resp.clicked() {
                     self.open = false;
                 }
