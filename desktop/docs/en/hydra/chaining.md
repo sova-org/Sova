@@ -23,3 +23,9 @@ osc(60).rotate(0, 0.1)
 ```
 osc(60).rotate(0, 0.1).out(o0)
 ```
+
+A longer chain combining multiple transforms:
+
+```
+noise(10).pixelate(20, 20).colorama(0.1).rotate(0, 0.05).out()
+```

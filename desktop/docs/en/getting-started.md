@@ -1,4 +1,4 @@
-This guide walks through Sova's core workflow. See **About Sova** for context on the project and its design.
+This guide walks through Sova's core workflow: connecting to a server, making your first sound, navigating the grid, and using timing and devices. See [About Sova](about) for context on the project and its design.
 
 ## Connect
 
@@ -39,13 +39,13 @@ Right-click on a frame cell to access context menu actions: insert or remove fra
 
 Each frame displays its duration (in beats), repetition count, and a preview of its code. A progress bar overlays the currently playing frame. A drum pattern in line 1, a bass in line 2, chords in line 3 — all running simultaneously.
 
-See **The Scene** for the full details on navigation and editing.
+See [The Scene](the-scene) for the full details on navigation and editing.
 
 ## Languages
 
 Every frame has its own language. To change it, open the editor and press Cmd+L (Ctrl+L) or click the language name at the top of the editor window. A searchable list appears — select the language you want. The language applies to that frame only; other frames keep their own.
 
-Four languages ship with Sova by default. More can be added — the environment is designed to host new languages without modifying the core. This extensibility is central to Sova's design: the VM, scheduler, and I/O layer are shared infrastructure, and each language is free to explore its own paradigm for musical expression. See **About Sova** for more on this philosophy.
+Four languages ship with Sova by default. More can be added — the environment is designed to host new languages without modifying the core. This extensibility is central to Sova's design: the VM, scheduler, and I/O layer are shared infrastructure, and each language is free to explore its own paradigm for musical expression. See [About Sova](about) for more on this philosophy.
 
 **Cagire** — stack-based, Forth-like. Push values, apply words, emit with `.`. Suited to sound design and quick experimentation.
 
@@ -76,7 +76,7 @@ END
 <s: 'kick'> | [. _ . _]
 ```
 
-See **Languages** for more detail, and click the language tabs (Bob, BaLi, Boinx, Cagire) in the documentation panel for full references and runnable examples.
+See [Languages](languages) for more detail, and click the language tabs (Bob, BaLi, Boinx, Cagire) in the documentation panel for full references and runnable examples.
 
 ## Timing
 
@@ -84,7 +84,7 @@ Each frame has a duration in beats. The sequencer runs the frame's script once p
 
 Inside a frame, you can subdivide time. In Cagire, `at` places sounds at fractional positions within the duration. In Bob, `WAIT` advances the clock explicitly.
 
-The transport bar at the top displays the current beat, tempo, and quantum. Click the tempo value to edit it (range: 20–300 BPM). The animated phase bar shows where you are in the current quantum cycle. See **Timing**.
+The transport bar at the top displays the current beat, tempo, and quantum. Click the tempo value to edit it (range: 20–300 BPM). The animated phase bar shows where you are in the current quantum cycle. See [Timing](timing).
 
 ## Your instruments
 
@@ -96,17 +96,17 @@ Open the Devices panel (Cmd+Shift+I / Ctrl+Shift+I) to see connected devices, ad
 2 dev c4 note 100 vel .
 ```
 
-See **Devices**.
+See [Devices](devices).
 
 ## Playing together
 
 Other musicians connect to your server using your IP address and port. Everyone sees the same scene, edits in real time, and stays in sync via Ableton Link. Use different lines to avoid editing conflicts. The editor shows who else is editing the same frame. Chat is built in.
 
-See **Multiplayer**.
+See [Multiplayer](multiplayer).
 
 ## Visuals
 
-Sova includes a visual scripting engine for real-time graphics. See the **Hydra** tab in the documentation panel.
+Sova includes a visual scripting engine for real-time graphics. See [Hydra](hydra-intro) in the documentation panel.
 
 ## Shortcuts
 

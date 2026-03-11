@@ -49,14 +49,21 @@ control (filters, effects, FM), use Cagire.
 ## Recording
 
 Doux can record its own output into samples that you immediately play back and
-manipulate with effects. Start recording, stop it, and the captured audio
-becomes a named sample available to all scripts in the session.
+manipulate with effects. Four Cagire words handle recording:
+
+- `rec` — toggle recording audio output to a named sample (`"loop1" rec`)
+- `overdub` (alias `dub`) — toggle overdub recording (`"loop1" overdub`)
+- `orec` — toggle recording a single orbit (`"drums" 0 orec`)
+- `odub` — toggle overdub recording a single orbit (`"drums" 0 odub`)
+
+The captured audio becomes a named sample available to all scripts in the
+session.
 
 ## Setup
 
 Doux is enabled by default. When you start the built-in server from the desktop
-app, the audio engine starts automatically and occupies a device slot (check the
-Devices panel to see which one).
+app, the audio engine starts automatically and occupies slot 1. If another
+device was already on slot 1, it gets bumped to slot 2.
 
 1. Open the Audio panel and select your output device.
 2. Confirm the engine is running.

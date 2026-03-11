@@ -20,7 +20,7 @@ The **quantum** sets how many beats make a bar. Default is 4 — standard 4/4.
 The **phase** is your position inside that bar: beat 0, 1, 2, or 3.
 
 This matters for launching lines. In AtQuantum mode, lines wait for the next
-downbeat (phase 0) before starting. See **The Scene** for all execution modes.
+downbeat (phase 0) before starting. See [The Scene](the-scene) for all execution modes.
 
 ## The transport bar
 
@@ -39,7 +39,7 @@ within the time window the frame gives you. See the language tabs for syntax.
 
 Frame duration determines the time window for events. Repetitions subdivide
 that window — the script runs multiple times within the same duration. See
-**The Scene** for frame properties.
+[The Scene](the-scene) for frame properties.
 
 ## Line speed
 
@@ -47,4 +47,4 @@ The speed factor on a line multiplies tempo relative to the global BPM. At 2.0,
 double time. At 0.5, half time. Combine with different quantum values across
 lines for polymetric structures.
 
-See **The Scene** for execution modes that control line synchronization.
+See [The Scene](the-scene) for execution modes that control line synchronization.

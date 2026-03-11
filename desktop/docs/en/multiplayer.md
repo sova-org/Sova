@@ -40,22 +40,15 @@ state.
 
 ## Joining
 
-Open the Server panel. Enter the host address, port, and a username. Click Connect.
-
-Username rules:
-
-- Must not be empty.
-- Must not be "Unknown musician" (reserved).
-- Must be unique in the session. If the name is already taken, the server refuses
-  the connection.
-
-On success, the client receives the full scene, device list, peer list, clock
-state (tempo, beat, quantum), available languages, and audio engine state.
+Open the Server panel. Enter the host address, port, and a username. Click
+Connect. On success, the client receives the full scene, device list, peer list,
+clock state (tempo, beat, quantum), available languages, and audio engine state.
 Transport syncs via Ableton Link — the beat is already locked by the time the
 grid appears.
 
-On failure, the server sends a refusal with a reason (invalid username, name
-taken, unexpected handshake).
+On failure, the server sends a refusal with a reason. Username must not be
+empty, must not be "Unknown musician" (reserved), and must be unique in the
+session.
 
 Reconnecting receives the current scene. No local state is preserved.
 
@@ -66,10 +59,10 @@ Everything scene-related goes through the server:
 - **Scene structure** — lines, frames, durations, repetitions, scripts, scene
   execution mode, prelude
 - **Transport** — play, stop, tempo, quantum
-- **Device assignments** — slot mappings (see **Devices**)
+- **Device assignments** — slot mappings (see [Devices](devices))
 - **Code evaluation** — the server compiles and schedules scripts; compilation
   results (success or error) are sent back per frame
-- **Global variables** — shared across the session (see **Variables**)
+- **Global variables** — shared across the session (see [Variables](variables))
 - **Frame positions** — playback cursor updated at ~30 Hz
 - **Peer presence** — cursor positions and editing indicators (see below)
 - **Chat messages** — text sent through the Chat panel
@@ -82,7 +75,7 @@ happens transparently; no action is needed from the musician.
 
 - Panel layout and editor preferences — local to each client.
 - MIDI and OSC connections — per-machine. Each musician configures their own
-  outputs in the **Devices** panel.
+  outputs in the [Devices](devices) panel.
 - Hydra visual scripts — rendered client-side.
 
 ## Collaborative editing
@@ -123,4 +116,4 @@ Ableton Link keeps the beat synchronized across machines on the same network.
 Tempo changes propagate to all Link-enabled apps, not just Sova clients.
 
 Use the quantum setting to coordinate transitions. A 4-beat quantum lands changes
-on the next bar. An 8-beat quantum provides more breathing room. See **Timing**.
+on the next bar. An 8-beat quantum provides more breathing room. See [Timing](timing).

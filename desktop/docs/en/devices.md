@@ -1,10 +1,10 @@
 # Devices
 
-Sova outputs MIDI and OSC. Notes, control changes, and other messages reach external synthesizers, drum machines, DAWs, or any application that listens. The built-in audio engine (Doux) produces sound without external gear. See **Audio Engine** for synthesis details.
+Sova outputs MIDI and OSC. Notes, control changes, and other messages reach external synthesizers, drum machines, DAWs, or any application that listens. The built-in audio engine (Doux) produces sound without external gear. See [Audio Engine](audio-engine) for synthesis details.
 
 ## Slots
 
-Devices occupy numbered slots, 1 through 16. Events that do not specify a device go to slot 1 by default. Each language has its own syntax for targeting a slot. See **Events** for what your code can send.
+Devices occupy numbered slots, 1 through 16. Events that do not specify a device go to slot 1 by default. Each language has its own syntax for targeting a slot. See [Events](events) for what your code can send.
 
 Slot 0 is the Log device. Events sent there appear in the Log panel. Print statements route there automatically.
 
@@ -14,7 +14,7 @@ Open the Devices panel to see available connections. System MIDI ports appear in
 
 For OSC, create an output by specifying a name, IP address, and port number. Messages are sent as UDP packets. This is how Sova communicates with SuperCollider, Max, Pure Data, and similar environments.
 
-The audio engine (Doux) occupies a slot like any other device. See **Audio Engine** for details.
+The audio engine (Doux) occupies a slot like any other device. See [Audio Engine](audio-engine) for details.
 
 ## MIDI input
 

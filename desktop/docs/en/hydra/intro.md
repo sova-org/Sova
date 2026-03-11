@@ -6,12 +6,14 @@ through code. It is one of the most influential tools in the live coding
 community, used in performances, workshops, and classrooms worldwide. Its source
 code is available on [GitHub](https://github.com/hydra-synth/hydra).
 
+If you already know browser Hydra, read [Differences](hydra-differences) first — it covers what Sova does differently.
+
 Sova implements a subset of Hydra's function vocabulary as a native shader
 engine. The syntax follows Hydra's conventions: sources, geometry transforms,
 color operations, blending, and modulation chain together and end with `.out()`.
 Two notable differences up front: `time`, `beat`, `tempo`, and `phase` are
 available as expression variables (not arrow functions as in browser Hydra), and
-the scripting language is Rhai, not JavaScript. See **Differences** for the full
+the scripting language is Rhai, not JavaScript. See [Differences](hydra-differences) for the full
 list.
 
 ## Opening the editor

@@ -17,3 +17,9 @@ A shape blended over noise:
 ```
 noise(5).mult(shape(4, 0.8), 0.7).out()
 ```
+
+Layering two oscillators with difference:
+
+```
+osc(40, 0.1).diff(osc(80, -0.1).rotate(1.0)).out()
+```

@@ -52,10 +52,16 @@ adjustments faster.
 Read-only values injected by the runtime. Scripts can read them but not write
 them.
 
-The VM provides six environment functions: current tempo as integer, random
-integer, random float, random unsigned integer within a bound, random decimal
-within bounds, and the duration of a specific frame in beats. These are the only
-values available at the VM level.
+The VM provides six environment functions:
+
+- `GetTempo` — current session tempo as integer
+- `RandomInt` — unrestricted random integer
+- `RandomFloat` — random float in [0, 1)
+- `RandomUInt(n)` — random integer in [0, n)
+- `RandomDecInBounds(min, max)` — random decimal in [min, max]
+- `FrameLen(line, frame)` — duration of a specific frame in beats
+
+These are the only values available at the VM level.
 
 Languages extend this set with their own context values. Bob adds tempo, a
 random 0-127 value, loop index, and element. BaLi adds loop index and tempo.

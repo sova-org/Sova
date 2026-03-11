@@ -4,7 +4,7 @@ The scene is your performance session. It holds every track, script, and timing
 configuration. You edit it in real time.
 
 Sova is a step sequencer where each step is defined by code. Step duration is
-not fixed — a step can last a sixteenth note or a full measure (see **Timing**).
+not fixed — a step can last a sixteenth note or a full measure (see [Timing](timing)).
 Scripts can be modified during playback.
 
 ## Structure
@@ -17,7 +17,7 @@ play in sequence. When a frame's duration elapses, the next one starts.
 
 Each frame holds a script and a set of properties:
 
-- **Duration** — how long the frame lasts, in beats (see **Timing**). Default is
+- **Duration** — how long the frame lasts, in beats (see [Timing](timing)). Default is
   1 beat. Fractional values work: 0.25 for a sixteenth note, 4 for a full bar
   at 4/4.
 - **Repetitions** — how many times the script runs within that duration. A frame
@@ -110,19 +110,20 @@ restarting. The scene loops as a single unit.
 ## Saving and loading
 
 Save and load scenes through the scene menu. The file captures lines, frames,
-scripts, **Variables**, and configuration. Connecting to a server loads its
+scripts, [Variables](variables), and configuration. Connecting to a server loads its
 current scene automatically.
 
 ## Workflow tips
 
-- Name your frames (N). A grid of unnamed cells is unreadable during a
-  performance.
-- Duplicate before you modify (Cmd+D). The original stays intact as a fallback.
-- Reorder on the fly (Alt+Up/Down). Shuffle frames mid-performance without
+- **Name your frames** — press N on a selected cell. A grid of unnamed cells is
+  unreadable during a performance.
+- **Duplicate before modifying** — Cmd+D copies the frame. The original stays
+  intact as a fallback.
+- **Reorder on the fly** — Alt+Up/Down moves frames mid-performance without
   stopping playback.
-- Disable frames instead of deleting them. Right-click to toggle. The code stays
-  visible but skipped.
-- Use start/end frame ranges to isolate a section for looping while you build
-  the next one.
-- Keep lines focused. One line per musical role: drums, bass, melody, effects.
-  Easier to mute, isolate, or rearrange.
+- **Disable instead of deleting** — right-click a frame to toggle it off. The
+  code stays visible but is skipped.
+- **Isolate with ranges** — set start/end frame on a line to loop a section
+  while you build the next one.
+- **One role per line** — drums, bass, melody, effects. Easier to mute, isolate,
+  or rearrange.

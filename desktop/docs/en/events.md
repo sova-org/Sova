@@ -54,7 +54,7 @@ These carry no channel — they apply to the device as a whole.
 
 OSC events send UDP packets to SuperCollider, Max/MSP, Pure Data, or any
 OSC-capable application. An OSC event carries an address path and a set of
-arguments. Route it to an OSC device slot. See **Devices** for slot
+arguments. Route it to an OSC device slot. See [Devices](devices) for slot
 configuration.
 
 ## Audio engine events
@@ -68,13 +68,13 @@ Every event carries a device slot and a MIDI channel. The device slot selects
 the output (1–16). The channel selects the MIDI channel within that device.
 Slot 0 is the log console — use it to inspect events without sending them to
 hardware. Device and channel can change mid-script, routing different events to
-different destinations from the same frame. See **Devices** for configuration.
+different destinations from the same frame. See [Devices](devices) for configuration.
 
 ## Chords and sequences
 
 Without explicit timing offsets, all events in a script fire simultaneously.
 This produces chords or layered sounds. To space events in time, use your
-language's timing mechanism. See **Timing** for details.
+language's timing mechanism. See [Timing](timing) for details.
 
 ## Reading MIDI input
 

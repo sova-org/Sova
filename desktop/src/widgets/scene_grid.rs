@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::sync::Arc;
+use std::time::Instant;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use egui::text::LayoutJob;
@@ -67,6 +68,8 @@ pub struct SceneGrid<'a> {
     selection: &'a BTreeSet<(usize, usize)>,
     peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
     peer_cursors: &'a HashMap<String, (usize, usize)>,
+    compilation_flashes: &'a HashMap<(usize, usize), (bool, Instant)>,
+    mutation_flashes: &'a HashMap<(usize, usize), Instant>,
     accent: Color32,
     focused_line: Option<usize>,
     available: Vec2,
@@ -101,6 +104,8 @@ impl<'a> SceneGrid<'a> {
         selection: &'a BTreeSet<(usize, usize)>,
         peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
         peer_cursors: &'a HashMap<String, (usize, usize)>,
+        compilation_flashes: &'a HashMap<(usize, usize), (bool, Instant)>,
+        mutation_flashes: &'a HashMap<(usize, usize), Instant>,
         accent: Color32,
         focused_line: Option<usize>,
         available: Vec2,
@@ -114,6 +119,8 @@ impl<'a> SceneGrid<'a> {
             selection,
             peer_editing,
             peer_cursors,
+            compilation_flashes,
+            mutation_flashes,
             accent,
             focused_line,
             available,
@@ -123,6 +130,30 @@ impl<'a> SceneGrid<'a> {
 
     fn is_expanded(&self, li: usize) -> bool {
         self.focused_line.is_none() || self.focused_line == Some(li)
+    }
+
+    fn paint_flashes(&self, painter: &egui::Painter, rect: Rect, li: usize, fi: usize) {
+        if let Some(t) = self.mutation_flashes.get(&(li, fi)) {
+            let alpha = (1.0 - t.elapsed().as_secs_f32() / 1.2).max(0.0) * 40.0;
+            if alpha > 0.5 {
+                painter.rect_filled(
+                    rect,
+                    0.0,
+                    Color32::from_rgba_unmultiplied(200, 200, 220, alpha as u8),
+                );
+            }
+        }
+        if let Some(&(success, ref t)) = self.compilation_flashes.get(&(li, fi)) {
+            let alpha = (1.0 - t.elapsed().as_secs_f32()).max(0.0) * 60.0;
+            if alpha > 0.5 {
+                let color = if success {
+                    Color32::from_rgba_unmultiplied(80, 200, 80, alpha as u8)
+                } else {
+                    Color32::from_rgba_unmultiplied(200, 80, 80, alpha as u8)
+                };
+                painter.rect_filled(rect, 0.0, color);
+            }
+        }
     }
 
     pub fn show(
@@ -462,6 +493,8 @@ impl<'a> SceneGrid<'a> {
                         painter.rect_filled(row, 0.0, bg);
                     }
 
+                    self.paint_flashes(&painter, row, li, fi);
+
                     // Code preview area
                     if has_preview {
                         let code_area = Rect::from_min_max(
@@ -603,6 +636,8 @@ impl<'a> SceneGrid<'a> {
                         };
                         painter.rect_filled(row, 0.0, bg);
                     }
+
+                    self.paint_flashes(&painter, row, li, fi);
 
                     if is_cursor {
                         painter.rect_stroke(

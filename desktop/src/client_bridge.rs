@@ -96,6 +96,10 @@ pub struct ClientBridge {
     chat_messages: Vec<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
 
+    // Visual flashes for multiplayer liveness
+    pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
+    pub mutation_flashes: HashMap<(usize, usize), Instant>,
+
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
 
@@ -132,6 +136,8 @@ impl ClientBridge {
             peer_cursors: HashMap::new(),
             chat_messages: Vec::new(),
             errors: HashMap::new(),
+            compilation_flashes: HashMap::new(),
+            mutation_flashes: HashMap::new(),
             feedback_engine: None,
             send_tx: None,
             event_rx: None,
@@ -301,6 +307,9 @@ impl ClientBridge {
     pub fn poll(&mut self) {
         let Some(rx) = &self.event_rx else { return };
 
+        self.compilation_flashes.retain(|_, (_, t)| t.elapsed().as_secs_f32() < 1.0);
+        self.mutation_flashes.retain(|_, t| t.elapsed().as_secs_f32() < 1.2);
+
         while let Ok(msg) = rx.try_recv() {
             match msg {
                 ServerMessage::Hello {
@@ -351,11 +360,17 @@ impl ClientBridge {
                 ServerMessage::SceneValue(s) => {
                     self.scene = Some(s);
                     self.errors.clear();
+                    self.compilation_flashes.clear();
+                    self.mutation_flashes.clear();
                 }
                 ServerMessage::AddLine(idx, line) => {
                     if let Some(scene) = &mut self.scene
                         && idx <= scene.lines.len()
                     {
+                        let now = Instant::now();
+                        for fi in 0..line.frames.len() {
+                            self.mutation_flashes.insert((idx, fi), now);
+                        }
                         scene.lines.insert(idx, line);
                     }
                 }
@@ -365,12 +380,14 @@ impl ClientBridge {
                     {
                         scene.lines.remove(idx);
                     }
+                    self.mutation_flashes.retain(|&(li, _), _| li != idx);
                 }
                 ServerMessage::AddFrame(li, fi, frame) => {
                     if let Some(line) = self.scene.as_mut().and_then(|s| s.lines.get_mut(li))
                         && fi <= line.frames.len()
                     {
                         line.frames.insert(fi, frame);
+                        self.mutation_flashes.insert((li, fi), Instant::now());
                     }
                 }
                 ServerMessage::RemoveFrame(li, fi) => {
@@ -380,21 +397,28 @@ impl ClientBridge {
                         line.frames.remove(fi);
                     }
                     self.errors.remove(&(li, fi));
+                    self.mutation_flashes.insert((li, fi), Instant::now());
                 }
                 ServerMessage::FrameValues(items) => {
                     if let Some(scene) = &mut self.scene {
+                        let now = Instant::now();
                         for (li, fi, frame) in items {
                             if let Some(f) =
                                 scene.lines.get_mut(li).and_then(|l| l.frames.get_mut(fi))
                             {
                                 *f = frame;
+                                self.mutation_flashes.insert((li, fi), now);
                             }
                         }
                     }
                 }
                 ServerMessage::LineValues(items) | ServerMessage::LineConfigurations(items) => {
                     if let Some(scene) = &mut self.scene {
+                        let now = Instant::now();
                         for (li, line) in items {
+                            for fi in 0..line.frames.len() {
+                                self.mutation_flashes.insert((li, fi), now);
+                            }
                             if let Some(l) = scene.lines.get_mut(li) {
                                 *l = line;
                             }
@@ -465,6 +489,15 @@ impl ClientBridge {
                 }
                 ServerMessage::CompilationUpdate(li, fi, _id, state) => {
                     self.errors.remove(&(li, fi));
+                    match &state {
+                        CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
+                            self.compilation_flashes.insert((li, fi), (true, Instant::now()));
+                        }
+                        CompilationState::Error(_) => {
+                            self.compilation_flashes.insert((li, fi), (false, Instant::now()));
+                        }
+                        _ => {}
+                    }
                     if let Some(scene) = &mut self.scene {
                         *scene.get_frame_mut(li, fi).compilation_state_mut() = state;
                     }
@@ -523,6 +556,8 @@ impl ClientBridge {
                     self.clock.quantum = snapshot.quantum;
                     self.devices = snapshot.devices;
                     self.errors.clear();
+                    self.compilation_flashes.clear();
+                    self.mutation_flashes.clear();
                     self.positions.clear();
                     self.position_start.clear();
                 }
@@ -554,6 +589,8 @@ impl ClientBridge {
         self.peer_editing.clear();
         self.peer_cursors.clear();
         self.chat_messages.clear();
+        self.compilation_flashes.clear();
+        self.mutation_flashes.clear();
         self.feedback_engine = None;
     }
 
@@ -630,6 +667,14 @@ impl ClientBridge {
 
     pub fn peer_cursors(&self) -> &HashMap<String, (usize, usize)> {
         &self.peer_cursors
+    }
+
+    pub fn compilation_flashes(&self) -> &HashMap<(usize, usize), (bool, Instant)> {
+        &self.compilation_flashes
+    }
+
+    pub fn mutation_flashes(&self) -> &HashMap<(usize, usize), Instant> {
+        &self.mutation_flashes
     }
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {

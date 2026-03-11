@@ -54,6 +54,46 @@ fn hydra_articles() -> &'static [(&'static str, &'static str)] {
 const COLLAPSED_WIDTH: f32 = 24.0;
 const HOVER_DELAY_SECS: f64 = 0.2;
 
+const ARTICLE_SLUGS: &[&str] = &[
+    "about", "getting-started", "the-scene", "timing", "languages",
+    "events", "devices", "variables", "audio-engine", "multiplayer",
+    "hydra-intro", "hydra-chaining", "hydra-sources", "hydra-geometry",
+    "hydra-color", "hydra-blending", "hydra-modulation", "hydra-buffers",
+    "hydra-feedback", "hydra-animation", "hydra-text", "hydra-differences",
+];
+
+fn resolve_article_link(slug: &str) -> Option<DocView> {
+    match slug {
+        "about"              => Some(DocView::GeneralArticle(0)),
+        "getting-started"    => Some(DocView::GeneralArticle(1)),
+        "the-scene"          => Some(DocView::GeneralArticle(2)),
+        "timing"             => Some(DocView::GeneralArticle(3)),
+        "languages"          => Some(DocView::GeneralArticle(4)),
+        "events"             => Some(DocView::GeneralArticle(5)),
+        "devices"            => Some(DocView::GeneralArticle(6)),
+        "variables"          => Some(DocView::GeneralArticle(7)),
+        "audio-engine"       => Some(DocView::GeneralArticle(8)),
+        "multiplayer"        => Some(DocView::GeneralArticle(9)),
+        "hydra-intro"        => Some(DocView::HydraArticle(0)),
+        "hydra-chaining"     => Some(DocView::HydraArticle(1)),
+        "hydra-sources"      => Some(DocView::HydraArticle(2)),
+        "hydra-geometry"     => Some(DocView::HydraArticle(3)),
+        "hydra-color"        => Some(DocView::HydraArticle(4)),
+        "hydra-blending"     => Some(DocView::HydraArticle(5)),
+        "hydra-modulation"   => Some(DocView::HydraArticle(6)),
+        "hydra-buffers"      => Some(DocView::HydraArticle(7)),
+        "hydra-feedback"     => Some(DocView::HydraArticle(8)),
+        "hydra-animation"    => Some(DocView::HydraArticle(9)),
+        "hydra-text"         => Some(DocView::HydraArticle(10)),
+        "hydra-differences"  => Some(DocView::HydraArticle(11)),
+        _ => None,
+    }
+}
+
+fn find_clicked_hook(cache: &CommonMarkCache) -> Option<String> {
+    cache.link_hooks().iter().find_map(|(k, v)| if *v { Some(k.clone()) } else { None })
+}
+
 #[derive(Clone, PartialEq)]
 enum DocView {
     GeneralArticle(usize),
@@ -80,13 +120,17 @@ pub struct DocPanel {
 impl DocPanel {
 
     pub fn new(settings: DocSettings) -> Self {
+        let mut md_cache = CommonMarkCache::default();
+        for slug in ARTICLE_SLUGS {
+            md_cache.add_link_hook(*slug);
+        }
         Self {
             settings,
             hover_expanded: false,
             hover_timer: None,
             selected_tab: 0,
             search: String::new(),
-            md_cache: CommonMarkCache::default(),
+            md_cache,
             view: None,
             example_output: None,
             edited_example: String::new(),
@@ -333,6 +377,8 @@ impl DocPanel {
                 });
             });
 
+        let mut nav_target: Option<String> = None;
+
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: 16, top: 8, bottom: 8 }))
             .show_inside(ui, |ui| {
@@ -342,16 +388,30 @@ impl DocPanel {
                 self.scroll_to_top = false;
             }
             scroll.show(ui, |ui| {
-                if selected == 0 {
-                    self.show_general_content(ui);
+                nav_target = if selected == 0 {
+                    self.show_general_content(ui)
                 } else if selected == hydra_tab {
-                    self.show_hydra_content(ui, editor_settings);
+                    self.show_hydra_content(ui, editor_settings)
                 } else {
                     let lang = &langs[selected - 1];
-                    self.show_lang_content(ui, &lang.name, &lang.documentation, bridge, editor_settings);
-                }
+                    self.show_lang_content(ui, &lang.name, &lang.documentation, bridge, editor_settings)
+                };
             });
         });
+
+        if let Some(slug) = nav_target {
+            if let Some(view) = resolve_article_link(&slug) {
+                let tab = match &view {
+                    DocView::GeneralArticle(_) => 0,
+                    DocView::HydraArticle(_) => hydra_tab,
+                    _ => self.selected_tab,
+                };
+                self.selected_tab = tab;
+                self.set_view(view);
+                self.example_output = None;
+                self.edited_example.clear();
+            }
+        }
     }
 
     fn show_general_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
@@ -384,7 +444,7 @@ impl DocPanel {
         }
     }
 
-    fn show_general_content(&mut self, ui: &mut egui::Ui) {
+    fn show_general_content(&mut self, ui: &mut egui::Ui) -> Option<String> {
         let articles = general_articles();
         match &self.view {
             Some(DocView::GeneralArticle(idx)) => {
@@ -406,6 +466,7 @@ impl DocPanel {
                 }
             }
         }
+        find_clicked_hook(&self.md_cache)
     }
 
     fn show_hydra_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
@@ -437,7 +498,7 @@ impl DocPanel {
         }
     }
 
-    fn show_hydra_content(&mut self, ui: &mut egui::Ui, editor_settings: &EditorSettings) {
+    fn show_hydra_content(&mut self, ui: &mut egui::Ui, editor_settings: &EditorSettings) -> Option<String> {
         let articles = hydra_articles();
         let idx = match &self.view {
             Some(DocView::HydraArticle(i)) => *i,
@@ -453,7 +514,9 @@ impl DocPanel {
                 content,
                 self.hydra_syntax.as_ref(),
                 &theme,
-            );
+            )
+        } else {
+            None
         }
     }
 
@@ -639,15 +702,16 @@ impl DocPanel {
         doc: &LanguageDocumentation,
         bridge: &ClientBridge,
         editor_settings: &EditorSettings,
-    ) {
+    ) -> Option<String> {
         let syntax = bridge.syntax_map.get(lang);
+        let mut clicked_slug: Option<String> = None;
         match &self.view {
             Some(DocView::LangArticle(idx)) => {
                 if let Some((title, content)) = doc.articles.get(*idx) {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    show_highlighted_markdown(
+                    clicked_slug = show_highlighted_markdown(
                         ui,
                         &mut self.md_cache,
                         content,
@@ -697,7 +761,7 @@ impl DocPanel {
                     // Description
                     {
                         let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
-                        show_highlighted_markdown(
+                        clicked_slug = show_highlighted_markdown(
                             ui,
                             &mut self.md_cache,
                             &entry_description,
@@ -813,7 +877,7 @@ impl DocPanel {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    show_highlighted_markdown(
+                    clicked_slug = show_highlighted_markdown(
                         ui,
                         &mut self.md_cache,
                         content,
@@ -828,6 +892,7 @@ impl DocPanel {
             }
             _ => {}
         }
+        clicked_slug
     }
 
     fn show_example_editor(
@@ -925,17 +990,19 @@ fn element_label(elem: &LanguageElement) -> String {
 /// Render markdown with syntax-highlighted code blocks.
 /// Splits on ``` fences, renders prose via CommonMarkViewer and code blocks
 /// as syntax-highlighted labels in a dark frame.
+/// Returns the slug of the first clicked cross-reference link, if any.
 fn show_highlighted_markdown(
     ui: &mut egui::Ui,
     cache: &mut CommonMarkCache,
     md: &str,
     syntax: Option<&CompiledSyntax>,
     theme: &SyntaxTheme,
-) {
+) -> Option<String> {
     let font_id = egui::FontId::monospace(13.0);
     let text_color = ui.visuals().text_color();
     let bg = ui.visuals().extreme_bg_color;
 
+    let mut clicked_link: Option<String> = None;
     let mut rest = md;
     let mut section_id = 0u32;
     while let Some(fence_start) = rest.find("```") {
@@ -945,6 +1012,9 @@ fn show_highlighted_markdown(
                 CommonMarkViewer::new().show(ui, cache, prose);
             });
             section_id += 1;
+            if clicked_link.is_none() {
+                clicked_link = find_clicked_hook(cache);
+            }
         }
 
         // Skip the opening ``` and optional language tag line
@@ -1000,7 +1070,12 @@ fn show_highlighted_markdown(
         ui.push_id(section_id, |ui| {
             CommonMarkViewer::new().show(ui, cache, rest);
         });
+        if clicked_link.is_none() {
+            clicked_link = find_clicked_hook(cache);
+        }
     }
+
+    clicked_link
 }
 
 fn build_highlighted_job(
