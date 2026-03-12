@@ -2,7 +2,7 @@ use std::{cell::LazyCell, collections::{BTreeMap, BTreeSet}, fmt::Display};
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem, funcs::ItemFunc};
 use sova_core::{
-    clock::TimeSpan, log_warn, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::Variable}
+    clock::TimeSpan, error::SovaError, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::Variable}
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -140,7 +140,9 @@ pub fn execute_boinx_macro(
     if let Some(func) = MACROS.get(name) {
         func.evaluate(ctx, Vec::new())
     } else {
-        log_warn!("Boinx macro '{name}' does not exist !");
+        ctx.errors.throw(SovaError::from(ctx).message(
+            format!("Boinx macro '{name}' does not exist !")
+        ));
         BoinxItem::Mute
     }
 }
@@ -174,7 +176,7 @@ impl BoinxIdent {
             return BoinxItem::Str(self.0.clone());
         }
         let obj = ctx.evaluate(&var);
-        let compo = BoinxCompo::from(obj);
+        let mut compo = BoinxCompo::from(obj);
         forbidden.insert(self.clone());
         let res = compo.evaluate_vars(ctx, forbidden).flatten();
         forbidden.remove(self);

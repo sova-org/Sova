@@ -3,7 +3,7 @@ use std::{cell::LazyCell, collections::{BTreeMap, HashMap}};
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, log_warn, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
+    clock::TimeSpan, error::SovaError, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -70,7 +70,9 @@ pub fn audio_rate_modulation_string(
             (start, end, period)
         }
         _ => {
-            log_warn!("Too many parameters for audio-rate modulation function ! Ignoring");
+            ctx.errors.throw(SovaError::from(ctx).message(
+                "Too many parameters for audio-rate modulation function ! Ignoring"
+            ));
             (0.0, 1.0, default_period)
         }
     };
@@ -146,6 +148,9 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     funcs.insert("randrange".to_owned(), ItemFunc::define(
         "Samples a random float in the range given",
         |ctx, mut args| {
+            if args.len() > 2 { 
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'randrange' function, taking only two last !"));
+            }
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
@@ -164,6 +169,9 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     funcs.insert("irandrange".to_owned(), ItemFunc::define(
         "Samples a random int in the range given",
         |ctx, mut args| {
+            if args.len() > 2 { 
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'irandrange' function, taking only two last !"));
+            }
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
@@ -183,7 +191,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Returns the first argument with probability 0.5 (or using second argument as the probability), else returns a mute",
         |ctx, mut args| {
             if args.len() > 2 { 
-                log_warn!("Too many arguments for 'maybe' function, taking only two last !");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'maybe' function, taking only two last !"));
             }
             let prob = if args.len() > 1 { 
                 VariableValue::from(args.pop().unwrap()).as_float(ctx)
@@ -200,15 +208,15 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     ));
     funcs.insert("after".to_owned(), ItemFunc::define(
         "Generates a composable sequence with a placeholder after specified duration", 
-        |_, mut args| {
+        |ctx, mut args| {
             if args.len() > 1 {
-                log_warn!("Too many arguments for 'after' function, taking only last !");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'after' function, taking only last !"));
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
-                    log_warn!("Argument for 'after' is not a duration !");
+                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'after' is not a duration !"));
                     TimeSpan::default()
                 }
             };
@@ -219,13 +227,13 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Converts specified duration into seconds", 
         |ctx, mut args| {
             if args.len() > 1 {
-                log_warn!("Too many arguments for 'secs' function ! Taking only last !");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'secs' function ! Taking only last !"));
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
-                    log_warn!("Argument for 'secs' is not a duration !");
+                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'secs' is not a duration !"));
                     TimeSpan::default()
                 }
             };
@@ -236,7 +244,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Converts specified duration into seconds", 
         |ctx, mut args| {
             if args.len() > 1 {
-                log_warn!("Too many arguments for 'secs' function ! Taking only last !");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'secs' function ! Taking only last !"));
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => {
@@ -247,7 +255,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 Number(f) => TimeSpan::Frames(f),
                 Note(i) => TimeSpan::Frames(i as f64),
                 _ => {
-                    log_warn!("Argument for 'frames' is not a number !");
+                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'frames' is not a number !"));
                     TimeSpan::Frames(1.0)
                 }
             };
@@ -256,15 +264,15 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     ));
     funcs.insert("len".to_owned(), ItemFunc::define(
         "Impose last argument as a duration for others", 
-        |_, mut args| {
+        |ctx, mut args| {
             if args.len() <= 1 {
-                log_warn!("Too few arguments for 'len' ! Ignoring");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too few arguments for 'len' ! Ignoring"));
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
-                    log_warn!("Argument for 'len' is not a duration !");
+                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'len' is not a duration !"));
                     TimeSpan::default()
                 }
             };
@@ -273,15 +281,16 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     ));
     funcs.insert("at".to_owned(), ItemFunc::define(
         "Extract the n-th element of the arguments (or container), where n is the last argument", 
-        |_, mut args| {
+        |ctx, mut args| {
             if args.len() <= 1 {
-                log_warn!("Too few arguments for 'at' ! Ignoring");
+                ctx.errors.throw(SovaError::from(ctx).message("Too few arguments for 'at' ! Ignoring"));
+                return Mute;
             }
             let index = match args.pop().unwrap() {
                 Note(i) => i as usize,
                 Number(f) => f as usize,
                 _ => {
-                    log_warn!("Argument for 'at' is not an index !");
+                    ctx.errors.throw(SovaError::from(ctx).message("Argument for 'at' is not an index !"));
                     0
                 }
             };
@@ -293,7 +302,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Explode a map such that each value is a primitive type", 
         |ctx, mut args| {
             if args.len() > 1 {
-                log_warn!("Too many arguments for 'ex' function ! Taking last");
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'ex' function ! Taking last"));
             }
             match args.pop().unwrap() {
                 ArgMap(m) => explode_map(ctx, m),
@@ -313,7 +322,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Generates an empty sequence of N elements, where N is the argument", 
         |ctx, mut args| {
             if args.len() > 1 {
-                log_warn!("Too many arguments for 'seq' function ! Taking last")
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'seq' function ! Taking last"))
             }
             let value = args.pop().unwrap();
             let size = VariableValue::from(value).yield_integer(ctx) as usize;
@@ -380,6 +389,64 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             Str(audio_rate_modulation_string(ctx, args, "d", "?"))
         } 
     ));
+    funcs.insert("euclid".to_owned(), ItemFunc::define(
+        "Euclidian rhythm (k,n)",
+        |ctx, args| {
+            let mut args = unpack_if_one(args);
+            if args.len() == 1 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Not enough arguments for 'euclid' ! Ignoring"));
+                return Mute;
+            }
+            if args.len() > 2 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'euclid', taking two last !"));
+            }
+            let n = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize;
+            let k = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize;
+            let k = std::cmp::min(k, n);
+
+            if n % k == 0 {
+                let mut res = vec![Mute ; n];
+                for i in 0..k {
+                    res[i * (n / k)] = Placeholder;
+                }
+                return Sequence(res);
+            }
+
+            let init_rem = std::cmp::min(n - k, k);
+
+            let mut lines = vec![vec![Mute ; n - init_rem], vec![Mute ; init_rem]];
+            for i in 0..k {
+                lines[0][i] = Placeholder;
+            }
+            let mut last_line_len = lines.last().unwrap().len();
+            let mut rem = lines[0].len() % last_line_len;
+            while rem > 1 {
+                let n_lines = lines.len();
+                for l_i in 0..n_lines {
+                    let line_len =  lines[l_i].len();
+                    let rem_line = line_len % last_line_len;
+                    if rem_line > 0 {
+                        let end = lines[l_i].split_off(line_len - rem_line);
+                        lines.push(end);
+                    }
+                }
+                last_line_len = lines.last().unwrap().len();
+                rem = lines[0].len() % last_line_len;
+            }
+            let mut vec = vec![Mute ; n];
+            let mut line = 0;
+            let mut col = 0;
+            for i in 0..n {
+                vec[i] = std::mem::take(&mut lines[line][col]);
+                line += 1;
+                if line >= lines.len() || lines[line].len() <= col {
+                    line = 0;
+                    col += 1;
+                }
+            }
+            Sequence(vec)
+        }
+    ));
     funcs
 });
 
@@ -391,7 +458,9 @@ pub fn execute_boinx_function(
     if let Some(func) = FUNCS.get(name) {
         func.evaluate(ctx, args)
     } else {
-        log_warn!("Boinx function '{name}' does not exist !");
+        ctx.errors.throw(SovaError::from(ctx).message(
+            format!("Boinx function '{name}' does not exist !")
+        ));
         BoinxItem::Mute
     }
 }

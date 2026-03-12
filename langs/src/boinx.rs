@@ -70,13 +70,13 @@ impl BoinxLine {
 
         match item {
             BoinxItem::Note(n) => {
-                let channel = channel.yield_integer(ctx) as u64;
-                Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
+                let channel = channel.yield_integer(ctx).to_string();
+                Some(ConcreteEvent::Generic(VariableValue::from(*n), dur, channel, device))
             }
             BoinxItem::ArgMap(map) => {
                 let map : HashMap<String, VariableValue> = 
                     map.iter().filter_map(|(key, value)| {
-                        if *value == BoinxItem::Mute {
+                        if !value.is_primitive() {
                             None
                         } else {
                             Some((key.clone(), VariableValue::from(value.clone())))
@@ -90,14 +90,12 @@ impl BoinxLine {
                 Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
             }
             BoinxItem::Str(s) => {
-                let mut to_send = HashMap::new();
-                to_send.insert("sound".to_owned(), s.clone().into());
                 let addr = if channel.is_str() {
                     channel.clone().as_str(ctx)
                 } else {
                     String::new()
                 };
-                Some(ConcreteEvent::Generic(to_send.into(), dur, addr, device))
+                Some(ConcreteEvent::Generic(s.clone().into(), dur, addr, device))
             }
             _ => None,
         }

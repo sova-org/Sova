@@ -37,7 +37,7 @@ pub enum BoinxItem {
     Str(String),
     ArgMap(HashMap<String, BoinxItem>),
     Escape(Box<BoinxItem>),
-    Func(String, Vec<BoinxItem>),
+    Func(String, Vec<BoinxItem>, Option<Box<BoinxItem>>),
     Weighted(Box<BoinxItem>, i64),
 }
 
@@ -97,7 +97,10 @@ impl BoinxItem {
                 let i2 = i2.evaluate(ctx);
                 arithmetic_op(ctx, i1, *op, i2)
             }
-            Self::Func(name, args) => {
+            Self::Func(name, args, option) => {
+                if let Some(item) = option {
+                    return item.evaluate(ctx);
+                }
                 let args = args.iter().map(|i| i.evaluate(ctx)).collect();
                 execute_boinx_function(ctx, &name, args)
             }
@@ -106,7 +109,7 @@ impl BoinxItem {
     }
 
     pub fn evaluate_vars(
-        &self,
+        &mut self,
         ctx: &mut EvaluationContext,
         forbidden: &mut BTreeSet<BoinxIdent>,
     ) -> BoinxItem {
@@ -125,15 +128,13 @@ impl BoinxItem {
             }
             Self::Sequence(items) => Self::Sequence(
                 items
-                    .iter()
-                    .cloned()
+                    .iter_mut()
                     .map(|i| i.evaluate_vars(ctx, forbidden))
                     .collect(),
             ),
             Self::Simultaneous(items) => Self::Simultaneous(
                 items
-                    .iter()
-                    .cloned()
+                    .iter_mut()
                     .map(|i| i.evaluate_vars(ctx, forbidden))
                     .collect(),
             ),
@@ -149,15 +150,20 @@ impl BoinxItem {
                 *op,
                 Box::new(i2.evaluate_vars(ctx, forbidden)),
             ),
-            Self::Func(name, args) => {
+            Self::Func(name, args, option) => {
                 let args = args
-                    .iter()
+                    .iter_mut()
                     .map(|i| i.evaluate_vars(ctx, forbidden))
                     .collect();
                 if name.starts_with("_") {
-                    execute_boinx_function(ctx, &name[1..], args)
+                    if option.is_some() {
+                        return *option.clone().unwrap();
+                    }
+                    let res = execute_boinx_function(ctx, &name[1..], args);
+                    *option = Some(Box::new(res.clone()));
+                    return res
                 } else {
-                    Self::Func(name.clone(), args)
+                    Self::Func(name.clone(), args, None)
                 }
             }
             _ => self.clone(),
@@ -177,7 +183,7 @@ impl BoinxItem {
             }
             Self::ArgMap(map) => map.values().any(BoinxItem::has_vars),
             Self::Arithmetic(i1, _, i2) => i1.has_vars() || i2.has_vars(),
-            Self::Func(name, items) => {
+            Self::Func(name, items, _) => {
                 name.starts_with("_") || items.iter().any(BoinxItem::has_vars)
             }
             _ => false,
@@ -365,8 +371,9 @@ impl BoinxItem {
                         durations[i]
                     };
                     if rem_share > 0 {
-                        dur += item.weight();
-                        rem_share -= item.weight();
+                        let add_part = cmp::min(rem_share, item.weight());
+                        dur += add_part;
+                        rem_share -= add_part;
                     }
                     slices.push(dur);
                 }
@@ -378,7 +385,13 @@ impl BoinxItem {
 
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         match self {
-            Self::Sequence(v) | Self::Simultaneous(v) | Self::Func(_, v) => {
+            Self::Sequence(v) | Self::Simultaneous(v) => {
+                Box::new(v.iter_mut().map(|i| i.slots()).flatten())
+            }
+            Self::Func(_, v, cache) => {
+                if let Some(item) = cache {
+                    return item.slots();
+                }
                 Box::new(v.iter_mut().map(|i| i.slots()).flatten())
             }
             Self::Duration(_) | Self::Number(_) | Self::Placeholder | Self::Str(_) => {
@@ -471,8 +484,18 @@ impl BoinxItem {
             BoinxItem::Str(_) => 16,
             BoinxItem::ArgMap(_) => 17,
             BoinxItem::Escape(_) => 18,
-            BoinxItem::Func(_, _) => 19,
+            BoinxItem::Func(_, _, _) => 19,
             BoinxItem::Weighted(_, _) => 20,
+        }
+    }
+
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            BoinxItem::Note(_) 
+            | BoinxItem::Number(_) 
+            | BoinxItem::Str(_)
+            | BoinxItem::Duration(_) => true,
+            _ => false
         }
     }
 
@@ -547,9 +570,12 @@ impl From<BoinxItem> for VariableValue {
                 }
                 value_map.into()
             }
-            BoinxItem::Func(name, args) => {
+            BoinxItem::Func(name, args, cache) => {
                 map.insert("_name".to_owned(), name.into());
                 map.insert("_len".to_owned(), (args.len() as i64).into());
+                if let Some(item) = cache {
+                    map.insert("_cache".to_owned(), (*item).into());
+                }
                 for (i, item) in args.into_iter().enumerate() {
                     map.insert(i.to_string(), item.into());
                 }
@@ -671,6 +697,9 @@ impl From<VariableValue> for BoinxItem {
                         let Some(VariableValue::Integer(len)) = map.remove("_len") else {
                             return BoinxItem::Mute;
                         };
+                        let cache = map.remove("_cache").map(|value| {
+                            Box::new(BoinxItem::from(value))
+                        });
                         let mut vec: Vec<BoinxItem> = Vec::with_capacity(len as usize);
                         for i in 0..len {
                             let index = i.to_string();
@@ -679,7 +708,7 @@ impl From<VariableValue> for BoinxItem {
                             };
                             vec.push(item.into());
                         }
-                        BoinxItem::Func(name, vec)
+                        BoinxItem::Func(name, vec, cache)
                     }
                     20 => {
                         let Some(item) = map.remove("_item") else {

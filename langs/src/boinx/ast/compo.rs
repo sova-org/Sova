@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::boinx::ast::{BoinxIdent, BoinxItem};
-use sova_core::vm::{EvaluationContext, variable::VariableValue};
+use sova_core::{vm::{EvaluationContext, variable::VariableValue}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxCompoOp {
@@ -54,7 +54,7 @@ impl BoinxCompo {
 
     /// Evaluates all identitifiers in the compo
     pub fn evaluate_vars(
-        &self,
+        &mut self,
         ctx: &mut EvaluationContext,
         forbidden: &mut BTreeSet<BoinxIdent>,
     ) -> BoinxCompo {
@@ -62,7 +62,7 @@ impl BoinxCompo {
             item: self.item.evaluate_vars(ctx, forbidden),
             next: None,
         };
-        if let Some((op, next)) = &self.next {
+        if let Some((op, next)) = &mut self.next {
             compo.next = Some((*op, Box::new(next.evaluate_vars(ctx, forbidden))));
         };
         compo
@@ -156,7 +156,7 @@ impl BoinxCompo {
     }
 
     /// Evaluates the composition, then flattens it into a single item
-    pub fn yield_compiled(&self, ctx: &mut EvaluationContext) -> BoinxItem {
+    pub fn yield_compiled(&mut self, ctx: &mut EvaluationContext) -> BoinxItem {
         let mut forbidden = BTreeSet::new();
         let flat = self.evaluate_vars(ctx, &mut forbidden).flatten();
         flat.evaluate(ctx)

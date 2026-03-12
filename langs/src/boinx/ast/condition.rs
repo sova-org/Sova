@@ -73,7 +73,7 @@ impl BoinxCondition {
     }
 
     pub fn evaluate_vars(
-        &self,
+        &mut self,
         ctx: &mut EvaluationContext,
         forbidden: &mut BTreeSet<BoinxIdent>,
     ) -> BoinxCondition {
