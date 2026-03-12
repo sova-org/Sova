@@ -3,6 +3,8 @@ mod hydra;
 mod renderer;
 mod shader;
 mod syntax;
+mod text;
+pub use syntax::syntax as hydra_syntax;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -216,6 +218,9 @@ impl VisualsEngine {
         };
         match hydra::eval(code) {
             Ok(result) => {
+                if let Some(ref td) = result.text_data {
+                    renderer.upload_text(td);
+                }
                 renderer.compile_buffers(&result.shaders, result.render_mode);
                 self.error = None;
             }
@@ -223,7 +228,7 @@ impl VisualsEngine {
         }
     }
 
-    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool) {
+    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool, beat: f32, tempo: f32, phase: f32) {
         if !enabled {
             return;
         }
@@ -238,6 +243,15 @@ impl VisualsEngine {
         let res_w = (rect.width() * ppp) as u32;
         let res_h = (rect.height() * ppp) as u32;
 
+        let mouse = ctx.input(|i| {
+            i.pointer.hover_pos().map_or([0.0, 0.0], |pos| {
+                [
+                    ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0),
+                    (1.0 - (pos.y - rect.min.y) / rect.height()).clamp(0.0, 1.0),
+                ]
+            })
+        });
+
         renderer.ensure_resolution(res_w, res_h);
 
         let snap = renderer.snapshot();
@@ -245,7 +259,7 @@ impl VisualsEngine {
         let resolution = [res_w as f32, res_h as f32];
 
         let cb = eframe::egui_glow::CallbackFn::new(move |_info, painter| {
-            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution);
+            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution, mouse, beat, tempo, phase);
         });
 
         let painter = ctx.layer_painter(egui::LayerId::background());

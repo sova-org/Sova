@@ -1,84 +1,119 @@
 # Multiplayer
 
-Connect to a server, see where other players are in the grid, edit code
-simultaneously, chat, perform. Sova sessions are multiplayer by default.
+Sova sessions are multiplayer. Multiple musicians connect to a shared server, edit
+the same scene, and stay synchronized through Ableton Link. The server owns all
+state; clients send edits and receive updates.
 
 ## Hosting a session
 
 Two options.
 
-The built-in server: open the Server panel, click Start. The app runs a server
-internally and connects to it. Other players connect to your IP and port.
+**Embedded server.** Click Start Server on the splash screen (or in the Server
+panel). The desktop app runs a server locally. You then connect to it like any
+other server — enter the address, port, username, and click Connect. Other
+musicians on the network do the same.
 
-The standalone server: run `sova-server` from the command line.
+**Standalone server.** Run `sova-server` from the command line. Same server, no GUI.
+Better suited to dedicated hosting or headless machines.
 
 ```
 sova-server -p 8080
 ```
 
-This is better for dedicated hosting or headless machines. Same server, no GUI.
+CLI flags:
 
-The server owns the scene, the clock, and all device routing. Clients are thin:
-they send edits and receive state.
+- `-i` / `--ip` — bind address (default `0.0.0.0`)
+- `-p` / `--port` — listen port (default `8080`)
+- `-t` / `--tempo` — initial tempo in BPM (default `120`)
+- `-q` / `--quantum` — initial quantum in beats (default `4`)
+- `--no-audio` — disable the Doux audio engine
+- `--audio-device` — output device name or index (system default if omitted)
+- `--audio-input-device` — input device name or index (system default if omitted)
+- `--audio-channels` — number of output channels (default `2`)
+- `--audio-buffer-size` — buffer size in samples
+- `--sample-path` — sample directory (repeatable)
+- `--max-voices` — maximum polyphony (default `32`)
+
+The server owns the scene, the clock (Ableton Link), device routing, the scheduler
+thread, and the world thread. Clients are lightweight: they send edits and receive
+state.
 
 ## Joining
 
 Open the Server panel. Enter the host address, port, and a username. Click
-Connect.
+Connect. On success, the client receives the full scene, device list, peer list,
+clock state (tempo, beat, quantum), available languages, and audio engine state.
+Transport syncs via Ableton Link — the beat is already locked by the time the
+grid appears.
 
-You receive the full scene, device map, and clock state immediately. Your
-transport syncs via Ableton Link -- the beat is already locked by the time you
-see the grid.
+On failure, the server sends a refusal with a reason. Username must not be
+empty, must not be "Unknown musician" (reserved), and must be unique in the
+session.
 
-Usernames must be unique in the session. If yours is taken, pick another.
+Reconnecting receives the current scene. No local state is preserved.
 
 ## What syncs
 
 Everything scene-related goes through the server:
 
-- Scene structure: lines, frames, durations, repetitions, scripts
-- Transport state: play, stop, tempo, quantum
-- Device assignments: which slot maps to which output
-- Code evaluation: when you evaluate a frame, the server compiles and schedules it
+- **Scene structure** — lines, frames, durations, repetitions, scripts, scene
+  execution mode, prelude
+- **Transport** — play, stop, tempo, quantum
+- **Device assignments** — slot mappings (see [Devices](devices))
+- **Code evaluation** — the server compiles and schedules scripts; compilation
+  results (success or error) are sent back per frame
+- **Global variables** — shared across the session (see [Variables](variables))
+- **Frame positions** — playback cursor updated at ~30 Hz
+- **Peer presence** — cursor positions and editing indicators (see below)
+- **Chat messages** — text sent through the Chat panel
 
-When you disconnect and reconnect, you get the current scene. There is no local
-state memory.
+If a client falls behind (its message buffer fills up), the server automatically
+sends a full snapshot — scene, clock, and devices — to resynchronize it. This
+happens transparently; no action is needed from the musician.
 
-## What doesn't sync
+## What does not sync
 
-- Your panel layout and editor preferences stay local
-- MIDI and OSC device connections are per-machine (each player configures their
-  own outputs in the **Devices** panel)
-- Visual scripts (Hydra) run client-side
+- Panel layout and editor preferences — local to each client.
+- MIDI and OSC connections — per-machine. Each musician configures their own
+  outputs in the [Devices](devices) panel.
+- Hydra visual scripts — rendered client-side.
 
-## Peer editing
+## Collaborative editing
 
-Each player's position in the grid is visible to everyone. You see colored
-indicators on the cells other players are viewing or editing.
+Three types of peer awareness in the grid:
 
-When someone opens a frame's editor, the grid shows it. This gives you a natural
-sense of who is working where.
+1. **Cursor position.** A colored border appears around the frame cell where
+   another musician's cursor sits, with their name shown as a tag.
+2. **Editing indicator.** Colored dots in the top-right corner of frame cells
+   show who is currently editing that frame (up to 3 dots per cell).
+3. **Peer list.** Updated on join and leave. Visible in the Server panel.
 
-There is no locking. Two players can edit different frames at the same time
-without conflict. If two players edit the same frame, the last evaluation wins.
+Colors are deterministic per username — the same color appears in the grid, the
+editor, and the chat.
+
+No locking. Two musicians editing different frames: no conflict. Same frame: the
+last evaluation wins.
+
+When a peer disconnects, their cursor and editing indicators are cleaned up
+automatically.
 
 ## Chat
 
-The Chat panel sends text messages to everyone in the session. Good for
-coordinating transitions mid-performance: "dropping bass next quantum",
-"switching to noise on line 3".
+The Chat panel sends text messages to all session members. System messages are
+generated when a musician joins or leaves. Message history is capped at 500 on
+the client. The panel supports a detached (pop-out) window.
 
-## Jamming tips
+## Tips for collective play
 
-Claim your own lines. If you stay on lines 1-2 and your partner stays on 3-4,
-you avoid stepping on each other's code.
+Claim your own lines. If you stay on lines 1–2 and your partner on 3–4, you
+avoid editing conflicts.
 
-Agree on device slots before you start. Slot 1 is synth, slot 3 is drums,
-whatever works. If someone reassigns a shared slot mid-set, everything routed
-there changes.
+Agree on device slots before you start. Slot 1 for the synth, slot 3 for drums —
+whatever suits your setup. If a musician reassigns a shared slot mid-performance,
+everything routed there changes.
 
-Ableton Link keeps the beat tight across machines on the same network. Tempo
-changes propagate to all Link-enabled apps, not just Sova clients.
+Ableton Link keeps the beat synchronized across machines on the same network.
+Tempo changes propagate to all Link-enabled apps, not just Sova clients.
 
-Use the quantum setting to coordinate transitions. A 4-beat quantum means
-changes land on the next bar. An 8-beat quantum gives you more breathing room.
+Use the quantum setting to coordinate transitions. A 4-beat quantum lands changes
+on the next bar. An 8-beat quantum provides more breathing room. See [Timing](timing).

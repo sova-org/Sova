@@ -3,8 +3,10 @@ use super::glsl;
 const VERTEX_SHADER: &str = "\
 #version 330 core
 layout(location = 0) in vec2 a_position;
+out vec2 v_uv;
 void main() {
   gl_Position = vec4(a_position, 0.0, 1.0);
+  v_uv = a_position * 0.5 + 0.5;
 }";
 
 const FRAGMENT_PREAMBLE: &str = "\
@@ -13,10 +15,14 @@ precision highp float;
 uniform float iTime;
 uniform vec2 iResolution;
 uniform vec2 iMouse;
+uniform float iBeat;
+uniform float iTempo;
+uniform float iPhase;
 uniform sampler2D iBuffer0;
 uniform sampler2D iBuffer1;
 uniform sampler2D iBuffer2;
 uniform sampler2D iBuffer3;
+uniform sampler2D iText0;
 out vec4 fragColor;
 ";
 
@@ -50,9 +56,14 @@ pub fn fragment_source(user_code: &str) -> String {
 }
 
 pub fn display_fragment_source() -> String {
-    format!(
-        "{preamble}\nvoid mainImage(out vec4 c, in vec2 st) {{ c = texture(iBuffer0, st); }}\n{main}",
-        preamble = FRAGMENT_PREAMBLE,
-        main = FRAGMENT_MAIN_WRAP,
-    )
+    "\
+#version 330 core
+precision highp float;
+uniform sampler2D iBuffer0;
+in vec2 v_uv;
+out vec4 fragColor;
+void main() {
+  fragColor = texture(iBuffer0, v_uv);
+}"
+    .to_string()
 }

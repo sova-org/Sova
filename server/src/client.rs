@@ -94,7 +94,10 @@ pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
 pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
     SetTempo(f64, ActionTiming),
-    SetName(String),
+    SetName {
+        name: String,
+        password: Option<String>,
+    },
     GetScene,
     SetScene(Scene, ActionTiming),
     GetLine(usize),
@@ -134,6 +137,7 @@ pub enum ClientMessage {
         begin: f64,
     },
     EnableFeedback,
+    RestartCore,
 }
 
 impl ClientMessage {
@@ -854,7 +858,7 @@ mod tests {
                 ActionTiming::Immediate,
             )),
             ClientMessage::SetTempo(140.0, ActionTiming::AtNextBeat),
-            ClientMessage::SetName("alice".into()),
+            ClientMessage::SetName { name: "alice".into(), password: None },
             ClientMessage::GetScene,
             ClientMessage::SetScene(scene.clone(), ActionTiming::Immediate),
             ClientMessage::GetLine(0),
@@ -906,6 +910,7 @@ mod tests {
                 begin: 0.0,
             },
             ClientMessage::EnableFeedback,
+            ClientMessage::RestartCore,
         ];
 
         for msg in &variants {

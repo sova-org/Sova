@@ -1,58 +1,59 @@
-Sova is a live coding sequencer. You write code, Sova turns it into MIDI notes,
-OSC messages, and audio -- all synchronized to a shared clock via Ableton Link.
-Four built-in languages, each with its own way of thinking about music. Multiple
-players can connect and perform on the same scene simultaneously.
+This guide walks through Sova's core workflow: connecting to a server, making your first sound, navigating the grid, and using timing and devices. See [About Sova](about) for context on the project and its design.
 
 ## Connect
 
-Open the Server panel and click Start. The app runs a local server and connects
-to it. You're in.
+When Sova opens, you land on the connection screen. Two things need to happen: start a server, then connect to it.
+
+Click **Start Server** on the left side. This launches a local server with default settings (tempo 120 BPM, quantum 4 beats). The button turns green to confirm the server is running. To change these defaults before starting, click the gear icon next to the button to open the server configuration.
+
+Enter a username in the **User** field — this identifies you in multiplayer sessions. Then click **Connect**. The connection screen disappears and the main interface appears: the scene grid in the center, the transport bar at the top.
 
 ## First sound
 
-Double-click any frame cell in the grid to open the code editor. The default
-language is Cagire. Type:
+Press **Play** in the transport bar (top left). The sequencer starts running. The scene begins with one line containing one frame of 1 beat duration.
+
+Double-click the frame cell in the grid to open the code editor. The editor opens in a floating window. The default language is Boinx — the current language is displayed in the top-left corner of the editor window.
+
+For this tutorial, switch to Cagire: press Cmd+L (Ctrl+L on Linux/Windows) to open the language selector, then pick **cagire** from the list. Type:
 
 ```forth
 kick snd .
 ```
 
-Press Cmd+Enter (Ctrl+Enter on Linux/Windows) to evaluate. You hear a kick on
-every beat.
+Press Cmd+Enter (Ctrl+Enter on Linux/Windows) to evaluate. The editor flashes white to confirm. A kick drum sounds on every beat.
 
 Try a melody:
 
 ```forth
 0 0.25 0.5 0.75 at
-c4 e4 g4 c5 arp note sine snd .
+c4 e4 g4 c5 arp note sine snd .5 decay .
 ```
 
-Four notes, evenly spaced across the frame. Change `sine` to `saw`, re-evaluate.
-Instant difference.
+Four notes spread across the beat. Replace `sine` with `saw` and re-evaluate — the change is immediate. This is the core loop of live coding: write, evaluate, listen, modify.
 
 ## The grid
 
-The scene grid is your workspace. Each column is a **line** (plays in parallel).
-Each row in a column is a **frame** (plays in sequence). A line loops through its
-frames top to bottom, then starts over.
+The scene grid is your workspace. Each column is a **line** (runs in parallel). Each row in a column is a **frame** (runs in sequence). A line loops through its frames from top to bottom, then starts over.
 
-You can have a drum pattern in line 1, a bass in line 2, and chords in line 3,
-all running at the same time. See the **The Grid** article for navigation and
-editing.
+Right-click on a frame cell to access context menu actions: insert or remove frames, edit duration and repetitions, cut/copy/paste, move frames up or down. You can also add new lines using the + button at the bottom left of the grid.
 
-## Four languages
+Each frame displays its duration (in beats), repetition count, and a preview of its code. A progress bar overlays the currently playing frame. A drum pattern in line 1, a bass in line 2, chords in line 3 — all running simultaneously.
 
-Every frame has its own language. Pick the one that fits what you're doing.
+See [The Scene](the-scene) for the full details on navigation and editing.
 
-**Cagire** -- stack-based, Forth-like. Push values, apply words, emit with `.`.
-Best for sound design and quick experimentation.
+## Languages
+
+Every frame has its own language. To change it, open the editor and press Cmd+L (Ctrl+L) or click the language name at the top of the editor window. A searchable list appears — select the language you want. The language applies to that frame only; other frames keep their own.
+
+Four languages ship with Sova by default. More can be added — the environment is designed to host new languages without modifying the core. This extensibility is central to Sova's design: the VM, scheduler, and I/O layer are shared infrastructure, and each language is free to explore its own paradigm for musical expression. See [About Sova](about) for more on this philosophy.
+
+**Cagire** — stack-based, Forth-like. Push values, apply words, emit with `.`. Suited to sound design and quick experimentation.
 
 ```forth
 c4 min7 arp note 0.5 decay 0.4 verb sine snd .
 ```
 
-**Bob** -- imperative, Polish notation. Event maps, loops, explicit timing with
-WAIT. Best for precise melodic sequences.
+**Bob** — imperative, Polish notation. Event maps, loops, explicit timing with WAIT. Suited to precise melodic sequences.
 
 ```
 RANGE 0 3 :
@@ -61,8 +62,7 @@ RANGE 0 3 :
 END
 ```
 
-**BaLi** -- Lisp-like, expression-based. Nested S-expressions, loops and
-transforms compose naturally. Best for algorithmic and generative patterns.
+**BaLi** — Lisp-like, expression-based. Nested S-expressions, loops and transforms compose naturally. Suited to algorithmic and generative composition.
 
 ```
 (loop 4
@@ -70,60 +70,43 @@ transforms compose naturally. Best for algorithmic and generative patterns.
   1//4)
 ```
 
-**Boinx** -- declarative pattern notation. Sequences and simultaneity expressed
-visually with brackets. Best for rhythmic patterns you can see at a glance.
+**Boinx** — declarative pattern notation. Sequences and simultaneity expressed visually with brackets. Suited to rhythmic patterns readable at a glance.
 
 ```
 <s: 'kick'> | [. _ . _]
 ```
 
-To change a frame's language, open the editor and select from the dropdown at the
-top, or press Cmd+L (Ctrl+L). See the **Languages** article for more on each
-one, and click the language tabs (Bob, bali, Boinx, Cagire) for full references.
+See [Languages](languages) for more detail, and click the language tabs (Bob, BaLi, Boinx, Cagire) in the documentation panel for full references and runnable examples.
 
 ## Timing
 
-Each frame has a duration in beats. The sequencer plays the frame's script once
-per duration, then moves to the next frame. A 1-beat frame at 120 BPM runs every
-half second.
+Each frame has a duration in beats. The sequencer runs the frame's script once per duration, then moves to the next frame. A 1-beat frame at 120 BPM runs every half second. Edit a frame's duration directly in the grid cell, or right-click and select **Edit Duration**.
 
-Inside a frame, you can subdivide time. In Cagire, `at` places sounds at
-fractional positions within the beat. In Bob, `WAIT` advances the clock
-explicitly.
+Inside a frame, you can subdivide time. In Cagire, `at` places sounds at fractional positions within the duration. In Bob, `WAIT` advances the clock explicitly.
 
-Set tempo and quantum in the transport bar at the top. See the **Timing**
-article.
+The transport bar at the top displays the current beat, tempo, and quantum. Click the tempo value to edit it (range: 20–300 BPM). The animated phase bar shows where you are in the current quantum cycle. See [Timing](timing).
 
-## Your gear
+## Your instruments
 
-Sova sends events to device slots numbered 1 to 16. Open the Devices panel to
-connect MIDI ports, create OSC endpoints, or enable the built-in audio engine
-(Doux). Slot 1 is the default. In your code, use `dev` to target a slot:
+Sova sends events to device slots numbered 1 to 16. When the server starts, it creates a virtual MIDI port named "Sova" and assigns it to slot 1. Any code you write sends to slot 1 by default.
+
+Open the Devices panel (Cmd+Shift+I / Ctrl+Shift+I) to see connected devices, add MIDI ports, create OSC endpoints, or enable the built-in audio engine (Doux). Each device can be assigned to a slot number. In your code, use `dev` to target a different slot:
 
 ```forth
 2 dev c4 note 100 vel .
 ```
 
-See the **Devices** article.
+See [Devices](devices).
 
 ## Playing together
 
-Start a server. Other players connect to your IP and port. Everyone sees the same
-scene, edits in real time, and stays in sync via Ableton Link. Use different
-lines to avoid stepping on each other's code. Chat is built in. See the
-**Multiplayer** article.
+Other musicians connect to your server using your IP address and port. Everyone sees the same scene, edits in real time, and stays in sync via Ableton Link. Use different lines to avoid editing conflicts. The editor shows who else is editing the same frame. Chat is built in.
+
+See [Multiplayer](multiplayer).
 
 ## Visuals
 
-Sova has a built-in shader engine inspired by Hydra. Write visual pipelines --
-oscillators, noise, kaleidoscopes, feedback loops -- and they render behind the
-interface in real time.
-
-```
-osc(60, 0.1).rotate(0, 0.1).kaleid(4).out()
-```
-
-See the **Visuals (Hydra)** article.
+Sova includes a visual scripting engine for real-time graphics. See [Hydra](hydra-intro) in the documentation panel.
 
 ## Shortcuts
 
@@ -134,11 +117,10 @@ See the **Visuals (Hydra)** article.
 | Play / Stop | Cmd+Shift+Space | Ctrl+Shift+Space |
 | Save scene | Cmd+S | Ctrl+S |
 | Load scene | Cmd+O | Ctrl+O |
-| Toggle server | Cmd+Shift+S | Ctrl+Shift+S |
-| Toggle devices | Cmd+Shift+I | Ctrl+Shift+I |
-| Toggle docs | Cmd+Shift+H | Ctrl+Shift+H |
-| Toggle visuals | Cmd+Shift+V | Ctrl+Shift+V |
+| Server panel | Cmd+Shift+S | Ctrl+Shift+S |
+| Devices panel | Cmd+Shift+I | Ctrl+Shift+I |
+| Documentation | Cmd+Shift+H | Ctrl+Shift+H |
+| Visuals | Cmd+Shift+V | Ctrl+Shift+V |
 | Change language | Cmd+L | Ctrl+L |
 
-Press F1 to see all keybindings. The command palette (Cmd+K) lists every action
-with its shortcut.
+Press F1 to see all keybindings. The command palette (Cmd+K) lists every action with its shortcut.

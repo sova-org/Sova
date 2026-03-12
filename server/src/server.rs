@@ -8,7 +8,7 @@ use std::{
     io::ErrorKind,
     path::PathBuf,
     sync::{
-        Arc, Mutex as StdMutex,
+        Arc, Mutex as StdMutex, RwLock,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -42,6 +42,10 @@ pub struct AudioRestartConfig {
 pub struct AudioRestartRequest {
     pub config: AudioRestartConfig,
     pub response_tx: crossbeam_channel::Sender<Result<AudioEngineState, String>>,
+}
+
+pub struct CoreRestartRequest {
+    pub response_tx: crossbeam_channel::Sender<Result<(), String>>,
 }
 
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
@@ -121,7 +125,7 @@ impl ClientRegistry {
 pub struct ServerState {
     pub clock_server: Arc<ClockServer>,
     pub devices: Arc<DeviceMap>,
-    pub sched_iface: Sender<SchedulerMessage>,
+    pub sched_iface: Arc<RwLock<Sender<SchedulerMessage>>>,
     pub update_sender: broadcast::Sender<SovaNotification>,
     pub client_registry: ClientRegistry,
     pub clients: Arc<Mutex<Vec<String>>>,
@@ -130,6 +134,8 @@ pub struct ServerState {
     pub is_playing: Arc<AtomicBool>,
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+    pub core_restart_tx: Option<Sender<CoreRestartRequest>>,
+    pub password: Option<String>,
 }
 
 impl ServerState {
@@ -143,11 +149,13 @@ impl ServerState {
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+        core_restart_tx: Option<Sender<CoreRestartRequest>>,
+        password: Option<String>,
     ) -> Self {
         ServerState {
             clock_server,
             devices,
-            sched_iface,
+            sched_iface: Arc::new(RwLock::new(sched_iface)),
             update_sender,
             client_registry,
             clients: Arc::new(Mutex::new(Vec::new())),
@@ -156,6 +164,8 @@ impl ServerState {
             is_playing: Arc::new(AtomicBool::new(false)),
             audio_engine_state,
             audio_restart_tx,
+            core_restart_tx,
+            password,
         }
     }
 
@@ -185,9 +195,11 @@ pub struct Snapshot {
 }
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
-    if state.sched_iface.send(msg.clone()).is_err() {
+    let iface = state.sched_iface.read().unwrap();
+    if iface.send(msg.clone()).is_err() {
         return ServerMessage::InternalError("Scheduler communication error.".into());
     }
+    drop(iface);
     state
         .client_registry
         .broadcast(BroadcastItem::Feedback(msg));
@@ -208,7 +220,7 @@ async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::SetName(new_name) => {
+        ClientMessage::SetName { name: new_name, .. } => {
             let mut clients_guard = state.clients.lock().await;
             let old_name = client_name.clone();
             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
@@ -531,6 +543,26 @@ async fn on_message(
                 Err(_) => ServerMessage::InternalError("Audio restart channel closed".to_string()),
             }
         }
+        ClientMessage::RestartCore => {
+            let Some(ref restart_tx) = state.core_restart_tx else {
+                return ServerMessage::InternalError("Core restart not available".into());
+            };
+            let restart_tx = restart_tx.clone();
+            match tokio::task::spawn_blocking(move || {
+                let (response_tx, response_rx) = crossbeam_channel::bounded(1);
+                if restart_tx.send(CoreRestartRequest { response_tx }).is_err() {
+                    return ServerMessage::InternalError("Core restart channel closed".into());
+                }
+                match response_rx.recv() {
+                    Ok(Ok(())) => ServerMessage::Success,
+                    Ok(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
+                    Err(_) => ServerMessage::InternalError("Core restart channel closed".into()),
+                }
+            }).await {
+                Ok(msg) => msg,
+                Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
+            }
+        }
         ClientMessage::EnableFeedback => {
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
@@ -601,12 +633,14 @@ impl SovaCoreServer {
 
     pub async fn start(
         &self,
-        scheduler_notifications: Receiver<SovaNotification>,
+        scheduler_notifications: Option<Receiver<SovaNotification>>,
     ) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
         println!("Server listening on {}", addr);
-        self.start_image_maintainer(scheduler_notifications);
+        if let Some(rx) = scheduler_notifications {
+            self.start_image_maintainer(rx);
+        }
 
         // Bridge logger notifications (from core) to per-client channels
         let mut log_rx = self.state.update_sender.subscribe();
@@ -665,10 +699,22 @@ impl SovaCoreServer {
     }
 
     pub fn start_image_maintainer(&self, scheduler_notifications: Receiver<SovaNotification>) {
-        let scene_image = self.state.scene_image.clone();
-        let client_registry = self.state.client_registry.clone();
-        let is_playing = self.state.is_playing.clone();
-        thread::spawn(move || {
+        start_image_maintainer(
+            scheduler_notifications,
+            self.state.scene_image.clone(),
+            self.state.client_registry.clone(),
+            self.state.is_playing.clone(),
+        );
+    }
+}
+
+pub fn start_image_maintainer(
+    scheduler_notifications: Receiver<SovaNotification>,
+    scene_image: Arc<Mutex<Scene>>,
+    client_registry: ClientRegistry,
+    is_playing: Arc<AtomicBool>,
+) {
+    thread::spawn(move || {
             let position_broadcast_interval =
                 std::time::Duration::from_millis(POSITION_BROADCAST_INTERVAL_MS);
             let mut last_position_broadcast = std::time::Instant::now();
@@ -759,7 +805,6 @@ impl SovaCoreServer {
                 }
             }
         });
-    }
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
@@ -780,7 +825,23 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let hello_msg: ServerMessage;
 
     match read_message_internal(&mut reader, &client_addr_str).await {
-        Ok(Some(ClientMessage::SetName(new_name))) => {
+        Ok(Some(ClientMessage::SetName { name: new_name, password })) => {
+            if let Some(required) = &state.password {
+                if password.as_deref() != Some(required.as_str()) {
+                    eprintln!(
+                        "Connection rejected: Invalid password from {}",
+                        client_addr_str
+                    );
+                    let refuse_msg =
+                        ServerMessage::ConnectionRefused("Invalid password.".to_string());
+                    let _ = send_msg(&mut writer, refuse_msg).await;
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Invalid password",
+                    ));
+                }
+            }
+
             if new_name.is_empty() || new_name == DEFAULT_CLIENT_NAME {
                 eprintln!(
                     "Connection rejected: Invalid username '{}' from {}",

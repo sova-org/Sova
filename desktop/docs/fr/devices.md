@@ -1,97 +1,23 @@
 # Périphériques
 
-Vous voulez du son. Chaque événement produit par votre code arrive dans un slot.
-Le périphérique qui occupe ce slot le transmet en MIDI, OSC ou audio. Pas de
-périphérique, pas de son.
-
-## Mise en route rapide
-
-Ouvrez le panneau Périphériques. Trois possibilités :
-
-1. Connecter une sortie MIDI (port matériel ou virtuel).
-2. Créer un point d'accès OSC (IP + port, pour SuperCollider, Max, etc.).
-3. Utiliser le moteur audio intégré (Doux) si le serveur a été lancé avec le
-   support audio.
-
-Chaque connexion est assignée à un slot (1--16). Le slot 1 est celui par
-défaut -- si votre code ne précise pas de périphérique, les événements vont là.
-
-## Sortie MIDI
-
-Cliquez sur "Connecter MIDI" dans le panneau Périphériques. Les ports
-disponibles sur votre système s'affichent. Cliquez pour connecter et assigner
-à un slot.
-
-Pour créer un port MIDI virtuel visible par d'autres applications (pratique
-pour router Sova vers un DAW sur la même machine), cliquez sur "Créer un MIDI
-virtuel".
-
-En Cagire, envoyer une note vers un slot précis :
-
-```forth
-2 dev c4 note 100 vel .
-```
-
-En Bob :
-
-```
-DEV 2
->> [note: 60 vel: 100]
-```
-
-## Sortie OSC
-
-Cliquez sur "Créer une sortie OSC" dans le panneau Périphériques. Entrez un
-nom, une adresse IP cible et un port. Le point d'accès apparaît dans la liste,
-prêt à être assigné à un slot.
-
-Les événements OSC portent les mêmes paramètres que les événements MIDI.
-L'application réceptrice (SuperCollider, Max, Pure Data) les interprète comme
-elle l'entend.
+Sova est capable d'émettre des messages en MIDI et en OSC. Il est possible d'envoyer des notes, des _control changes_ et tout types de messages supportés par les protocoles cités vers des synthétiseurs, des boîtes à rythmes, des DAWs, des environnements modulaires. Sova peut dialoguer avec tout les environnements capables d'écouter et de traiter les messages émis. Le moteur audio intégré, nommé Doux, permet aussi de produire du son sans aucun équipement externe.
 
 ## Slots
 
-Sova dispose de 16 slots utilisateur (1--16) et d'un slot fixe :
+Chaque périphérique occupe un slot numéroté de 1 à 16. Lorsque le code émet un événement sans préciser de périphérique, celui-ci arrive au slot 1. Le slot 1 est le slot par défaut. Les langages permettent d'envoyer des messages à n'importe quel slot. Chaque langage possèdera une syntaxe et une manière différente de le faire. Il faut donc se reporter à la documentation de chaque langage pour comprendre comment diriger un message vers l'un des périphériques.  Le slot 0 est un slot un peu particulier. Il s'agit du périphérique des `Logs`. Celui-ci est invisible dans l'interface est n'est utilisé que pour le _debug_. Les événements envoyés sur ce slot s'affichent dans les `Logs` directement.
 
-- Le slot 0 est le périphérique Log. Toujours présent. Les événements envoyés
-  ici s'affichent dans le panneau Journaux. Utile pour le débogage.
-- Les slots 1--16 accueillent vos ports MIDI, points d'accès OSC et le moteur
-  audio.
+## Connexion des périphériques
 
-Le slot 1 est le périphérique par défaut. Les assignations persistent pour la
-session, gardez-les cohérentes -- votre code fait référence aux numéros de slot
-directement.
+Le panneau `Périphériques` affiche le matériel disponible détecté par Sova. Les ports MIDI accessibles au sein du système apparaissent dans la liste. Il suffit de cliquer pour se connecter à ces derniers et les assigner à un slot. Il est aussi possible de créer des ports MIDI virtuels, visibles depuis un DAW ou tout autre logiciel sur la même machine. Les ports virtuels sont une fonctionnalité courante de macOS et de Linux mais ne sont pas encore pris en charge de manière standardisée sur Windows, du moins pour le moment.
 
-Un seul script peut adresser plusieurs slots :
+Un périphérique OSC peut être créé en lui assignant un nom, une adresse IP et un numéro de port. Les événements sont alors transmis via le protocole UDP. De nombreux logiciels très répandus dans le domaine de l'informatique musicale sont conçus pour traiter les messages OSC de manière efficace : SuperCollider, Pure Data, etc. 
 
-```forth
-1 dev "kick" snd .        ;; batterie sur le slot 1
-2 dev c4 note "saw" snd . ;; synthé sur le slot 2
-```
-
-Si un slot est vide, les événements qui lui sont destinés sont ignorés
-silencieusement.
-
-## Canaux MIDI
-
-Les canaux MIDI dans Sova vont de 1 à 16, conformément à la convention
-standard. Le canal par défaut est 1. Un seul port MIDI (un slot) peut adresser
-les 16 canaux :
-
-```forth
-1 chan 60 note .     ;; canal 1
-10 chan 36 note .    ;; batterie sur le canal 10
-```
+Le moteur audio (Doux) occupe un slot à l'instar des autres périphériques lorsque celui-ci est disponible. Une version standard de Sova inclut par défaut le moteur Doux et l'assigne au slot n°1. Ceci permet de commencer à jouer immédiatement même en l'absence de moteurs externes ou de synthétiseurs.
 
 ## Entrée MIDI
 
-Les périphériques d'entrée MIDI se connectent dans le panneau Périphériques
-mais n'occupent pas de slot. Ils alimentent le système en données entrantes. En
-Cagire, lire une valeur CC :
+Les entrées MIDI n'occupent pas de slot. Elles alimentent le système en données : les valeurs CC reçues sont mémorisées et rendues accessibles aux scripts. Chaque langage aura une manière différente de rendre disponible les données MIDI reçues. 
 
-```forth
-1 1 ccval    ;; CC 1 (molette de modulation), canal 1
-```
+## Canaux MIDI
 
-Consultez l'article **MIDI** dans la documentation Cagire pour le détail
-complet de l'envoi et de la réception MIDI.
+Chaque connexion MIDI supporte les 16 canaux habituels définis par le protocole. Le canal par défaut est le premier. Un seul port suffit pour s'addresser à 16 canaux. Il est donc possible de piloter 16 instruments à partir d'un seul slot MIDI. Chaque périphérique MIDI possède également un réglage de latence (20 ms par défaut). Le thread world s'en sert pour envoyer les messages légèrement en avance sur le temps réel, compensant les potentiels délais de transmission. Il est possible d'ajuster cette valeur pour chaque périphérique.

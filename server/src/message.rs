@@ -58,6 +58,7 @@ pub enum ServerMessage {
         is_playing: bool,
     },
     Feedback(SchedulerMessage),
+    CoreRestarted,
 }
 
 #[cfg(test)]
@@ -202,6 +203,7 @@ mod tests {
             ServerMessage::Feedback(SchedulerMessage::SetTempo(140.0, ActionTiming::Immediate)),
             ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
             ServerMessage::Feedback(SchedulerMessage::SetScene(scene.clone(), ActionTiming::Immediate)),
+            ServerMessage::CoreRestarted,
         ];
 
         for msg in &variants {

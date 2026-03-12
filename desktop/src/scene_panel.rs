@@ -154,6 +154,8 @@ impl ScenePanel {
                     &self.selection,
                     bridge.peer_editing(),
                     bridge.peer_cursors(),
+                    bridge.compilation_flashes(),
+                    bridge.mutation_flashes(),
                     accent,
                     focused_line,
                     avail,

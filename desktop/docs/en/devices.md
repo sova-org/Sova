@@ -1,87 +1,35 @@
 # Devices
 
-You want to hear sound. Every event your code produces goes to a device slot.
-The device in that slot sends it out as MIDI, OSC, or audio. No device, no
-sound.
+Sova outputs MIDI and OSC. Notes, control changes, and other messages reach external synthesizers, drum machines, DAWs, or any application that listens. The built-in audio engine (Doux) produces sound without external gear. See [Audio Engine](audio-engine) for synthesis details.
 
-## Quick setup
+## Slots
 
-Open the Devices panel. You have three options:
+Devices occupy numbered slots, 1 through 16. Events that do not specify a device go to slot 1 by default. Each language has its own syntax for targeting a slot. See [Events](events) for what your code can send.
 
-1. Connect a MIDI output (hardware port or virtual).
-2. Create an OSC endpoint (IP + port, for SuperCollider, Max, etc.).
-3. Use the built-in audio engine (Doux) if the server has audio enabled.
+Slot 0 is the Log device. Events sent there appear in the Log panel. Print statements route there automatically.
 
-Each connection gets assigned to a slot (1--16). Slot 1 is the default -- if
-your code doesn't specify a device, events go there.
+## Connecting devices
 
-## MIDI output
+Open the Devices panel to see available connections. System MIDI ports appear in the list — select one and assign it to a slot. Virtual MIDI ports can also be created; they appear as inputs in other applications on the same machine. Virtual ports work on macOS and Linux but not on Windows.
 
-Click "Connect MIDI" in the Devices panel. Available ports on your system
-appear in the list. Click one to connect it and assign it to a slot.
+For OSC, create an output by specifying a name, IP address, and port number. Messages are sent as UDP packets. This is how Sova communicates with SuperCollider, Max, Pure Data, and similar environments.
 
-To create a virtual MIDI port that other applications can see (useful for
-routing into a DAW on the same machine), click "Create virtual MIDI".
-
-In Cagire, send a note to a specific slot:
-
-```forth
-2 dev c4 note 100 vel .
-```
-
-In Bob:
-
-```
-DEV 2
->> [note: 60 vel: 100]
-```
-
-## OSC output
-
-Click "Create OSC output" in the Devices panel. Enter a name, target IP, and
-port. The endpoint appears in your device list, ready to assign to a slot.
-
-OSC events carry the same parameters as MIDI events. The receiving application
-(SuperCollider, Max, Pure Data) interprets them however it wants.
-
-## Device slots
-
-Sova has 16 user slots (1--16) and one fixed slot:
-
-- Slot 0 is the Log device. Always present. Events sent here print to the Log
-  panel. Good for debugging.
-- Slots 1--16 hold your MIDI ports, OSC endpoints, and the audio engine.
-
-Slot 1 is the default device. Slot assignments persist for the session, so keep
-them consistent -- your code refers to slot numbers directly.
-
-A single script can address multiple slots:
-
-```forth
-1 dev "kick" snd .       ;; drums on slot 1
-2 dev c4 note "saw" snd . ;; synth on slot 2
-```
-
-If a slot is empty, events sent there are silently dropped.
-
-## MIDI channels
-
-MIDI channels in Sova are 1--16, matching the standard convention. Default
-channel is 1. One MIDI port (one slot) can address all 16 channels:
-
-```forth
-1 chan 60 note .    ;; channel 1
-10 chan 36 note .   ;; drums on channel 10
-```
+The audio engine (Doux) occupies a slot like any other device. See [Audio Engine](audio-engine) for details.
 
 ## MIDI input
 
-MIDI input devices can be connected in the Devices panel, but they don't occupy
-slots. They feed incoming data into the system. In Cagire, read a CC value:
+MIDI input devices do not occupy a slot. They feed data into the system — incoming CC values are stored and made available to scripts. See the language tabs for how to read them.
 
-```forth
-1 1 ccval    ;; CC 1 (mod wheel), channel 1
-```
+## Channels
 
-See the **MIDI** article in the Cagire documentation for full details on
-sending and receiving MIDI.
+MIDI channels range from 1 to 16, matching the standard convention. The default is channel 1. A single port addresses all 16 channels, so one connection can drive multiple instruments.
+
+## Latency
+
+Two distinct mechanisms compensate for timing delays.
+
+**Per-device latency** is a user-adjustable offset, 20 ms by default. It shifts message timestamps forward to account for hardware response time. Adjust it per device in the Devices panel.
+
+**Protocol lookahead** is a fixed offset applied by the world thread for dispatch precision. MIDI messages are sent 2 ms early. OSC and audio engine messages are sent 20 ms early. These values are not user-adjustable.
+
+The two offsets combine: per-device latency adjusts for your hardware, protocol lookahead ensures the world thread hands off messages in time for the transport layer to deliver them accurately.

@@ -1,7 +1,6 @@
 fn main() {
-    #[cfg(windows)]
-    {
-        let mut res = winres::WindowsResource::new();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let mut res = winresource::WindowsResource::new();
         res.set_icon("assets/Sova.ico")
             .set("ProductName", "Sova")
             .set("FileDescription", "Sova - Live coding sequencer")

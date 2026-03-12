@@ -6,6 +6,7 @@ extern crate rust_i18n;
 i18n!("locales", fallback = "en");
 
 mod audio_panel;
+mod chat_overlay;
 mod chat_panel;
 mod client_bridge;
 mod client_panel;
@@ -80,12 +81,11 @@ fn main() -> eframe::Result {
         .expect("failed to load icon");
 
     let options = eframe::NativeOptions {
-        centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_app_id("sova")
             .with_title("Sova")
             .with_icon(icon)
-            .with_inner_size([800.0, 600.0])
+            .with_maximized(true)
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };
@@ -175,6 +175,7 @@ fn main() -> eframe::Result {
                 recent_scenes: s.recent_scenes,
                 dismissed_tips: s.dismissed_tips,
                 visuals,
+                chat_overlay: chat_overlay::ChatOverlay::new(),
                 rename_input: None,
             };
 
@@ -216,6 +217,7 @@ struct SovaApp {
     recent_scenes: Vec<std::path::PathBuf>,
     dismissed_tips: Vec<String>,
     visuals: visuals::VisualsEngine,
+    chat_overlay: chat_overlay::ChatOverlay,
     rename_input: Option<String>,
 }
 
@@ -529,7 +531,7 @@ impl eframe::App for SovaApp {
                             if r.lost_focus() {
                                 if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !input.trim().is_empty() {
                                     let new_name = input.trim().to_owned();
-                                    self.bridge.send(ClientMessage::SetName(new_name.clone()));
+                                    self.bridge.send(ClientMessage::SetName { name: new_name.clone(), password: None });
                                     self.bridge.set_confirmed_username(new_name);
                                     self.rename_input = None;
                                     ui.close();
@@ -556,6 +558,13 @@ impl eframe::App for SovaApp {
                     {
                         ui.close();
                         self.bridge.send(self.audio.restart_message());
+                    }
+                    if ui
+                        .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.bridge.send(ClientMessage::RestartCore);
                     }
                 });
                 if r.response.hovered() {
@@ -750,8 +759,14 @@ impl eframe::App for SovaApp {
         }
 
         // Render visuals shader as background layer
-        self.visuals
-            .paint_background_central(ctx, self.appearance.visuals_enabled);
+        let clock = self.bridge.clock();
+        self.visuals.paint_background_central(
+            ctx,
+            self.appearance.visuals_enabled,
+            clock.beat as f32,
+            clock.tempo as f32,
+            clock.phase as f32,
+        );
 
         let central_frame = if self.appearance.visuals_enabled {
             egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT)
@@ -837,6 +852,8 @@ impl eframe::App for SovaApp {
 
         self.chat_panel
             .show(ctx, &mut self.bridge, &self.appearance);
+        self.chat_overlay.poll(self.bridge.chat_messages());
+        self.chat_overlay.show(ctx);
         self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
@@ -939,6 +956,11 @@ impl SovaApp {
                 }
             }
             Visuals => self.visuals.open = !self.visuals.open,
+            RestartCore => {
+                if self.bridge.is_connected() {
+                    self.bridge.send(ClientMessage::RestartCore);
+                }
+            }
             PlayPause => {
                 if self.bridge.is_connected() {
                     let clock = self.bridge.clock();

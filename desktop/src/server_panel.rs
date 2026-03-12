@@ -2,7 +2,6 @@ use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
 use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 
-use crossbeam_channel::Sender;
 use sova_core::{
     clock::ClockServer,
     device_map::DeviceMap,
@@ -10,7 +9,10 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
 use sova_server::audio::{AudioThread, spawn_audio_thread};
-use sova_server::{AudioEngineState, ClientRegistry, ServerState, SovaCoreServer};
+use sova_server::{
+    AudioEngineState, ClientRegistry, CoreRestartRequest, ServerState, SovaCoreServer,
+    start_image_maintainer,
+};
 use tokio::sync::Mutex;
 
 use crate::log_panel::{LogEntry, LogSource};
@@ -36,9 +38,6 @@ enum ServerStatus {
 struct EmbeddedServer {
     server_task: tokio::task::JoinHandle<std::io::Result<()>>,
     log_forwarder: tokio::task::JoinHandle<()>,
-    sched_iface: Sender<SchedulerMessage>,
-    world_handle: std::thread::JoinHandle<()>,
-    sched_handle: std::thread::JoinHandle<()>,
     devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
 }
@@ -49,6 +48,7 @@ pub struct ServerPanel {
     port: String,
     tempo: String,
     quantum: String,
+    password: String,
     status: ServerStatus,
     runtime: tokio::runtime::Handle,
     embedded: Option<EmbeddedServer>,
@@ -69,6 +69,7 @@ impl ServerPanel {
             port: settings.port,
             tempo: settings.tempo,
             quantum: settings.quantum,
+            password: String::new(),
             status: ServerStatus::Stopped,
             runtime,
             embedded: None,
@@ -192,30 +193,128 @@ impl ServerPanel {
         );
         let audio_restart_tx = Some(audio_thread.restart_tx.clone());
 
+        let password = if self.password.is_empty() { None } else { Some(self.password.clone()) };
+
+        let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
+
         let server_state = ServerState::new(
             Arc::clone(&scene_image),
-            clock_server,
+            clock_server.clone(),
             devices.clone(),
-            sched_iface.clone(),
+            sched_iface,
             update_sender,
-            client_registry,
-            languages,
+            client_registry.clone(),
+            languages.clone(),
             audio_engine_state,
             audio_restart_tx,
+            Some(core_restart_tx),
+            password,
         );
+
+        // Orchestrator thread for embedded server
+        let orch_sched_iface = server_state.sched_iface.clone();
+        let orch_scene_image = Arc::clone(&scene_image);
+        let orch_client_registry = client_registry;
+        let orch_is_playing = server_state.is_playing.clone();
+        let orch_clock = clock_server;
+        let orch_devices = devices.clone();
+        let orch_languages = languages;
+        std::thread::spawn(move || {
+            let mut world_handle = world_handle;
+            let mut sched_handle = sched_handle;
+
+            start_image_maintainer(
+                sched_update,
+                orch_scene_image.clone(),
+                orch_client_registry.clone(),
+                orch_is_playing.clone(),
+            );
+
+            while let Ok(req) = core_restart_rx.recv() {
+                let mut requestors = vec![req];
+                while let Ok(extra) = core_restart_rx.try_recv() {
+                    requestors.push(extra);
+                }
+
+                {
+                    let iface = orch_sched_iface.read().unwrap();
+                    let _ = iface.send(SchedulerMessage::Shutdown);
+                }
+                let _ = sched_handle.join();
+                let _ = world_handle.join();
+                orch_is_playing.store(false, std::sync::atomic::Ordering::Relaxed);
+
+                let (new_world, new_sched, new_iface, new_update) =
+                    sova_core::init::start_scheduler_and_world(
+                        orch_clock.clone(),
+                        orch_devices.clone(),
+                        orch_languages.clone(),
+                    );
+                world_handle = new_world;
+                sched_handle = new_sched;
+
+                let scene = orch_scene_image.blocking_lock().clone();
+                let result = new_iface.send(SchedulerMessage::SetScene(
+                    scene.clone(),
+                    ActionTiming::Immediate,
+                ));
+
+                if let Err(e) = result {
+                    for r in requestors {
+                        let _ = r.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                    }
+                    continue;
+                }
+
+                *orch_sched_iface.write().unwrap() = new_iface;
+
+                start_image_maintainer(
+                    new_update,
+                    orch_scene_image.clone(),
+                    orch_client_registry.clone(),
+                    orch_is_playing.clone(),
+                );
+
+                if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
+                    &sova_server::ServerMessage::CoreRestarted,
+                ) {
+                    orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
+                        bytes: Arc::new(bytes),
+                        droppable: false,
+                    });
+                }
+                if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
+                    &sova_server::ServerMessage::SceneValue(scene),
+                ) {
+                    orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
+                        bytes: Arc::new(bytes),
+                        droppable: false,
+                    });
+                }
+
+                for r in requestors {
+                    let _ = r.response_tx.send(Ok(()));
+                }
+            }
+
+            {
+                let iface = orch_sched_iface.read().unwrap();
+                let _ = iface.send(SchedulerMessage::Shutdown);
+            }
+            let _ = sched_handle.join();
+            let _ = world_handle.join();
+        });
 
         let ip = self.ip.clone();
         let server = SovaCoreServer::new(ip, port, server_state);
+
         let server_task = self
             .runtime
-            .spawn(async move { server.start(sched_update).await });
+            .spawn(async move { server.start(None).await });
 
         self.embedded = Some(EmbeddedServer {
             server_task,
             log_forwarder,
-            sched_iface,
-            world_handle,
-            sched_handle,
             devices,
             audio_thread: Some(audio_thread),
         });
@@ -229,7 +328,6 @@ impl ServerPanel {
 
     fn teardown_embedded(&mut self) {
         if let Some(mut embedded) = self.embedded.take() {
-            // Stop audio thread first
             if let Some(at) = embedded.audio_thread.take() {
                 at.running.store(false, Ordering::Relaxed);
                 let _ = at.thread_handle.join();
@@ -237,13 +335,8 @@ impl ServerPanel {
 
             embedded.server_task.abort();
             embedded.log_forwarder.abort();
-            let _ = embedded.sched_iface.send(SchedulerMessage::Shutdown);
-            if let Err(e) = embedded.sched_handle.join() {
-                eprintln!("scheduler thread panicked: {:?}", e);
-            }
-            if let Err(e) = embedded.world_handle.join() {
-                eprintln!("world thread panicked: {:?}", e);
-            }
+            // Orchestrator thread will handle scheduler/world shutdown
+            // when the core_restart_tx channel drops
             embedded.devices.panic_all_midi_outputs();
         }
     }
@@ -289,6 +382,13 @@ impl ServerPanel {
                             let field = ui.text_edit_singleline(&mut self.quantum);
                             if label.hovered() || field.hovered() {
                                 crate::widgets::hint::set(ctx, t!("server.hint.quantum"));
+                            }
+                            ui.end_row();
+
+                            let label = ui.label(t!("server.password"));
+                            let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, t!("server.hint.password"));
                             }
                             ui.end_row();
                         });
