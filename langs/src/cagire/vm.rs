@@ -871,7 +871,7 @@ impl CagireVM {
                     let dur = pop_float(stack)? * ctx.step_duration;
                     let end = pop_float(stack)?;
                     let start = pop_float(stack)?;
-                    let suffix = match curve { 1 => "e", 2 => "s", _ => "" };
+                    let suffix = match curve { 1 => "e", 2 => "s", 3 => "i", 4 => "o", 5 => "p", _ => "" };
                     stack.push(Value::Str(format!("{start}>{end}:{dur}{suffix}").into()));
                 }
                 Op::ModRnd(dist) => {

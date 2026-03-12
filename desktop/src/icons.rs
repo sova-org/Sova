@@ -21,6 +21,7 @@ pub const TRAILING: &str = "\u{EB80}";
 // Status
 pub const CIRCLE_FILLED: &str = "\u{EA71}";
 pub const CIRCLE_LARGE_FILLED: &str = "\u{EBB4}";
+pub const CIRCLE_LARGE_OUTLINE: &str = "\u{EBB5}";
 
 // Dialog / links
 pub const CLOSE: &str = "\u{EA76}";

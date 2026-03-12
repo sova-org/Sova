@@ -25,6 +25,7 @@ struct StepEditor {
     last_eval: Option<Instant>,
     last_cursor_line: Option<usize>,
     last_cursor_col: Option<usize>,
+    header_name_buf: String,
 }
 
 impl StepEditor {
@@ -43,6 +44,7 @@ impl StepEditor {
             last_eval: None,
             last_cursor_line: None,
             last_cursor_col: None,
+            header_name_buf: frame.name.clone().unwrap_or_default(),
         }
     }
 
@@ -311,10 +313,6 @@ impl StepEditor {
                         }
                     }
 
-                    ui.add_space(4.0);
-                    self.show_compilation_dot(ui, bridge);
-                    ui.add_space(4.0);
-
                     let accent = ui.visuals().selection.bg_fill;
                     let eval_text = egui::RichText::new(format!(
                         "{} {}",
@@ -327,6 +325,100 @@ impl StepEditor {
                         .clicked()
                     {
                         self.evaluate(bridge);
+                    }
+
+                    ui.add_space(4.0);
+                    self.show_compilation_dot(ui, bridge);
+
+                    // Frame properties
+                    if let Some(frame) = bridge
+                        .scene()
+                        .and_then(|s| s.lines.get(self.line_idx))
+                        .and_then(|l| l.frames.get(self.frame_idx))
+                    {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+
+                        // Name
+                        let name_id = egui::Id::new(("step_hdr_name", self.line_idx, self.frame_idx));
+                        let name_focused = ui.memory(|m| m.has_focus(name_id));
+                        if !name_focused {
+                            self.header_name_buf = frame.name.clone().unwrap_or_default();
+                        }
+                        let name_resp = ui.add(
+                            egui::TextEdit::singleline(&mut self.header_name_buf)
+                                .id(name_id)
+                                .desired_width(100.0)
+                                .hint_text("name"),
+                        );
+                        if name_resp.lost_focus() {
+                            let trimmed = self.header_name_buf.trim();
+                            let new_name = if trimmed.is_empty() { None } else { Some(trimmed.to_owned()) };
+                            if new_name != frame.name {
+                                let mut f = frame.clone();
+                                f.name = new_name;
+                                bridge.send(ClientMessage::SetFrames(
+                                    vec![(self.line_idx, self.frame_idx, f)],
+                                    ActionTiming::Immediate,
+                                ));
+                            }
+                        }
+
+                        // Duration
+                        let mut dur = frame.duration;
+                        let dur_resp = ui.add(
+                            egui::DragValue::new(&mut dur)
+                                .range(0.001..=f64::MAX)
+                                .speed(0.1)
+                                .suffix("b"),
+                        );
+                        if dur_resp.changed() && dur > 0.0 {
+                            let mut f = frame.clone();
+                            f.duration = dur;
+                            bridge.send(ClientMessage::SetFrames(
+                                vec![(self.line_idx, self.frame_idx, f)],
+                                ActionTiming::Immediate,
+                            ));
+                        }
+
+                        // Repetitions
+                        let mut rep = frame.repetitions;
+                        let rep_resp = ui.add(
+                            egui::DragValue::new(&mut rep)
+                                .range(1..=usize::MAX)
+                                .prefix("×"),
+                        );
+                        if rep_resp.changed() && rep > 0 {
+                            let mut f = frame.clone();
+                            f.repetitions = rep;
+                            bridge.send(ClientMessage::SetFrames(
+                                vec![(self.line_idx, self.frame_idx, f)],
+                                ActionTiming::Immediate,
+                            ));
+                        }
+
+                        // Enabled toggle
+                        let enabled = frame.enabled;
+                        let toggle_icon = if enabled {
+                            crate::icons::CIRCLE_LARGE_FILLED
+                        } else {
+                            crate::icons::CIRCLE_LARGE_OUTLINE
+                        };
+                        let toggle_color = if enabled { COLOR_OK } else { COLOR_MUTED };
+                        if ui
+                            .add(egui::Button::new(
+                                egui::RichText::new(toggle_icon).color(toggle_color),
+                            ).fill(egui::Color32::TRANSPARENT))
+                            .clicked()
+                        {
+                            let mut f = frame.clone();
+                            f.enabled = !enabled;
+                            bridge.send(ClientMessage::SetFrames(
+                                vec![(self.line_idx, self.frame_idx, f)],
+                                ActionTiming::Immediate,
+                            ));
+                        }
                     }
 
                     if self.dirty {
