@@ -40,7 +40,7 @@ fn upload_snippet(state: &mut AppState, content: String) {
     script.set_content(content);
     state.events.send(
         SchedulerMessage::RunSnippet(
-            script,
+            script, frame.duration
         ).into()
     );
     state.events.send(

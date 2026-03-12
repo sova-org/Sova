@@ -61,8 +61,12 @@ pub fn audio_rate_modulation_string(
         }
         3 => {
             let period = args.pop().unwrap();
-            let period = VariableValue::from(period);
-            let period = period.as_dur(ctx).as_secs(ctx.clock, ctx.frame_len);
+            let period = match period {
+                BoinxItem::Number(f) => TimeSpan::Frames(f),
+                BoinxItem::Duration(time_span) => time_span,
+                x => VariableValue::from(x).as_dur(ctx),
+            };
+            let period = period.as_secs(ctx.clock, ctx.frame_len);
             let end = args.pop().unwrap();
             let end = VariableValue::from(end).as_float(ctx);
             let start = args.pop().unwrap();

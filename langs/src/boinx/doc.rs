@@ -46,12 +46,12 @@ pub fn make_documentation() -> LanguageDocumentation {
 
     let entry = ReferenceEntry::new(
         "This operator applies a *Compose* operator between each item of the LHS, and the RHS, and replaces each LHS item with the result of its composition."
-    ).with_example("[<s: 'kick'> <s: 'hh'>] ~ [..]").with_category("Operators");
+    ).with_example("[<s: 'kick'> <s: 'hat'>] ~ [..]").with_category("Operators");
     doc.reference.insert(LanguageElement::Word("~".to_owned()), entry);
 
     let entry = ReferenceEntry::new(
         "This operator applies a *Compose* operator between each *atomic item* of the LHS, and the RHS, and replaces each of the LHS items with the result of its composition."
-    ).with_example("['bd' 'sn' ['bd' 'bd'] 'sn'] # \"s\"").with_category("Operators");
+    ).with_example("['kick' 'snare' ['kick' 'kick'] 'snare'] # \"s\"").with_category("Operators");
     doc.reference.insert(LanguageElement::Word("#".to_owned()), entry);
 
     add_funcs_doc(&mut doc);
