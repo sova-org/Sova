@@ -1,6 +1,6 @@
 use crate::{
     clock::SyncTime,
-    vm::{EvaluationContext, event::ConcreteEvent, interpreter::annotation::Annotation},
+    vm::{EvaluationContext, event::ConcreteEvent},
 };
 
 pub mod asm_interpreter;
@@ -12,7 +12,7 @@ pub mod external;
 
 pub use directory::InterpreterDirectory;
 pub use factory::InterpreterFactory;
-pub use annotation::CodePosition;
+pub use annotation::*;
 
 pub trait Interpreter {
     fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime);
@@ -21,7 +21,7 @@ pub trait Interpreter {
 
     fn stop(&mut self);
 
-    fn annotations(&self) -> Vec<Annotation> {
+    fn annotations(&self) -> Vec<(Annotation, SyncTime)> {
         Vec::new()
     }
 }
