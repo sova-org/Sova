@@ -414,14 +414,6 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
 
             let init_rem = std::cmp::min(n - k, k);
 
-            if init_rem == 1 {
-                let mut res = vec![Mute ; n];
-                for i in 0..k {
-                    res[i] = Placeholder;
-                }
-                return Sequence(res);
-            }
-
             let mut lines = vec![vec![Mute ; n - init_rem], vec![Mute ; init_rem]];
             for i in 0..k {
                 lines[0][i] = Placeholder;
@@ -441,10 +433,17 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 last_line_len = lines.last().unwrap().len();
                 rem = lines[0].len() % last_line_len;
             }
-            let n_lines = lines.len();
-            let vec = (0..n).map(|i| {
-                std::mem::take(&mut lines[i % n_lines][i / n_lines])
-            }).collect();
+            let mut vec = vec![Mute ; n];
+            let mut line = 0;
+            let mut col = 0;
+            for i in 0..n {
+                vec[i] = std::mem::take(&mut lines[line][col]);
+                line += 1;
+                if line >= lines.len() || lines[line].len() <= col {
+                    line = 0;
+                    col += 1;
+                }
+            }
             Sequence(vec)
         }
     ));
