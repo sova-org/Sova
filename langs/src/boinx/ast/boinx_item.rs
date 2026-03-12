@@ -489,6 +489,16 @@ impl BoinxItem {
         }
     }
 
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            BoinxItem::Note(_) 
+            | BoinxItem::Number(_) 
+            | BoinxItem::Str(_)
+            | BoinxItem::Duration(_) => true,
+            _ => false
+        }
+    }
+
     fn generate_map(&self) -> HashMap<String, VariableValue> {
         let mut map = HashMap::new();
         map.insert("_type_id".to_owned(), self.type_id().into());

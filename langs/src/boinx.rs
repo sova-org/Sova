@@ -76,7 +76,7 @@ impl BoinxLine {
             BoinxItem::ArgMap(map) => {
                 let map : HashMap<String, VariableValue> = 
                     map.iter().filter_map(|(key, value)| {
-                        if *value == BoinxItem::Mute {
+                        if !value.is_primitive() {
                             None
                         } else {
                             Some((key.clone(), VariableValue::from(value.clone())))
