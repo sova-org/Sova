@@ -391,6 +391,7 @@ impl SovaApp {
             spectrum: self.spectrum_panel.settings.clone(),
             visuals: VisualsSettings {
                 code: self.visuals.code().to_owned(),
+                shared: self.visuals.shared,
             },
             doc: self.doc_panel.settings.clone(),
             recent_scenes: self.recent_scenes.clone(),
@@ -900,6 +901,17 @@ impl eframe::App for SovaApp {
             apply_appearance(ctx, &self.appearance);
         }
         self.visuals.show_editor(ctx, &self.editor_settings);
+
+        if self.visuals.take_pending_broadcast() {
+            self.bridge.send_hydra_code(self.visuals.code());
+        }
+        if self.visuals.shared
+            && let Some((sender, code)) = self.bridge.take_remote_hydra()
+        {
+            self.visuals.remote_sender = Some(sender);
+            self.visuals.apply_remote_code(&code);
+        }
+
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);

@@ -566,6 +566,14 @@ async fn on_message(
                 Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
             }
         }
+        ClientMessage::HydraCode(code) => {
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::HydraCode(client_name.clone(), code),
+                false,
+            );
+            ServerMessage::Success
+        }
         ClientMessage::EnableFeedback => {
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);

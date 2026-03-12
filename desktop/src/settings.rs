@@ -120,6 +120,7 @@ impl Default for AppearanceSettings {
 #[serde(default)]
 pub struct VisualsSettings {
     pub code: String,
+    pub shared: bool,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -28,6 +28,9 @@ pub struct VisualsEngine {
     last_eval: Option<Instant>,
     last_cursor_line: Option<usize>,
     last_cursor_col: Option<usize>,
+    pub shared: bool,
+    eval_pending_broadcast: bool,
+    pub remote_sender: Option<String>,
 }
 
 impl VisualsEngine {
@@ -45,6 +48,9 @@ impl VisualsEngine {
             last_eval: None,
             last_cursor_line: None,
             last_cursor_col: None,
+            shared: settings.shared,
+            eval_pending_broadcast: false,
+            remote_sender: None,
         };
         if !engine.code.is_empty() {
             engine.compile_code();
@@ -134,6 +140,19 @@ impl VisualsEngine {
                             egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR),
                         );
                     }
+
+                    ui.add_space(4.0);
+
+                    if ui.checkbox(&mut self.shared, t!("visuals.share"))
+                        .on_hover_text(if self.shared {
+                            t!("visuals.share_on")
+                        } else {
+                            t!("visuals.share_off")
+                        })
+                        .changed() && !self.shared
+                    {
+                        self.remote_sender = None;
+                    }
                 });
             });
     }
@@ -174,6 +193,14 @@ impl VisualsEngine {
                 ui.colored_label(COLOR_ERROR, e);
             }
 
+            if let Some(sender) = &self.remote_sender {
+                ui.label(
+                    egui::RichText::new(format!("remote: {sender}"))
+                        .small()
+                        .color(COLOR_OK),
+                );
+            }
+
             if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
@@ -202,6 +229,23 @@ impl VisualsEngine {
     }
 
     fn evaluate(&mut self) {
+        self.compile_code();
+        self.dirty = false;
+        self.last_eval = Some(Instant::now());
+        if self.shared {
+            self.eval_pending_broadcast = true;
+        }
+    }
+
+    pub fn take_pending_broadcast(&mut self) -> bool {
+        std::mem::replace(&mut self.eval_pending_broadcast, false)
+    }
+
+    pub fn apply_remote_code(&mut self, code: &str) {
+        if self.code == code {
+            return;
+        }
+        self.code = code.to_owned();
         self.compile_code();
         self.dirty = false;
         self.last_eval = Some(Instant::now());
