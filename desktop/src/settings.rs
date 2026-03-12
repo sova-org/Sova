@@ -210,6 +210,7 @@ pub struct AudioSettings {
     pub buffer_size: Option<u32>,
     pub max_voices: usize,
     pub sample_paths: Vec<PathBuf>,
+    pub master_volume: f32,
 }
 
 impl Default for AudioSettings {
@@ -221,6 +222,7 @@ impl Default for AudioSettings {
             buffer_size: None,
             max_voices: 32,
             sample_paths: Vec::new(),
+            master_volume: 1.0,
         }
     }
 }

@@ -1,11 +1,11 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
 
-use super::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
+use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
 use crate::client::serialize_to_wire_frame;
 use crate::message::ServerMessage;
 use crate::server::{AudioRestartConfig, BroadcastItem, ClientRegistry};
@@ -13,9 +13,11 @@ use crate::AudioRestartRequest;
 
 pub struct AudioThread {
     pub restart_tx: Sender<AudioRestartRequest>,
+    pub cmd_tx: Sender<AudioCommand>,
     pub thread_handle: std::thread::JoinHandle<()>,
     pub running: Arc<AtomicBool>,
     pub scope: Arc<StdMutex<Option<Arc<ScopeCapture>>>>,
+    pub master_gain: Arc<AtomicU32>,
 }
 
 pub fn spawn_audio_thread(
@@ -26,15 +28,19 @@ pub fn spawn_audio_thread(
     client_registry: ClientRegistry,
 ) -> AudioThread {
     let (restart_tx, restart_rx) = crossbeam_channel::unbounded::<AudioRestartRequest>();
+    let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<AudioCommand>();
     let running = Arc::new(AtomicBool::new(true));
     let running_flag = Arc::clone(&running);
     let scope_slot: Arc<StdMutex<Option<Arc<ScopeCapture>>>> = Arc::new(StdMutex::new(None));
     let scope_slot_inner = Arc::clone(&scope_slot);
+    let master_gain = Arc::new(AtomicU32::new(1.0f32.to_bits()));
+    let master_gain_inner = Arc::clone(&master_gain);
 
     let thread_handle = std::thread::spawn(move || {
         let doux_config = build_doux_config(&initial_config);
         let mut manager: Option<DouxManager> = match DouxManager::new(doux_config) {
             Ok(mut mgr) => {
+                mgr.set_master_gain_arc(Arc::clone(&master_gain_inner));
                 let sync_time = Clock::from(&clock_server).micros();
                 match mgr.start(sync_time) {
                     Ok(proxy) => {
@@ -96,6 +102,7 @@ pub fn spawn_audio_thread(
                 let new_config = build_doux_config(&request.config);
                 let result = match DouxManager::new(new_config) {
                     Ok(mut new_mgr) => {
+                        new_mgr.set_master_gain_arc(Arc::clone(&master_gain_inner));
                         let sync_time = Clock::from(&clock_server).micros();
                         match new_mgr.start(sync_time) {
                             Ok(proxy) => {
@@ -149,6 +156,15 @@ pub fn spawn_audio_thread(
                 };
 
                 let _ = request.response_tx.send(result);
+            }
+
+            if let Ok(cmd) = cmd_rx.try_recv() {
+                if let Some(ref mut mgr) = manager {
+                    match cmd {
+                        AudioCommand::Hush => mgr.hush(),
+                        AudioCommand::Panic => mgr.panic(),
+                    }
+                }
             }
 
             if let Some(ref mut mgr) = manager {
@@ -213,9 +229,11 @@ pub fn spawn_audio_thread(
 
     AudioThread {
         restart_tx,
+        cmd_tx,
         thread_handle,
         running,
         scope: scope_slot,
+        master_gain,
     }
 }
 

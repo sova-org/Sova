@@ -6,7 +6,7 @@ use sova_core::schedule::{SchedulerMessage, SovaNotification};
 
 use clap::Parser;
 use std::io::ErrorKind;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
@@ -146,7 +146,7 @@ async fn main() {
     let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
 
     #[cfg(feature = "audio")]
-    let (audio_restart_tx, audio_thread) = if !cli.no_audio {
+    let (audio_restart_tx, audio_cmd_tx, audio_thread) = if !cli.no_audio {
         let initial_config = AudioRestartConfig {
             device: cli.audio_device.clone(),
             input_device: cli.audio_input_device.clone(),
@@ -164,15 +164,19 @@ async fn main() {
             client_registry.clone(),
         );
 
-        let tx = at.restart_tx.clone();
-        (Some(tx), Some(at))
+        let restart = at.restart_tx.clone();
+        let cmd = at.cmd_tx.clone();
+        (Some(restart), Some(cmd), Some(at))
     } else {
         println!("Audio engine disabled (--no-audio flag).");
-        (None, None)
+        (None, None, None)
     };
 
     #[cfg(not(feature = "audio"))]
     let audio_restart_tx: Option<crossbeam_channel::Sender<AudioRestartRequest>> = None;
+
+    #[cfg(not(feature = "audio"))]
+    let audio_cmd_tx: Option<crossbeam_channel::Sender<sova_server::audio::AudioCommand>> = None;
 
     #[cfg(not(feature = "audio"))]
     println!("Audio engine not compiled (build without 'audio' feature).");
@@ -199,6 +203,15 @@ async fn main() {
 
     let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
 
+    #[cfg(feature = "audio")]
+    let master_gain = audio_thread
+        .as_ref()
+        .map(|at| Arc::clone(&at.master_gain))
+        .unwrap_or_else(|| Arc::new(AtomicU32::new(1.0f32.to_bits())));
+
+    #[cfg(not(feature = "audio"))]
+    let master_gain = Arc::new(AtomicU32::new(1.0f32.to_bits()));
+
     let server_state = ServerState::new(
         scene_image.clone(),
         clock_server.clone(),
@@ -209,8 +222,10 @@ async fn main() {
         languages.clone(),
         audio_engine_state,
         audio_restart_tx,
+        audio_cmd_tx,
         Some(core_restart_tx),
         cli.password,
+        master_gain,
     );
 
     // Orchestrator thread: owns core thread handles, handles restart requests

@@ -39,3 +39,11 @@ pub const TRASH: &str = "\u{EA81}";
 // Doc panel
 pub const BOOK: &str = "\u{EAA4}";
 pub const SWAP: &str = "\u{EBCB}";
+
+// Volume
+pub const MUTE: &str = "\u{EB24}";
+pub const UNMUTE: &str = "\u{EB75}";
+
+// Transport actions
+pub const HUSH: &str = "\u{EB24}"; // codicon mute
+pub const PANIC: &str = "\u{EA6C}"; // codicon warning

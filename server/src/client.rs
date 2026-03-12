@@ -140,6 +140,9 @@ pub enum ClientMessage {
     RestartCore,
     ResetScene(ActionTiming),
     HydraCode(String),
+    SetMasterVolume(f32),
+    Hush,
+    Panic,
 }
 
 impl ClientMessage {

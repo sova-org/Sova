@@ -78,6 +78,7 @@ enum OutgoingMessage {
 pub struct ClientBridge {
     status: ConnectionStatus,
     error_msg: Option<String>,
+    pub just_connected: bool,
 
     // State from server
     scene: Option<Scene>,
@@ -124,6 +125,7 @@ impl ClientBridge {
         Self {
             status: ConnectionStatus::Disconnected,
             error_msg: None,
+            just_connected: false,
             scene: None,
             positions: Vec::new(),
             position_start: Vec::new(),
@@ -348,6 +350,7 @@ impl ClientBridge {
                     };
                     self.audio_state = audio_engine_state;
                     self.status = ConnectionStatus::Connected;
+                    self.just_connected = true;
                 }
                 ServerMessage::ConnectionRefused(reason) => {
                     self.clear_state();

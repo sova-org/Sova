@@ -192,6 +192,8 @@ impl ServerPanel {
             client_registry.clone(),
         );
         let audio_restart_tx = Some(audio_thread.restart_tx.clone());
+        let audio_cmd_tx = Some(audio_thread.cmd_tx.clone());
+        let master_gain = Arc::clone(&audio_thread.master_gain);
 
         let password = if self.password.is_empty() { None } else { Some(self.password.clone()) };
 
@@ -207,8 +209,10 @@ impl ServerPanel {
             languages.clone(),
             audio_engine_state,
             audio_restart_tx,
+            audio_cmd_tx,
             Some(core_restart_tx),
             password,
+            master_gain,
         );
 
         // Orchestrator thread for embedded server
