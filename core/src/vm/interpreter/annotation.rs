@@ -10,8 +10,12 @@ pub struct CodePosition {
 
 impl CodePosition {
 
-    pub fn line(i: usize) -> Self {
-        CodePosition { line: i, ..Default::default() }
+    pub fn line(line: usize) -> Self {
+        CodePosition { line, ..Default::default() }
+    }
+
+    pub fn at(line: usize, col: usize) -> Self {
+        CodePosition { line, col: Some(col) }
     }
     
 }
@@ -30,4 +34,5 @@ impl Display for CodePosition {
 pub enum Annotation {
     Highlight(CodePosition, CodePosition),
     InsertText(String, CodePosition),
+    ExplainSection(String, CodePosition, CodePosition)
 }
