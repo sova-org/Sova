@@ -4,6 +4,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         cmake \
         libclang-dev \
+        libdbus-1-dev \
         libasound2-dev \
         libjack-dev \
         libx11-dev \
