@@ -17,4 +17,4 @@ crossbeam-channel = "0.5.15"
 tui-textarea = "0.7.0"
 arboard = { version = "3.6.1", features = ["wayland-data-control"] }
 serde_json = "1.0.145"
-doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.9", package = "doux-sova" }
+doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.10", package = "doux-sova" }
