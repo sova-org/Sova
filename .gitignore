@@ -28,8 +28,6 @@ Cargo.lock
 *.xcf
 *.pdf
 !/website/static/*.pdf
-/website/public/*
-!/website/public/.nojekyll
 .DS_Store
 *.sova
 
