@@ -27,6 +27,6 @@ pub fn note_freq_with_tune(note: i16, octave: i16, tuning: f64, tuning_octave: i
 }
 
 /// Use default C4 tuning 261.6255... Hz to get note frequency
-pub fn note_freq(note: i16, octave: i16) -> f64 {
+pub fn midi_to_freq(note: i16, octave: i16) -> f64 {
     note_freq_with_tune(note, octave, DEFAULT_C_TUNING, TUNING_OCTAVE)
 }
