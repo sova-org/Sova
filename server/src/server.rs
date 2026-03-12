@@ -543,6 +543,9 @@ async fn on_message(
                 Err(_) => ServerMessage::InternalError("Audio restart channel closed".to_string()),
             }
         }
+        ClientMessage::ResetScene(timing) => {
+            send_and_relay(state, SchedulerMessage::SetScene(Scene::default(), timing))
+        }
         ClientMessage::RestartCore => {
             let Some(ref restart_tx) = state.core_restart_tx else {
                 return ServerMessage::InternalError("Core restart not available".into());

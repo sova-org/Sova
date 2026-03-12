@@ -157,6 +157,7 @@ fn main() -> eframe::Result {
                 about_open: false,
                 keybindings_open: false,
                 confirm_exit: widgets::ConfirmDialog::new("confirm_exit"),
+                confirm_reset_scene: widgets::ConfirmDialog::new("confirm_reset_scene"),
                 command_palette: widgets::CommandPalette::new(),
                 options,
                 scope_panel,
@@ -199,6 +200,7 @@ struct SovaApp {
     about_open: bool,
     keybindings_open: bool,
     confirm_exit: widgets::ConfirmDialog,
+    confirm_reset_scene: widgets::ConfirmDialog,
     command_palette: widgets::CommandPalette,
     options: options_panel::OptionsPanel,
     scope_panel: scope_panel::ScopePanel,
@@ -424,6 +426,11 @@ impl eframe::App for SovaApp {
             widgets::ConfirmAction::Cancelled | widgets::ConfirmAction::None => {}
         }
 
+        if let widgets::ConfirmAction::Confirmed = self.confirm_reset_scene.show(ctx) {
+            self.bridge
+                .send(ClientMessage::ResetScene(ActionTiming::Immediate));
+        }
+
         self.server.poll();
         self.bridge.poll();
         self.logs.poll();
@@ -461,6 +468,16 @@ impl eframe::App for SovaApp {
                     {
                         ui.close();
                         self.load_scene(ActionTiming::AtNextPhase);
+                    }
+                    if ui
+                        .add_enabled(connected, egui::Button::new(t!("menu.reset_scene")))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.confirm_reset_scene.open(
+                            t!("reset_scene.title"),
+                            t!("reset_scene.message"),
+                        );
                     }
                     let has_recent = !self.recent_scenes.is_empty();
                     ui.add_enabled_ui(connected && has_recent, |ui| {
@@ -508,7 +525,21 @@ impl eframe::App for SovaApp {
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.file_operations"));
                 }
+                let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
+                let (mod_sym, shift_sym) = if is_mac {
+                    ("⌘", "⇧")
+                } else {
+                    ("Ctrl+", "Shift+")
+                };
                 let r = ui.menu_button(t!("menu.server"), |ui| {
+                    let menu_checkbox = |ui: &mut egui::Ui,
+                                         checked: &mut bool,
+                                         label: std::borrow::Cow<'_, str>,
+                                         shortcut: &str| {
+                        let text = egui::RichText::new(shortcut).weak();
+                        ui.checkbox(checked, label).on_hover_text(text);
+                    };
+
                     if self.server.is_running() {
                         if ui.button(t!("menu.stop_server")).clicked() {
                             ui.close();
@@ -546,6 +577,13 @@ impl eframe::App for SovaApp {
                             self.rename_input = Some(current);
                         }
                     }
+                    ui.separator();
+                    menu_checkbox(
+                        ui,
+                        &mut self.devices.open,
+                        t!("devices.title"),
+                        &format!("{mod_sym}{shift_sym}I"),
+                    );
                 });
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.server_menu"));
@@ -570,12 +608,6 @@ impl eframe::App for SovaApp {
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.engine_menu"));
                 }
-                let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
-                let (mod_sym, shift_sym) = if is_mac {
-                    ("⌘", "⇧")
-                } else {
-                    ("Ctrl+", "Shift+")
-                };
 
                 let r = ui.menu_button(t!("menu.audio"), |ui| {
                     let menu_checkbox = |ui: &mut egui::Ui,
@@ -591,12 +623,6 @@ impl eframe::App for SovaApp {
                         &mut self.audio.open,
                         t!("audio.title"),
                         &format!("{mod_sym}{shift_sym}A"),
-                    );
-                    menu_checkbox(
-                        ui,
-                        &mut self.devices.open,
-                        t!("devices.title"),
-                        &format!("{mod_sym}{shift_sym}I"),
                     );
                     ui.separator();
                     menu_checkbox(
@@ -980,6 +1006,14 @@ impl SovaApp {
             LoadScene => {
                 if self.bridge.is_connected() {
                     self.load_scene(ActionTiming::Immediate);
+                }
+            }
+            ResetScene => {
+                if self.bridge.is_connected() {
+                    self.confirm_reset_scene.open(
+                        t!("reset_scene.title"),
+                        t!("reset_scene.message"),
+                    );
                 }
             }
             ZoomIn => {

@@ -138,6 +138,7 @@ pub enum ClientMessage {
     },
     EnableFeedback,
     RestartCore,
+    ResetScene(ActionTiming),
 }
 
 impl ClientMessage {
