@@ -24,6 +24,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "voice", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set voice number", example: "1 voice", compile: Param, varargs: true },
     Word { name: "orbit", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set orbit/bus", example: "0 orbit", compile: Param, varargs: true },
     Word { name: "n", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set sample number", example: "0 n", compile: Param, varargs: true },
+    Word { name: "inchan", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Select input channel for live input (0-indexed)", example: "0 inchan", compile: Param, varargs: true },
     Word { name: "cut", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set cut group", example: "1 cut", compile: Param, varargs: true },
     Word { name: "reset", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Reset parameter", example: "1 reset", compile: Param, varargs: true },
     Word { name: "stretch", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Time stretch factor (pitch-independent)", example: "2 stretch", compile: Param, varargs: true },
