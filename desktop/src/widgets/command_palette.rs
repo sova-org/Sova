@@ -26,6 +26,7 @@ pub enum CommandId {
     // File
     SaveScene,
     LoadScene,
+    ResetScene,
     // View
     ZoomIn,
     ZoomOut,
@@ -117,6 +118,14 @@ fn commands() -> Vec<Command> {
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.load_scene.desc").into(),
             shortcut: Some(format!("{m}+O")),
+            active: false,
+        },
+        Command {
+            id: CommandId::ResetScene,
+            label: t!("cmd.reset_scene").into(),
+            category: t!("cmd.category.file").into(),
+            desc: t!("cmd.reset_scene.desc").into(),
+            shortcut: None,
             active: false,
         },
         // View
