@@ -29,6 +29,7 @@ Cargo.lock
 *.pdf
 !/website/static/*.pdf
 /website/public/*
+!/website/public/.nojekyll
 .DS_Store
 *.sova
 
