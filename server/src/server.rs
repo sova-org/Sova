@@ -1,4 +1,4 @@
-use crate::audio::AudioEngineState;
+use crate::audio::{AudioCommand, AudioEngineState};
 use crate::client::{ClientMessage, serialize_to_wire_frame};
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex as StdMutex, RwLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
     thread,
 };
@@ -24,7 +24,7 @@ use tokio::{
 use sova_core::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
-    schedule::{SchedulerMessage, SovaNotification},
+    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
 
 use crate::message::ServerMessage;
@@ -134,11 +134,14 @@ pub struct ServerState {
     pub is_playing: Arc<AtomicBool>,
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+    pub audio_cmd_tx: Option<Sender<AudioCommand>>,
     pub core_restart_tx: Option<Sender<CoreRestartRequest>>,
     pub password: Option<String>,
+    pub master_gain: Arc<AtomicU32>,
 }
 
 impl ServerState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
@@ -149,8 +152,10 @@ impl ServerState {
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+        audio_cmd_tx: Option<Sender<AudioCommand>>,
         core_restart_tx: Option<Sender<CoreRestartRequest>>,
         password: Option<String>,
+        master_gain: Arc<AtomicU32>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -164,8 +169,10 @@ impl ServerState {
             is_playing: Arc::new(AtomicBool::new(false)),
             audio_engine_state,
             audio_restart_tx,
+            audio_cmd_tx,
             core_restart_tx,
             password,
+            master_gain,
         }
     }
 
@@ -566,6 +573,21 @@ async fn on_message(
                 Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
             }
         }
+        ClientMessage::HydraCode(code) => {
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::HydraCode(client_name.clone(), code),
+                false,
+            );
+            ServerMessage::Success
+        }
+        ClientMessage::SetMasterVolume(vol) => {
+            let clamped = vol.clamp(0.0, 1.0);
+            state
+                .master_gain
+                .store(clamped.to_bits(), Ordering::Relaxed);
+            ServerMessage::Success
+        }
         ClientMessage::EnableFeedback => {
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
@@ -575,6 +597,30 @@ async fn on_message(
                 quantum: clock.quantum(),
                 is_playing: state.is_playing.load(Ordering::Relaxed),
             }
+        }
+        ClientMessage::Hush => {
+            let _ = state
+                .sched_iface
+                .read()
+                .unwrap()
+                .send(SchedulerMessage::TransportStop(ActionTiming::Immediate));
+            if let Some(ref tx) = state.audio_cmd_tx {
+                let _ = tx.send(AudioCommand::Hush);
+            }
+            state.devices.panic_all_midi_outputs();
+            ServerMessage::Success
+        }
+        ClientMessage::Panic => {
+            let _ = state
+                .sched_iface
+                .read()
+                .unwrap()
+                .send(SchedulerMessage::TransportStop(ActionTiming::Immediate));
+            if let Some(ref tx) = state.audio_cmd_tx {
+                let _ = tx.send(AudioCommand::Panic);
+            }
+            state.devices.panic_all_midi_outputs();
+            ServerMessage::Success
         }
     }
 }

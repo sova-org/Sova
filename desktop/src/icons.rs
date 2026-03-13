@@ -21,6 +21,7 @@ pub const TRAILING: &str = "\u{EB80}";
 // Status
 pub const CIRCLE_FILLED: &str = "\u{EA71}";
 pub const CIRCLE_LARGE_FILLED: &str = "\u{EBB4}";
+pub const CIRCLE_LARGE_OUTLINE: &str = "\u{EBB5}";
 
 // Dialog / links
 pub const CLOSE: &str = "\u{EA76}";
@@ -38,3 +39,11 @@ pub const TRASH: &str = "\u{EA81}";
 // Doc panel
 pub const BOOK: &str = "\u{EAA4}";
 pub const SWAP: &str = "\u{EBCB}";
+
+// Volume
+pub const MUTE: &str = "\u{EB24}";
+pub const UNMUTE: &str = "\u{EB75}";
+
+// Transport actions
+pub const HUSH: &str = "\u{EB24}"; // codicon mute
+pub const PANIC: &str = "\u{EA6C}"; // codicon warning

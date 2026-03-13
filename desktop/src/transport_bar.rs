@@ -5,6 +5,10 @@ use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
 
+pub enum TransportAction {
+    Panic,
+}
+
 pub struct TransportBar {
     editing_tempo: bool,
     tempo_buf: String,
@@ -18,7 +22,8 @@ impl TransportBar {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
+    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) -> Option<TransportAction> {
+        let mut action = None;
         egui::TopBottomPanel::top("transport_bar").show(ctx, |ui| {
             if !bridge.is_connected() {
                 ui.add_enabled_ui(false, |ui| {
@@ -63,6 +68,23 @@ impl TransportBar {
                             ActionTiming::Immediate,
                         ));
                     }
+                }
+
+                let r = ui.button(crate::icons::HUSH);
+                if r.hovered() {
+                    crate::widgets::hint::set(ctx, t!("transport.hint.hush"));
+                }
+                if r.clicked() {
+                    bridge.send(ClientMessage::Hush);
+                }
+
+                let r = ui.button(crate::icons::PANIC);
+                if r.hovered() {
+                    crate::widgets::hint::set(ctx, t!("transport.hint.panic"));
+                }
+                if r.clicked() {
+                    bridge.send(ClientMessage::Panic);
+                    action = Some(TransportAction::Panic);
                 }
 
                 ui.separator();
@@ -229,5 +251,6 @@ impl TransportBar {
                 ctx.request_repaint();
             }
         });
+        action
     }
 }

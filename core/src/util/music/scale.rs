@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{util::music::tuning::{NOTE_C, note_freq}};
+use crate::{util::music::tuning::{NOTE_C, midi_to_freq}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scale {
@@ -45,7 +45,7 @@ impl Scale {
 
     pub fn major(note: i16, octave: i16) -> Scale {
         Scale {
-            tonic: note_freq(note, octave),
+            tonic: midi_to_freq(note, octave),
             deviation: 0.0,
             octave_factor: 2.0,
             intervals: vec![2,2,1,2,2,2,1],
@@ -54,7 +54,7 @@ impl Scale {
     
     pub fn minor(note: i16, octave: i16) -> Scale {
         Scale {
-            tonic: note_freq(note, octave),
+            tonic: midi_to_freq(note, octave),
             deviation: 0.0,
             octave_factor: 2.0,
             intervals: vec![2,1,2,2,1,2,2],
@@ -63,7 +63,7 @@ impl Scale {
 
     pub fn chromatic(note: i16, octave: i16) -> Self {
         Scale { 
-            tonic: note_freq(note, octave), 
+            tonic: midi_to_freq(note, octave), 
             deviation: 0.0, 
             octave_factor: 2.0, 
             intervals: vec![1;12] 

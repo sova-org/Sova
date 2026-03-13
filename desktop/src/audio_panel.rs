@@ -58,6 +58,7 @@ impl AudioPanel {
             buffer_size: self.buffer_size,
             max_voices: self.max_voices,
             sample_paths: self.sample_paths.clone(),
+            ..Default::default()
         }
     }
 

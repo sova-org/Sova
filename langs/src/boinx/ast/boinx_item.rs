@@ -12,7 +12,7 @@ use crate::boinx::{
     },
 };
 use sova_core::{
-    clock::{NEVER, SyncTime, TimeSpan}, vm::{EvaluationContext, Program, variable::VariableValue}
+    clock::{NEVER, SyncTime, TimeSpan}, util::music::rhythm::RhythmElement, vm::{EvaluationContext, Program, variable::VariableValue}
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -503,6 +503,15 @@ impl BoinxItem {
         let mut map = HashMap::new();
         map.insert("_type_id".to_owned(), self.type_id().into());
         map
+    }
+}
+
+impl RhythmElement for BoinxItem {
+    fn tick() -> Self {
+        Self::Placeholder
+    }
+    fn mute() -> Self {
+        Self::Mute
     }
 }
 

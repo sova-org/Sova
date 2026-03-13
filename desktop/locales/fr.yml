@@ -44,6 +44,9 @@ hint.server_menu: "Contrôles du serveur, renommer et périphériques"
 hint.engine_menu: "Contrôles du moteur audio"
 hint.audio_menu: "Moteur audio et monitoring"
 hint.view_menu: "Panneaux, paramètres et fenêtres"
+hint.master_volume: "Volume principal"
+hint.mute: "Couper le son"
+hint.unmute: "Rétablir le son"
 
 # Server panel
 server.title: "Serveur"
@@ -137,6 +140,9 @@ visuals.title: "Visuels"
 visuals.eval: "Évaluer"
 visuals.compiled: "Compilé"
 visuals.error: "Erreur de shader"
+visuals.share: "Partager"
+visuals.share_on: "Partage des visuels avec les pairs (envoi à l'évaluation, réception des pairs)"
+visuals.share_off: "Partager les visuels avec les pairs"
 
 options.visuals_enabled: "Activer les visuels"
 options.hint.visuals_enabled: "Afficher les shaders en arrière-plan"
@@ -215,6 +221,8 @@ transport.hint.tempo_edit: "Saisir le tempo et appuyer sur Entrée (20-300 BPM)"
 transport.hint.tempo: "Tempo actuel — cliquer pour modifier"
 transport.hint.phase: "Progression de la phase dans le quantum"
 transport.hint.quantum: "Quantum — beats par phase"
+transport.hint.hush: "Hush — arrêter et estomper tous les sons"
+transport.hint.panic: "Panic — couper immédiatement tous les sons"
 transport.hint.mode: "Mode d'exécution — cliquer pour changer (Free / AtQuantum / LongestLine)"
 
 # Scene panel

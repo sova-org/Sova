@@ -44,6 +44,9 @@ hint.server_menu: "Server controls, rename, and devices"
 hint.engine_menu: "Audio engine controls"
 hint.audio_menu: "Audio engine and monitoring"
 hint.view_menu: "Toggle panels, settings, and windows"
+hint.master_volume: "Master volume"
+hint.mute: "Mute audio"
+hint.unmute: "Unmute audio"
 
 # Server panel
 server.title: "Server"
@@ -137,6 +140,9 @@ visuals.title: "Visuals"
 visuals.eval: "Eval"
 visuals.compiled: "Compiled"
 visuals.error: "Shader error"
+visuals.share: "Share"
+visuals.share_on: "Sharing visuals with peers (send on eval, receive from peers)"
+visuals.share_off: "Share visuals with peers"
 
 options.visuals_enabled: "Enable visuals"
 options.hint.visuals_enabled: "Render live-coded shaders as a background layer"
@@ -215,6 +221,8 @@ transport.hint.tempo_edit: "Type tempo and press Enter (20-300 BPM)"
 transport.hint.tempo: "Current tempo — click to edit"
 transport.hint.phase: "Phase progress within current quantum"
 transport.hint.quantum: "Quantum — beats per phase"
+transport.hint.hush: "Hush — stop and fade out all sound"
+transport.hint.panic: "Panic — immediately silence everything"
 transport.hint.mode: "Execution mode — click to cycle (Free / AtQuantum / LongestLine)"
 
 # Scene panel

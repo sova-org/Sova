@@ -1,3 +1,8 @@
+pub enum AudioCommand {
+    Hush,
+    Panic,
+}
+
 #[cfg(feature = "audio")]
 pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture, audio as doux_audio};
 
@@ -27,6 +32,12 @@ mod stub {
         pub max_voices: usize,
         pub schedule_depth: usize,
         pub sample_pool_mb: f32,
+        #[serde(default = "default_volume")]
+        pub volume: f32,
+    }
+
+    fn default_volume() -> f32 {
+        1.0
     }
 
     impl Default for AudioEngineState {
@@ -45,6 +56,7 @@ mod stub {
                 max_voices: 0,
                 schedule_depth: 0,
                 sample_pool_mb: 0.0,
+                volume: 1.0,
             }
         }
     }

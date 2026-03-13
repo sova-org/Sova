@@ -5,6 +5,7 @@ RUN dpkg --add-architecture arm64 && \
     apt-get install -y --no-install-recommends \
         cmake \
         libclang-dev \
+        libdbus-1-dev:arm64 \
         libasound2-dev:arm64 \
         libjack-dev:arm64 \
         libx11-dev:arm64 \

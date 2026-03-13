@@ -78,6 +78,7 @@ enum OutgoingMessage {
 pub struct ClientBridge {
     status: ConnectionStatus,
     error_msg: Option<String>,
+    pub just_connected: bool,
 
     // State from server
     scene: Option<Scene>,
@@ -95,6 +96,9 @@ pub struct ClientBridge {
     peer_cursors: HashMap<String, (usize, usize)>,
     chat_messages: Vec<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
+
+    // Remote Hydra code from peers
+    remote_hydra: Option<(String, String)>,
 
     // Visual flashes for multiplayer liveness
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
@@ -121,6 +125,7 @@ impl ClientBridge {
         Self {
             status: ConnectionStatus::Disconnected,
             error_msg: None,
+            just_connected: false,
             scene: None,
             positions: Vec::new(),
             position_start: Vec::new(),
@@ -136,6 +141,7 @@ impl ClientBridge {
             peer_cursors: HashMap::new(),
             chat_messages: Vec::new(),
             errors: HashMap::new(),
+            remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
             feedback_engine: None,
@@ -344,6 +350,7 @@ impl ClientBridge {
                     };
                     self.audio_state = audio_engine_state;
                     self.status = ConnectionStatus::Connected;
+                    self.just_connected = true;
                 }
                 ServerMessage::ConnectionRefused(reason) => {
                     self.clear_state();
@@ -550,6 +557,11 @@ impl ClientBridge {
                         engine.send(msg);
                     }
                 }
+                ServerMessage::HydraCode(sender, code) => {
+                    if self.confirmed_username.as_deref() != Some(&sender) {
+                        self.remote_hydra = Some((sender, code));
+                    }
+                }
                 ServerMessage::CoreRestarted => {
                     self.errors.clear();
                     self.compilation_flashes.clear();
@@ -597,6 +609,7 @@ impl ClientBridge {
         self.peer_editing.clear();
         self.peer_cursors.clear();
         self.chat_messages.clear();
+        self.remote_hydra = None;
         self.compilation_flashes.clear();
         self.mutation_flashes.clear();
         self.feedback_engine = None;
@@ -776,6 +789,14 @@ impl ClientBridge {
         } else {
             self.send(ClientMessage::SetDeviceLatency(name.to_owned(), latency));
         }
+    }
+
+    pub fn take_remote_hydra(&mut self) -> Option<(String, String)> {
+        self.remote_hydra.take()
+    }
+
+    pub fn send_hydra_code(&self, code: &str) {
+        self.send(ClientMessage::HydraCode(code.to_owned()));
     }
 
     pub fn build_snapshot(&self) -> Option<Snapshot> {

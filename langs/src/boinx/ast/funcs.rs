@@ -3,7 +3,7 @@ use std::{cell::LazyCell, collections::{BTreeMap, HashMap}};
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, error::SovaError, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
+    clock::TimeSpan, error::SovaError, util::music::rhythm::{bitrhythm, euclid}, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -61,8 +61,12 @@ pub fn audio_rate_modulation_string(
         }
         3 => {
             let period = args.pop().unwrap();
-            let period = VariableValue::from(period);
-            let period = period.as_dur(ctx).as_secs(ctx.clock, ctx.frame_len);
+            let period = match period {
+                BoinxItem::Number(f) => TimeSpan::Frames(f),
+                BoinxItem::Duration(time_span) => time_span,
+                x => VariableValue::from(x).as_dur(ctx),
+            };
+            let period = period.as_secs(ctx.clock, ctx.frame_len);
             let end = args.pop().unwrap();
             let end = VariableValue::from(end).as_float(ctx);
             let start = args.pop().unwrap();
@@ -408,61 +412,41 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         } 
     ));
     funcs.insert("euclid".to_owned(), ItemFunc::define(
-        "Euclidian rhythm (k,n)",
+        "Euclidian rhythm (k,n,(r))",
         |ctx, args| {
             let mut args = unpack_if_one(args);
             if args.len() == 1 {
                 ctx.errors.throw(SovaError::from(&*ctx).message("Not enough arguments for 'euclid' ! Ignoring"));
                 return Mute;
             }
-            if args.len() > 2 {
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'euclid', taking two last !"));
+            if args.len() > 3 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'euclid', taking three last !"));
             }
+
+            let r = if args.len() == 3 {
+                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+            } else {
+                0
+            };
+
             let n = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize;
             let k = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize;
             let k = std::cmp::min(k, n);
 
-            if n % k == 0 {
-                let mut res = vec![Mute ; n];
-                for i in 0..k {
-                    res[i * (n / k)] = Placeholder;
-                }
-                return Sequence(res);
+            Sequence(euclid(k, n, r))
+        }
+    ));
+    funcs.insert("bitrhythm".to_owned(), ItemFunc::define(
+        "Bit rhythm (k,n)",
+        |ctx, args| {
+            let mut args = unpack_if_one(args);
+            if args.len() > 1 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'bitrhythm', taking last !"));
             }
 
-            let init_rem = std::cmp::min(n - k, k);
+            let i = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as u64;
 
-            let mut lines = vec![vec![Mute ; n - init_rem], vec![Mute ; init_rem]];
-            for i in 0..k {
-                lines[0][i] = Placeholder;
-            }
-            let mut last_line_len = lines.last().unwrap().len();
-            let mut rem = lines[0].len() % last_line_len;
-            while rem > 1 {
-                let n_lines = lines.len();
-                for l_i in 0..n_lines {
-                    let line_len =  lines[l_i].len();
-                    let rem_line = line_len % last_line_len;
-                    if rem_line > 0 {
-                        let end = lines[l_i].split_off(line_len - rem_line);
-                        lines.push(end);
-                    }
-                }
-                last_line_len = lines.last().unwrap().len();
-                rem = lines[0].len() % last_line_len;
-            }
-            let mut vec = vec![Mute ; n];
-            let mut line = 0;
-            let mut col = 0;
-            for i in 0..n {
-                vec[i] = std::mem::take(&mut lines[line][col]);
-                line += 1;
-                if line >= lines.len() || lines[line].len() <= col {
-                    line = 0;
-                    col += 1;
-                }
-            }
-            Sequence(vec)
+            Sequence(bitrhythm(i))
         }
     ));
     funcs

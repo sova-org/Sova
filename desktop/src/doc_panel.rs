@@ -790,7 +790,8 @@ impl DocPanel {
                             if ui.add_enabled(connected, run_btn).clicked() {
                                 bridge.send(ClientMessage::SchedulerControl(
                                     SchedulerMessage::RunSnippet(
-                                        Script::new(self.edited_example.clone(), lang_name.clone())
+                                        Script::new(self.edited_example.clone(), lang_name.clone()),
+                                        1.0
                                     ),
                                 ));
                                 self.example_output = Some(Ok(t!("doc.sent").into()));

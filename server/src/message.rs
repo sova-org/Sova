@@ -59,6 +59,7 @@ pub enum ServerMessage {
     },
     Feedback(SchedulerMessage),
     CoreRestarted,
+    HydraCode(String, String),
 }
 
 #[cfg(test)]
@@ -204,6 +205,7 @@ mod tests {
             ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
             ServerMessage::Feedback(SchedulerMessage::SetScene(scene.clone(), ActionTiming::Immediate)),
             ServerMessage::CoreRestarted,
+            ServerMessage::HydraCode("alice".into(), "osc().out()".into()),
         ];
 
         for msg in &variants {

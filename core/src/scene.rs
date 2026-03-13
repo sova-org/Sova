@@ -204,14 +204,14 @@ impl Scene {
         self.lines.iter().map(Line::position)
     }
 
-    pub fn trigger_prelude(&mut self, langs: &LanguageCenter, date: SyncTime) -> Vec<ScriptExecution> {
-        self.prelude.iter_mut().filter_map(|script| {
+    pub fn trigger_prelude(&mut self, langs: &LanguageCenter, date: SyncTime) -> impl Iterator<Item = ScriptExecution> {
+        self.prelude.iter_mut().filter_map(move |script| {
             langs.blocking_process(script);
             let Some(inter) = langs.interpreters.get_interpreter(script) else {
                 return None;
             };
             Some(ScriptExecution::execute_at(inter, date))
-        }).collect()
+        })
     }
 
     pub fn kill_executions(&mut self) {

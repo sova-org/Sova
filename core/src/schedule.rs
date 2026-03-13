@@ -40,7 +40,7 @@ pub struct Scheduler {
 
     scene_structure: Vec<Vec<f64>>,
 
-    scratchpad: Vec<ScriptExecution>
+    scratchpad: Vec<(ScriptExecution, f64)>
 }
 
 impl Scheduler {
@@ -113,7 +113,10 @@ impl Scheduler {
         self.languages
             .process_scene(&self.scene, self.feedback.clone());
 
-        let mut prelude = self.scene.trigger_prelude(&self.languages, self.clock.micros());
+        let mut prelude = self.scene
+            .trigger_prelude(&self.languages, self.clock.micros())
+            .map(|exec| (exec, 1.0))
+            .collect();
         self.scratchpad.append(&mut prelude);
 
         // Notify clients about the completely new scene state
@@ -150,8 +153,10 @@ impl Scheduler {
             }
             SchedulerMessage::SetScenePrelude(scripts) => {
                 self.scene.prelude = scripts;
-                let mut execs = 
-                    self.scene.trigger_prelude(&self.languages, self.clock.micros());
+                let mut execs = self.scene
+                    .trigger_prelude(&self.languages, self.clock.micros())
+                    .map(|exec| (exec, 1.0))
+                    .collect();
                 self.scratchpad.append(&mut execs);
                 let _ = self
                     .update_notifier
@@ -165,13 +170,13 @@ impl Scheduler {
                         .send(msg.with_device(device).timed(self.clock.micros()));
                 }
             }
-            SchedulerMessage::RunSnippet(mut script) => {
+            SchedulerMessage::RunSnippet(mut script, frame_len) => {
                 self.languages.blocking_process(&mut script);
                 let Some(inter) = self.languages.interpreters.get_interpreter(&script) else {
                     return;
                 };
                 let exec = ScriptExecution::execute_at(inter, self.clock.micros());
-                self.scratchpad.push(exec);
+                self.scratchpad.push((exec, frame_len));
             }
             SchedulerMessage::Shutdown => {
                 log_println!("[-] Scheduler received shutdown signal");
@@ -282,7 +287,8 @@ impl Scheduler {
             device_map: Some(&self.devices),
             errors: Some(&self.error_queue),
         };
-        for exec in self.scratchpad.iter_mut() {
+        for (exec, frame_len) in self.scratchpad.iter_mut() {
+            partial.frame_len = Some(*frame_len);
             if !exec.is_ready(date) {
                 next_wait = std::cmp::min(next_wait, exec.remaining_before(date));
                 continue;
@@ -295,7 +301,7 @@ impl Scheduler {
             }
             next_wait = std::cmp::min(next_wait, wait);
         }
-        self.scratchpad.retain(|exec| !exec.has_terminated());
+        self.scratchpad.retain(|(exec, _)| !exec.has_terminated());
         next_wait
     }
 
@@ -402,7 +408,10 @@ impl Scheduler {
         self.clock.commit_app_state();
         
         //self.scratchpad.clear();
-        self.scratchpad = self.scene.trigger_prelude(&self.languages, start_date);
+        self.scratchpad = self.scene
+            .trigger_prelude(&self.languages, start_date)
+            .map(|exec| (exec, 1.0))
+            .collect();
     }
 
     pub fn process_transport_stop(&mut self) {

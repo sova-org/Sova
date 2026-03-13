@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 eframe = "0.33.3"
-sova_server = { path = "../server", package = "sova-server" }
+sova_server = { path = "../server", package = "sova-server", features = ["audio"] }
 sova_core = { path = "../core", package = "core" }
 langs = { path = "../langs" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
@@ -19,7 +19,7 @@ rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 confy = "2"
-doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.10", features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.11", features = ["native"] }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }

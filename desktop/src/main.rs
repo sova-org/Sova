@@ -130,6 +130,7 @@ fn main() -> eframe::Result {
             );
             let client = client_panel::ClientPanel::new(s.client);
             let logs = log_panel::LogPanel::new(log_rx, s.windows.log_panel_height);
+            let saved_master_volume = s.audio.master_volume;
             let audio = audio_panel::AudioPanel::new(s.audio);
             let devices = devices_panel::DevicesPanel::new();
             let options = options_panel::OptionsPanel::new();
@@ -178,6 +179,8 @@ fn main() -> eframe::Result {
                 visuals,
                 chat_overlay: chat_overlay::ChatOverlay::new(),
                 rename_input: None,
+                master_volume: saved_master_volume,
+                muted: false,
             };
 
             app.logs.collapsed = s.windows.logs_collapsed;
@@ -221,6 +224,8 @@ struct SovaApp {
     visuals: visuals::VisualsEngine,
     chat_overlay: chat_overlay::ChatOverlay,
     rename_input: Option<String>,
+    master_volume: f32,
+    muted: bool,
 }
 
 impl SovaApp {
@@ -385,12 +390,17 @@ impl SovaApp {
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
             client: self.client.settings(),
-            audio: self.audio.settings(),
+            audio: {
+                let mut audio = self.audio.settings();
+                audio.master_volume = self.master_volume;
+                audio
+            },
             appearance: self.appearance.clone(),
             scope: self.scope_panel.settings.clone(),
             spectrum: self.spectrum_panel.settings.clone(),
             visuals: VisualsSettings {
                 code: self.visuals.code().to_owned(),
+                shared: self.visuals.shared,
             },
             doc: self.doc_panel.settings.clone(),
             recent_scenes: self.recent_scenes.clone(),
@@ -433,6 +443,10 @@ impl eframe::App for SovaApp {
 
         self.server.poll();
         self.bridge.poll();
+        if self.bridge.just_connected {
+            self.bridge.just_connected = false;
+            self.bridge.send(ClientMessage::SetMasterVolume(self.effective_gain()));
+        }
         self.logs.poll();
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -743,11 +757,62 @@ impl eframe::App for SovaApp {
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.view_menu"));
                 }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let audio = self.bridge.audio_state();
+                    if audio.running {
+                        let cpu_pct = audio.cpu_load * 100.0;
+                        let cpu_color = if cpu_pct >= 80.0 {
+                            egui::Color32::from_rgb(255, 80, 80)
+                        } else if cpu_pct >= 50.0 {
+                            egui::Color32::from_rgb(255, 180, 50)
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        let text = format!("V:{}  CPU {:.0}%", audio.active_voices, cpu_pct);
+                        ui.colored_label(cpu_color, text);
+                    }
+
+                    let mut vol = if self.muted { 0.0 } else { self.master_volume };
+                    let slider = egui::Slider::new(&mut vol, 0.0..=1.0).show_value(false);
+                    let r = ui.add_sized([100.0, ui.available_height()], slider);
+                    if r.changed() {
+                        self.master_volume = vol;
+                        self.muted = false;
+                        self.bridge
+                            .send(ClientMessage::SetMasterVolume(self.effective_gain()));
+                    }
+                    if r.hovered() {
+                        widgets::hint::set(ctx, t!("hint.master_volume"));
+                    }
+
+                    let icon = if self.muted || self.master_volume == 0.0 {
+                        icons::MUTE
+                    } else {
+                        icons::UNMUTE
+                    };
+                    let btn = ui.button(icon);
+                    if btn.clicked() {
+                        self.muted = !self.muted;
+                        self.bridge.send(ClientMessage::SetMasterVolume(self.effective_gain()));
+                    }
+                    if btn.hovered() {
+                        let hint = if self.muted {
+                            t!("hint.unmute")
+                        } else {
+                            t!("hint.mute")
+                        };
+                        widgets::hint::set(ctx, hint);
+                    }
+                });
             });
         });
 
         // Transport bar
-        self.transport_bar.show(ctx, &self.bridge);
+        if let Some(transport_bar::TransportAction::Panic) = self.transport_bar.show(ctx, &self.bridge) {
+            self.muted = true;
+            self.bridge.send(ClientMessage::SetMasterVolume(0.0));
+        }
 
         let bar = egui::TopBottomPanel::bottom("bottom_bar")
             .show(ctx, |ui| {
@@ -900,6 +965,17 @@ impl eframe::App for SovaApp {
             apply_appearance(ctx, &self.appearance);
         }
         self.visuals.show_editor(ctx, &self.editor_settings);
+
+        if self.visuals.take_pending_broadcast() {
+            self.bridge.send_hydra_code(self.visuals.code());
+        }
+        if self.visuals.shared
+            && let Some((sender, code)) = self.bridge.take_remote_hydra()
+        {
+            self.visuals.remote_sender = Some(sender);
+            self.visuals.apply_remote_code(&code);
+        }
+
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
@@ -958,6 +1034,10 @@ impl eframe::App for SovaApp {
 }
 
 impl SovaApp {
+    fn effective_gain(&self) -> f32 {
+        if self.muted { 0.0 } else { self.master_volume * self.master_volume }
+    }
+
     fn execute_command(&mut self, cmd: widgets::CommandId) {
         use widgets::CommandId::*;
         match cmd {
