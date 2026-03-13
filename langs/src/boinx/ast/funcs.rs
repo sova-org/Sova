@@ -375,6 +375,24 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             Str(audio_rate_modulation_string(ctx, args, "s", ">"))
         } 
     ));
+    funcs.insert("easein".to_owned(), ItemFunc::define(
+        "Audio rate modulation slide for Doux (linear)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "i", ">"))
+        } 
+    ));
+    funcs.insert("easeout".to_owned(), ItemFunc::define(
+        "Audio rate modulation slide for Doux (exponential)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "o", ">"))
+        } 
+    ));
+    funcs.insert("stair".to_owned(), ItemFunc::define(
+        "Audio rate modulation oscillator for Doux (smooth)",
+        |ctx, args| {
+            Str(audio_rate_modulation_string(ctx, args, "p", ">"))
+        } 
+    ));
     funcs.insert("jit".to_owned(), ItemFunc::define(
         "Audio rate modulation randomization for Doux (sample & hold)",
         |ctx, args| {
