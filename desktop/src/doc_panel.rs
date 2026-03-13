@@ -13,6 +13,7 @@ use egui::{TextBuffer, TextFormat};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
+use doux::types::{ModuleGroup, ModuleInfo, Source};
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
@@ -100,6 +101,7 @@ enum DocView {
     LangArticle(usize),
     LangReference(usize),
     HydraArticle(usize),
+    DouxModule(usize),
 }
 
 pub struct DocPanel {
@@ -258,7 +260,8 @@ impl DocPanel {
     ) {
         let langs = bridge.languages();
         let hydra_tab = 1 + langs.len();
-        let tab_count = hydra_tab + 1;
+        let doux_tab = hydra_tab + 1;
+        let tab_count = doux_tab + 1;
         self.selected_tab = self.selected_tab.min(tab_count - 1);
 
         egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
@@ -309,6 +312,23 @@ impl DocPanel {
                 }
                 if r.clicked() {
                     self.selected_tab = hydra_tab;
+                    self.search.clear();
+                    self.view = None;
+                    self.example_output = None;
+                    self.edited_example.clear();
+                    self.scroll_to_top = true;
+                }
+
+                let r = ui.selectable_label(self.selected_tab == doux_tab, "Doux");
+                if self.selected_tab == doux_tab {
+                    let accent = ui.visuals().selection.bg_fill;
+                    ui.painter().line_segment(
+                        [r.rect.left_bottom(), r.rect.right_bottom()],
+                        egui::Stroke::new(2.0, accent),
+                    );
+                }
+                if r.clicked() {
+                    self.selected_tab = doux_tab;
                     self.search.clear();
                     self.view = None;
                     self.example_output = None;
@@ -370,6 +390,8 @@ impl DocPanel {
                         self.show_general_toc(ui, &needle);
                     } else if selected == hydra_tab {
                         self.show_hydra_toc(ui, &needle);
+                    } else if selected == doux_tab {
+                        self.show_doux_toc(ui, &needle);
                     } else {
                         let lang = &langs[selected - 1];
                         self.show_lang_toc(ui, &lang.documentation, &needle);
@@ -392,6 +414,9 @@ impl DocPanel {
                     self.show_general_content(ui)
                 } else if selected == hydra_tab {
                     self.show_hydra_content(ui, editor_settings)
+                } else if selected == doux_tab {
+                    self.show_doux_content(ui);
+                    None
                 } else {
                     let lang = &langs[selected - 1];
                     self.show_lang_content(ui, &lang.name, &lang.documentation, bridge, editor_settings)
@@ -404,6 +429,7 @@ impl DocPanel {
                 let tab = match &view {
                     DocView::GeneralArticle(_) => 0,
                     DocView::HydraArticle(_) => hydra_tab,
+                    DocView::DouxModule(_) => doux_tab,
                     _ => self.selected_tab,
                 };
                 self.selected_tab = tab;
@@ -518,6 +544,207 @@ impl DocPanel {
         } else {
             None
         }
+    }
+
+    fn show_doux_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
+        let modules = doux::all_modules();
+        let searching = !needle.is_empty();
+
+        let groups: &[(ModuleGroup, &str)] = &[
+            (ModuleGroup::Source, "Sources"),
+            (ModuleGroup::Synthesis, "Synthesis"),
+            (ModuleGroup::Effect, "Effects"),
+        ];
+
+        for &(group, label) in groups {
+            let group_modules: Vec<(usize, &&ModuleInfo)> = modules
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| m.group == group)
+                .filter(|(_, m)| {
+                    !searching
+                        || m.name.contains(needle)
+                        || m.description.to_lowercase().contains(needle)
+                        || m.params.iter().any(|p| {
+                            p.name.contains(needle)
+                                || p.description.to_lowercase().contains(needle)
+                        })
+                })
+                .collect();
+
+            if group_modules.is_empty() {
+                continue;
+            }
+
+            let header = egui::CollapsingHeader::new(
+                egui::RichText::new(label).strong().size(12.0),
+            )
+            .default_open(!searching)
+            .open(if searching { Some(true) } else { None });
+
+            header.show(ui, |ui| {
+                for (idx, module) in &group_modules {
+                    let selected = self.view == Some(DocView::DouxModule(*idx));
+                    let r = ui.selectable_label(selected, module.name);
+                    if selected {
+                        let accent = ui.visuals().selection.bg_fill;
+                        ui.painter().line_segment(
+                            [r.rect.left_top(), r.rect.left_bottom()],
+                            egui::Stroke::new(2.0, accent),
+                        );
+                    }
+                    if selected && self.scroll_toc {
+                        r.scroll_to_me(Some(egui::Align::Center));
+                        self.scroll_toc = false;
+                    }
+                    if r.clicked() {
+                        self.set_view(DocView::DouxModule(*idx));
+                    }
+                }
+            });
+        }
+    }
+
+    fn show_doux_content(&mut self, ui: &mut egui::Ui) {
+        let modules = doux::all_modules();
+        let idx = match &self.view {
+            Some(DocView::DouxModule(i)) => *i,
+            _ => {
+                ui.heading("Doux");
+                ui.add_space(8.0);
+                ui.label("Select a module from the sidebar to view its parameters.");
+                return;
+            }
+        };
+
+        let Some(module) = modules.get(idx) else { return };
+
+        let group_label = match module.group {
+            ModuleGroup::Source => "Source",
+            ModuleGroup::Synthesis => "Synthesis",
+            ModuleGroup::Effect => "Effect",
+        };
+        ui.label(
+            egui::RichText::new(group_label)
+                .small()
+                .color(ui.visuals().weak_text_color()),
+        );
+
+        ui.heading(module.name);
+
+        // For sources, show aliases and category
+        if module.group == ModuleGroup::Source {
+            for source in Source::all() {
+                let info = source.info();
+                if info.module.name == module.name {
+                    if !info.aliases.is_empty() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Aliases: {}",
+                                info.aliases.join(", ")
+                            ))
+                            .italics()
+                            .color(ui.visuals().weak_text_color()),
+                        );
+                    }
+                    ui.label(
+                        egui::RichText::new(format!("{:?}", info.category))
+                            .small()
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                    if let Some(d) = &info.drum_defaults {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Defaults: freq={} Hz, attack={}, decay={}, sustain={}, release={}",
+                                d.freq, d.attack, d.decay, d.sustain, d.release
+                            ))
+                            .small()
+                            .color(ui.visuals().weak_text_color()),
+                        );
+                    }
+                    break;
+                }
+            }
+        }
+
+        ui.separator();
+        ui.add_space(4.0);
+
+        ui.label(module.description);
+
+        if module.params.is_empty() {
+            return;
+        }
+
+        ui.add_space(8.0);
+
+        let accent = ui.visuals().selection.bg_fill;
+        let dimmed = egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40);
+        let weak = ui.visuals().weak_text_color();
+        let mono = egui::FontId::monospace(13.0);
+
+        for (i, param) in module.params.iter().enumerate() {
+            if i > 0 {
+                let rect = ui.available_rect_before_wrap();
+                ui.painter().line_segment(
+                    [rect.left_top(), egui::pos2(rect.right(), rect.top())],
+                    egui::Stroke::new(1.0, dimmed),
+                );
+                ui.add_space(4.0);
+            }
+
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(param.name).font(mono.clone()).strong());
+                if !param.aliases.is_empty() {
+                    ui.label(
+                        egui::RichText::new(format!("({})", param.aliases.join(", ")))
+                            .small()
+                            .color(weak),
+                    );
+                }
+            });
+
+            ui.label(param.description);
+
+            if param.min != 0.0 || param.max != 0.0 {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "default: {}  range: {} .. {}",
+                        param.default, param.min, param.max,
+                    ))
+                    .small()
+                    .color(weak),
+                );
+            } else {
+                ui.label(
+                    egui::RichText::new(format!("default: {}", param.default))
+                        .small()
+                        .color(weak),
+                );
+            }
+
+            ui.add_space(4.0);
+        }
+
+        // Prev / Next navigation
+        let total = modules.len();
+        ui.add_space(12.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(idx > 0, egui::Button::new(icons::CHEVRON_LEFT))
+                .clicked()
+            {
+                self.set_view(DocView::DouxModule(idx - 1));
+            }
+            ui.label(format!("{} / {}", idx + 1, total));
+            if ui
+                .add_enabled(idx + 1 < total, egui::Button::new(icons::CHEVRON_RIGHT))
+                .clicked()
+            {
+                self.set_view(DocView::DouxModule(idx + 1));
+            }
+        });
     }
 
 }
