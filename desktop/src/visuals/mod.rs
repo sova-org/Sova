@@ -178,7 +178,7 @@ impl VisualsEngine {
             .show(ui, |ui| {
                 let output =
                     self.editor
-                        .show(ui, editor_id, &mut self.code, settings, syn, None);
+                        .show(ui, editor_id, &mut self.code, settings, syn, None, &[]);
                 if output.response.changed() {
                     self.dirty = true;
                 }

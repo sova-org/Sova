@@ -14,7 +14,7 @@ mod waveform;
 
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
-pub use code_editor::{CodeEditor, EditorSettings};
+pub use code_editor::{CodeEditor, EditorSettings, PeerCursor};
 pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};

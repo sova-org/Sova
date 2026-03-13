@@ -268,7 +268,7 @@ impl ScenePanel {
         let old = self.cursor;
         self.cursor = Some(new_cursor);
         if old != self.cursor && bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1));
+            bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1, None));
         }
     }
 
@@ -1287,7 +1287,7 @@ impl ScenePanel {
             && cur_li == li
         {
             self.cursor = Some((new_li, cur_fi));
-            bridge.send(ClientMessage::CursorPosition(new_li, cur_fi));
+            bridge.send(ClientMessage::CursorPosition(new_li, cur_fi, None));
         }
         self.anchor = self
             .anchor
