@@ -5,14 +5,12 @@ use super::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, mem};
 
-use crate::log_eprintln;
+use crate::{error::SovaError, log_eprintln};
 use crate::scene::script::ReturnInfo;
 use crate::{
     clock::TimeSpan,
     vm::{GeneratorModifier, GeneratorShape},
 };
-
-use crate::protocol::ProtocolDevice;
 
 pub const DEFAULT_DEVICE: i64 = 1;
 pub const DEFAULT_CHAN: i64 = 1;
@@ -855,57 +853,26 @@ impl ControlASM {
                     Variable::Instance(name) if name == "_use_context_channel" => {
                         // Fetch from implicit context variable (_chan)
                         let context_chan_var = Variable::Instance("_chan".to_string());
-                        self.evaluate_var_as_int_or(ctx, &context_chan_var, DEFAULT_CHAN)
+                        self.evaluate_var_as_int_or(ctx, &context_chan_var, DEFAULT_CHAN) as i8
                     }
                     _ => {
                         // Evaluate the provided channel_var
-                        self.evaluate_var_as_int_or(ctx, channel_var, DEFAULT_CHAN)
+                        self.evaluate_var_as_int_or(ctx, channel_var, DEFAULT_CHAN) as i8
                     }
                 };
 
                 // Evaluate Control Number
-                let control_val = ctx.evaluate(ctrl_var).as_integer(ctx);
+                let control_val = ctx.evaluate(ctrl_var).as_integer(ctx) as i8;
 
                 // Look up device and get CC value
-                let mut cc_value = 0i64; // Default value
-
-                if let Some(device_name) = ctx.device_map.get_name_for_slot(device_id) {
-                    let input_connections = ctx.device_map.input_connections.lock().unwrap();
-                    if let Some(device_arc) = input_connections.get(&device_name) {
-                        if let ProtocolDevice::MIDIInDevice(midi_in) = &**device_arc {
-                            if let Ok(memory_guard) = midi_in.memory.lock() {
-                                let midi_chan_0_based =
-                                    (channel_val.saturating_sub(1).max(0).min(15)) as i8;
-                                let control_i8 = (control_val.max(0).min(127)) as i8;
-                                cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
-                                // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
-                            } else {
-                                log_eprintln!(
-                                    "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
-                                    device_name
-                                );
-                            }
-                        } else {
-                            log_eprintln!(
-                                "[!] GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
-                                device_name,
-                                device_id
-                            );
-                        }
-                    } else {
-                        log_eprintln!(
-                            "[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
-                            device_name,
-                            device_id
-                        );
-                    }
-                } else if device_id != DEFAULT_DEVICE as usize {
-                    // Only warn if specific non-default device requested
-                    log_eprintln!(
-                        "[!] GetMidiCC Warning: No device assigned to slot {}.",
-                        device_id
-                    );
-                }
+                let cc_value = if let Some(value) = ctx.device_map.get_input_cc(device_id, control_val, channel_val) {
+                    value
+                } else {
+                    ctx.errors.throw(SovaError::from(&mut *ctx).message(
+                        format!("Unable to get Midi CC {control_val} for device id {device_id} on channel {channel_val}")
+                    ));
+                    0
+                };
 
                 // Store the result
                 ctx.set_var(result_var, VariableValue::Integer(cc_value));

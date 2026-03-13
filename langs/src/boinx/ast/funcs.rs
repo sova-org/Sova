@@ -449,6 +449,13 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             Sequence(bitrhythm(i))
         }
     ));
+    funcs.insert("cc".to_owned(), ItemFunc::define(
+        "Access the value of a midi input CC",
+        |ctx, args| {
+            
+            todo!()
+        } 
+    ));
     funcs
 });
 
