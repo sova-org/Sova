@@ -27,7 +27,7 @@ impl AudioEnginePayload {
                 let addr = addr.parse::<i64>();
                 match args {
                     VariableValue::Map(mut map) => {
-                        if !map.contains_key("duration") {
+                        if !map.contains_key("duration") && !map.contains_key("dur") {
                             map.insert("duration".to_owned(), dur_s.into());
                         }
                         if let Ok(a) = addr {

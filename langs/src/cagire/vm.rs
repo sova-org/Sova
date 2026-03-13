@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use sova_core::clock::SyncTime;
-use sova_core::protocol::ProtocolDevice;
 use sova_core::protocol::osc::OSCMessage;
 use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
@@ -901,24 +900,14 @@ impl CagireVM {
                 Op::GetMidiCC => {
                     let chan = pop_int(stack)?;
                     let cc = pop_int(stack)?;
-                    let cc_clamped = cc.clamp(0, 127) as i8;
-                    let chan_0based = (chan.clamp(1, 16) - 1) as i8;
                     let device_id = cmd.params().iter()
                         .find(|(k, _)| *k == "device")
                         .and_then(|(_, v)| v.as_int().ok())
                         .map(|d| d.max(0) as usize)
                         .unwrap_or(ctx.default_device);
-                    let cc_value = eval_ctx.device_map.get_name_for_slot(device_id)
-                        .and_then(|name| {
-                            let conns = eval_ctx.device_map.input_connections.lock().unwrap();
-                            let device = conns.get(&name)?.clone();
-                            if let ProtocolDevice::MIDIInDevice(midi_in) = &*device {
-                                midi_in.memory.lock().ok().map(|m| m.get(chan_0based, cc_clamped) as i64)
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(0);
+                    let cc_value = eval_ctx.device_map.get_input_cc(
+                        device_id, cc as i8, chan as i8
+                    ).unwrap_or_default();
                     stack.push(Value::Int(cc_value));
                 }
 
