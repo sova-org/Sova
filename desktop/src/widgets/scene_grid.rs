@@ -67,7 +67,7 @@ pub struct SceneGrid<'a> {
     cursor: Option<(usize, usize)>,
     selection: &'a BTreeSet<(usize, usize)>,
     peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
-    peer_cursors: &'a HashMap<String, (usize, usize)>,
+    peer_cursors: &'a HashMap<String, (usize, usize, Option<(usize, usize)>)>,
     compilation_flashes: &'a HashMap<(usize, usize), (bool, Instant)>,
     mutation_flashes: &'a HashMap<(usize, usize), Instant>,
     accent: Color32,
@@ -103,7 +103,7 @@ impl<'a> SceneGrid<'a> {
         cursor: Option<(usize, usize)>,
         selection: &'a BTreeSet<(usize, usize)>,
         peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
-        peer_cursors: &'a HashMap<String, (usize, usize)>,
+        peer_cursors: &'a HashMap<String, (usize, usize, Option<(usize, usize)>)>,
         compilation_flashes: &'a HashMap<(usize, usize), (bool, Instant)>,
         mutation_flashes: &'a HashMap<(usize, usize), Instant>,
         accent: Color32,
@@ -296,7 +296,7 @@ impl<'a> SceneGrid<'a> {
         let header_edit_coords = header_edit.as_ref().map(|e| (e.line, e.field));
 
         let mut cursor_at_cell: HashMap<(usize, usize), Vec<&str>> = HashMap::new();
-        for (name, &(li, fi)) in self.peer_cursors {
+        for (name, &(li, fi, _)) in self.peer_cursors {
             cursor_at_cell
                 .entry((li, fi))
                 .or_default()

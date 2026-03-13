@@ -303,9 +303,9 @@ async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::CursorPosition(line_idx, frame_idx) => {
+        ClientMessage::CursorPosition(line_idx, frame_idx, text_cursor) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                SovaNotification::PeerCursorMoved(client_name.clone(), line_idx, frame_idx),
+                SovaNotification::PeerCursorMoved(client_name.clone(), line_idx, frame_idx, text_cursor),
             ));
             ServerMessage::Success
         }
@@ -1159,9 +1159,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                                     None
                                 }
                             }
-                            SovaNotification::PeerCursorMoved(sender_name, li, fi) => {
+                            SovaNotification::PeerCursorMoved(sender_name, li, fi, tc) => {
                                 if sender_name != *client_name {
-                                    Some(ServerMessage::PeerCursorMoved(sender_name, li, fi))
+                                    Some(ServerMessage::PeerCursorMoved(sender_name, li, fi, tc))
                                 } else {
                                     None
                                 }

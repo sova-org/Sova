@@ -8,7 +8,7 @@ use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, username_color};
+use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, PeerCursor, username_color};
 use crate::client_bridge::ClientBridge;
 
 struct StepEditor {
@@ -25,6 +25,8 @@ struct StepEditor {
     last_eval: Option<Instant>,
     last_cursor_line: Option<usize>,
     last_cursor_col: Option<usize>,
+    sent_cursor: Option<(usize, usize)>,
+    last_cursor_send: Instant,
     header_name_buf: String,
 }
 
@@ -44,6 +46,8 @@ impl StepEditor {
             last_eval: None,
             last_cursor_line: None,
             last_cursor_col: None,
+            sent_cursor: None,
+            last_cursor_send: Instant::now(),
             header_name_buf: frame.name.clone().unwrap_or_default(),
         }
     }
@@ -59,6 +63,7 @@ impl StepEditor {
         settings: &EditorSettings,
         syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
     ) {
+        self.sync_if_remote_changed(bridge);
         let id = egui::Id::new(("step_editor", self.line_idx, self.frame_idx));
         let frame_name = bridge
             .scene()
@@ -129,12 +134,39 @@ impl StepEditor {
                     .filter(|l| !l.documentation.reference.is_empty())
                     .map(|l| &l.documentation.reference);
 
+                let peer_cursors: Vec<PeerCursor> = bridge
+                    .text_cursors_for_frame(self.line_idx, self.frame_idx)
+                    .into_iter()
+                    .map(|(name, line, col)| PeerCursor {
+                        name: name.to_owned(),
+                        line,
+                        col,
+                        color: username_color(name),
+                    })
+                    .collect();
+
                 let body = egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show_inside(ui, |ui| {
-                        self.show_body(ui, settings, syntax, reference);
+                        self.show_body(ui, settings, syntax, reference, &peer_cursors);
                         self.handle_eval_shortcut(ui, bridge);
                     });
+
+                // Send text cursor position to peers (throttled, only on change)
+                if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
+                    let pos = (line, col);
+                    if self.sent_cursor != Some(pos)
+                        && self.last_cursor_send.elapsed().as_millis() >= 50
+                    {
+                        self.sent_cursor = Some(pos);
+                        self.last_cursor_send = Instant::now();
+                        bridge.send(ClientMessage::CursorPosition(
+                            self.line_idx,
+                            self.frame_idx,
+                            Some(pos),
+                        ));
+                    }
+                }
 
                 // Eval flash
                 if let Some(eval_time) = self.last_eval {
@@ -465,6 +497,7 @@ impl StepEditor {
         settings: &EditorSettings,
         syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
         reference: Option<&std::collections::BTreeMap<sova_core::vm::language::LanguageElement, sova_core::vm::language::ReferenceEntry>>,
+        peer_cursors: &[PeerCursor],
     ) {
         let editor_id = egui::Id::new(("step_editor_body", self.line_idx, self.frame_idx));
         egui::ScrollArea::vertical()
@@ -472,7 +505,7 @@ impl StepEditor {
             .show(ui, |ui| {
                 let output =
                     self.editor
-                        .show(ui, editor_id, &mut self.content, settings, syntax, reference);
+                        .show(ui, editor_id, &mut self.content, settings, syntax, reference, peer_cursors);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -544,6 +577,25 @@ impl StepEditor {
         ));
         self.dirty = false;
         self.last_eval = Some(Instant::now());
+    }
+
+    fn sync_if_remote_changed(&mut self, bridge: &ClientBridge) {
+        if self.dirty {
+            return;
+        }
+        if let Some(frame) = bridge
+            .scene()
+            .and_then(|s| s.lines.get(self.line_idx))
+            .and_then(|l| l.frames.get(self.frame_idx))
+        {
+            let remote_content = frame.script().content();
+            let remote_lang = frame.script().lang();
+            if remote_content != self.content || remote_lang != self.lang {
+                self.content = remote_content.to_owned();
+                self.lang = remote_lang.to_owned();
+                self.dirty = false;
+            }
+        }
     }
 
     fn sync_from_bridge(&mut self, bridge: &ClientBridge) {

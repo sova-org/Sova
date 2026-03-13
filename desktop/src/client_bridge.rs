@@ -93,7 +93,7 @@ pub struct ClientBridge {
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
-    peer_cursors: HashMap<String, (usize, usize)>,
+    peer_cursors: HashMap<String, (usize, usize, Option<(usize, usize)>)>,
     chat_messages: Vec<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
 
@@ -535,8 +535,8 @@ impl ClientBridge {
                         }
                     }
                 }
-                ServerMessage::PeerCursorMoved(name, li, fi) => {
-                    self.peer_cursors.insert(name, (li, fi));
+                ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
+                    self.peer_cursors.insert(name, (li, fi, tc));
                 }
                 ServerMessage::Error(e) => {
                     self.errors.insert((e.line, e.frame), e);
@@ -686,8 +686,21 @@ impl ClientBridge {
         &self.peer_editing
     }
 
-    pub fn peer_cursors(&self) -> &HashMap<String, (usize, usize)> {
+    pub fn peer_cursors(&self) -> &HashMap<String, (usize, usize, Option<(usize, usize)>)> {
         &self.peer_cursors
+    }
+
+    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(&str, usize, usize)> {
+        self.peer_cursors
+            .iter()
+            .filter_map(|(name, &(pli, pfi, ref tc))| {
+                if pli == li && pfi == fi {
+                    tc.map(|(line, col)| (name.as_str(), line, col))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn compilation_flashes(&self) -> &HashMap<(usize, usize), (bool, Instant)> {

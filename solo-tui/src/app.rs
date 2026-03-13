@@ -224,7 +224,7 @@ impl App {
             | SovaNotification::ChatReceived(_, _)
             | SovaNotification::PeerStartedEditingFrame(_, _, _)
             | SovaNotification::PeerStoppedEditingFrame(_, _, _)
-            | SovaNotification::PeerCursorMoved(_, _, _)
+            | SovaNotification::PeerCursorMoved(_, _, _, _)
             | SovaNotification::ScopeData(_) => (),
         }
         Ok(())

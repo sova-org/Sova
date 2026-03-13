@@ -37,6 +37,13 @@ impl Default for EditorSettings {
     }
 }
 
+pub struct PeerCursor {
+    pub name: String,
+    pub line: usize,
+    pub col: usize,
+    pub color: Color32,
+}
+
 pub struct CodeEditorOutput {
     pub response: egui::Response,
     pub cursor_line: Option<usize>,
@@ -70,6 +77,7 @@ impl CodeEditor {
         settings: &EditorSettings,
         syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
         reference: Option<&BTreeMap<LanguageElement, ReferenceEntry>>,
+        peer_cursors: &[PeerCursor],
     ) -> CodeEditorOutput {
         let font_id = FontId::monospace(settings.font_size);
         let is_mac = ui.ctx().os().is_mac();
@@ -231,6 +239,10 @@ impl CodeEditor {
 
         if show_whitespace {
             paint_whitespace(ui, &edit_output, &font_id);
+        }
+
+        if !peer_cursors.is_empty() {
+            paint_peer_cursors(ui, &edit_output, &font_id, peer_cursors);
         }
 
         if let Some(ref_map) = reference {
@@ -539,6 +551,92 @@ fn paint_whitespace(ui: &egui::Ui, output: &egui::text_edit::TextEditOutput, fon
                 ws_color,
             );
         }
+    }
+}
+
+fn paint_peer_cursors(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    font_id: &FontId,
+    peers: &[PeerCursor],
+) {
+    let galley = &output.galley;
+    let galley_pos = output.galley_pos;
+    let painter = ui.painter();
+
+    // Build a map of logical line → first row index
+    let mut line_to_row: Vec<usize> = Vec::new();
+    for (i, _) in galley.rows.iter().enumerate() {
+        let is_new_line = i == 0 || galley.rows[i - 1].ends_with_newline;
+        if is_new_line {
+            line_to_row.push(i);
+        }
+    }
+
+    for peer in peers {
+        let row_idx = if peer.line < line_to_row.len() {
+            line_to_row[peer.line]
+        } else if let Some(&last) = line_to_row.last() {
+            last
+        } else {
+            continue;
+        };
+
+        let Some(row) = galley.rows.get(row_idx) else {
+            continue;
+        };
+
+        // Compute x position from glyph positions
+        let x = if row.glyphs.is_empty() {
+            0.0
+        } else if peer.col == 0 {
+            row.glyphs[0].pos.x
+        } else if peer.col <= row.glyphs.len() {
+            let g = &row.glyphs[peer.col - 1];
+            g.pos.x + g.advance_width
+        } else {
+            let g = row.glyphs.last().unwrap();
+            g.pos.x + g.advance_width
+        };
+
+        let screen_x = galley_pos.x + x;
+        let screen_y = galley_pos.y + row.pos.y;
+        let row_height = row.size.y;
+
+        // Caret line
+        painter.line_segment(
+            [
+                egui::pos2(screen_x, screen_y),
+                egui::pos2(screen_x, screen_y + row_height),
+            ],
+            egui::Stroke::new(2.0, peer.color),
+        );
+
+        // Name label above caret
+        let label_bg = Color32::from_rgba_unmultiplied(
+            peer.color.r(),
+            peer.color.g(),
+            peer.color.b(),
+            180,
+        );
+        let label_font = FontId::monospace(font_id.size * 0.7);
+        let label_galley = painter.layout_no_wrap(
+            peer.name.clone(),
+            label_font,
+            Color32::WHITE,
+        );
+        let label_w = label_galley.size().x + 4.0;
+        let label_h = label_galley.size().y + 2.0;
+        let label_rect = egui::Rect::from_min_size(
+            egui::pos2(screen_x, screen_y - label_h),
+            egui::vec2(label_w, label_h),
+        );
+        painter.rect_filled(label_rect, 0.0, label_bg);
+        painter.galley(
+            egui::pos2(label_rect.min.x + 2.0, label_rect.min.y + 1.0),
+            label_galley,
+            Color32::WHITE,
+        );
     }
 }
 
