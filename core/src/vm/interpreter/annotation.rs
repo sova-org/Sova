@@ -24,7 +24,7 @@ impl Display for CodePosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Line {}", self.line)?;
         if let Some(col) = self.col {
-            write!(f, ", at : {}", col)?;
+            write!(f, ", at {}", col)?;
         }
         Ok(())
     }
@@ -34,5 +34,5 @@ impl Display for CodePosition {
 pub enum Annotation {
     Highlight(CodePosition, CodePosition),
     InsertText(String, CodePosition),
-    ExplainSection(String, CodePosition, CodePosition)
+    InsertBitmap(Vec<u32>, CodePosition)
 }
