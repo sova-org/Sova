@@ -245,14 +245,14 @@ impl SovaApp {
         }
         ctx.input(|i| {
             if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Comma) {
-                self.options.open = !self.options.open;
+                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options);
             }
             if i.modifiers.command && i.modifiers.shift {
                 if i.key_pressed(egui::Key::S) {
-                    self.server.open = !self.server.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::A) {
-                    self.audio.open = !self.audio.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::I) {
                     self.devices.open = !self.devices.open;
@@ -634,13 +634,6 @@ impl eframe::App for SovaApp {
 
                     menu_checkbox(
                         ui,
-                        &mut self.audio.open,
-                        t!("audio.title"),
-                        &format!("{mod_sym}{shift_sym}A"),
-                    );
-                    ui.separator();
-                    menu_checkbox(
-                        ui,
                         &mut self.scope_panel.open,
                         t!("scope.title"),
                         &format!("{mod_sym}{shift_sym}O"),
@@ -676,12 +669,6 @@ impl eframe::App for SovaApp {
                         ui.checkbox(checked, label).on_hover_text(text);
                     };
 
-                    menu_checkbox(
-                        ui,
-                        &mut self.server.open,
-                        t!("server.title"),
-                        &format!("{mod_sym}{shift_sym}S"),
-                    );
                     menu_checkbox(
                         ui,
                         &mut self.chat_panel.open,
@@ -736,12 +723,6 @@ impl eframe::App for SovaApp {
                         self.logs.collapsed = !logs_expanded;
                     }
                     ui.separator();
-                    menu_checkbox(
-                        ui,
-                        &mut self.options.open,
-                        t!("options.title"),
-                        &format!("{mod_sym},"),
-                    );
                     menu_checkbox(
                         ui,
                         &mut self.debug_open,
@@ -835,9 +816,31 @@ impl eframe::App for SovaApp {
                 .show_bottom_panel(ctx, self.bridge.scope_data());
         }
 
-        // Doc panel as side panel (must be before VU meter and CentralPanel)
-        self.doc_panel
-            .show_side_panel(ctx, &self.bridge, &self.editor_settings);
+        // Sidebar (docs + settings, must be before VU meter and CentralPanel)
+        let (sidebar_server_action, sidebar_appearance_changed) = self.doc_panel.show_side_panel(
+            ctx,
+            &self.bridge,
+            &mut self.editor_settings,
+            &mut self.server,
+            &mut self.audio,
+            &mut self.options,
+            &mut self.appearance,
+            &mut self.dismissed_tips,
+        );
+        match sidebar_server_action {
+            ServerAction::Start => {
+                self.server.start(self.audio.generate_audio_config());
+            }
+            ServerAction::Stop => {
+                self.bridge.disconnect();
+                self.step_editors.close_all();
+                self.server.stop();
+            }
+            ServerAction::None => {}
+        }
+        if sidebar_appearance_changed {
+            apply_appearance(ctx, &self.appearance);
+        }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)
         if self.vu_meter_panel.open && self.bridge.audio_state().running {
@@ -866,16 +869,16 @@ impl eframe::App for SovaApp {
         };
 
         if self.bridge.is_connected() {
+            let sidebar_open = self.doc_panel.is_expanded()
+                && self.doc_panel.mode() == doc_panel::SidebarMode::Settings;
             let mut panels = scene_panel::PanelVisibility {
-                server: self.server.open,
-                audio: self.audio.open,
+                sidebar: sidebar_open,
                 devices: self.devices.open,
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
                 vu_meter: self.vu_meter_panel.open,
                 scope_bar: self.scope_bar_panel.open,
                 logs: !self.logs.collapsed,
-                options: self.options.open,
                 debug: self.debug_open,
             };
             let open_step = egui::CentralPanel::default()
@@ -884,15 +887,19 @@ impl eframe::App for SovaApp {
                     self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, &self.editor_settings)
                 })
                 .inner;
-            self.server.open = panels.server;
-            self.audio.open = panels.audio;
+            if panels.sidebar != sidebar_open {
+                if panels.sidebar {
+                    self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
+                } else {
+                    self.doc_panel.settings.collapsed = true;
+                }
+            }
             self.devices.open = panels.devices;
             self.scope_panel.open = panels.scope;
             self.spectrum_panel.open = panels.spectrum;
             self.vu_meter_panel.open = panels.vu_meter;
             self.scope_bar_panel.open = panels.scope_bar;
             self.logs.collapsed = !panels.logs;
-            self.options.open = panels.options;
             self.debug_open = panels.debug;
             if let Some((li, fi)) = open_step
                 && let Some(frame) = self
@@ -920,7 +927,7 @@ impl eframe::App for SovaApp {
                 self.server.start(self.audio.generate_audio_config());
             }
             if action.open_server_config {
-                self.server.open = true;
+                self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
             }
             if action.start_feedback && !self.bridge.has_feedback() {
                 self.bridge.start_feedback(self.audio.generate_audio_config());
@@ -928,24 +935,10 @@ impl eframe::App for SovaApp {
         }
 
         // Floating windows
-        let server_action = self.server.show(ctx);
-        match server_action {
-            ServerAction::Start => {
-                self.server.start(self.audio.generate_audio_config());
-            }
-            ServerAction::Stop => {
-                self.bridge.disconnect();
-                self.step_editors.close_all();
-                self.server.stop();
-            }
-            ServerAction::None => {}
-        }
-
         self.chat_panel
             .show(ctx, &mut self.bridge, &self.appearance);
         self.chat_overlay.poll(self.bridge.chat_messages());
         self.chat_overlay.show(ctx);
-        self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
         let sample_paths = self.audio.sample_paths();
@@ -956,14 +949,6 @@ impl eframe::App for SovaApp {
         self.scope_panel.show(ctx, scope_data, &self.appearance);
         self.spectrum_panel.show(ctx, scope_data, &self.appearance);
 
-        if self.options.show(
-            ctx,
-            &mut self.editor_settings,
-            &mut self.appearance,
-            &mut self.dismissed_tips,
-        ) {
-            apply_appearance(ctx, &self.appearance);
-        }
         self.visuals.show_editor(ctx, &self.editor_settings);
 
         if self.visuals.take_pending_broadcast() {
@@ -981,8 +966,7 @@ impl eframe::App for SovaApp {
         widgets::about_dialog(ctx, &mut self.about_open);
 
         self.command_palette.update_states(&widgets::PanelStates {
-            server: self.server.open,
-            audio: self.audio.open,
+            sidebar: self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings,
             devices: self.devices.open,
             scope: self.scope_panel.open,
             spectrum: self.spectrum_panel.open,
@@ -990,7 +974,6 @@ impl eframe::App for SovaApp {
             scope_bar: self.scope_bar_panel.open,
             chat: self.chat_panel.open,
             logs: !self.logs.collapsed,
-            options: self.options.open,
             debug: self.debug_open,
             keybindings: self.keybindings_open,
             about: self.about_open,
@@ -1006,10 +989,8 @@ impl eframe::App for SovaApp {
         // Contextual tips (first match wins)
         let tip_id = if self.step_editors.has_open() {
             Some("step_editor")
-        } else if self.server.open {
-            Some("server")
-        } else if self.audio.open {
-            Some("audio")
+        } else if self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings {
+            Some("settings")
         } else if self.devices.open {
             Some("devices")
         } else if self.scope_panel.open {
@@ -1041,8 +1022,8 @@ impl SovaApp {
     fn execute_command(&mut self, cmd: widgets::CommandId) {
         use widgets::CommandId::*;
         match cmd {
-            Server => self.server.open = !self.server.open,
-            Audio => self.audio.open = !self.audio.open,
+            Server => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
+            Audio => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
             Devices => self.devices.open = !self.devices.open,
             Scope => self.scope_panel.open = !self.scope_panel.open,
             Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
@@ -1050,7 +1031,7 @@ impl SovaApp {
             ScopeBar => self.scope_bar_panel.open = !self.scope_bar_panel.open,
             Chat => self.chat_panel.open = !self.chat_panel.open,
             Logs => self.logs.collapsed = !self.logs.collapsed,
-            Options => self.options.open = !self.options.open,
+            Options => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options),
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,

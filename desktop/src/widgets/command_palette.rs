@@ -158,8 +158,7 @@ fn commands() -> Vec<Command> {
 
 /// Panel open/closed states, passed each frame before showing the palette.
 pub struct PanelStates {
-    pub server: bool,
-    pub audio: bool,
+    pub sidebar: bool,
     pub devices: bool,
     pub scope: bool,
     pub spectrum: bool,
@@ -167,7 +166,6 @@ pub struct PanelStates {
     pub scope_bar: bool,
     pub chat: bool,
     pub logs: bool,
-    pub options: bool,
     pub debug: bool,
     pub keybindings: bool,
     pub about: bool,
@@ -227,8 +225,7 @@ impl CommandPalette {
     pub fn update_states(&mut self, states: &PanelStates) {
         for cmd in &mut self.commands {
             cmd.active = match cmd.id {
-                CommandId::Server => states.server,
-                CommandId::Audio => states.audio,
+                CommandId::Server | CommandId::Audio | CommandId::Options => states.sidebar,
                 CommandId::Devices => states.devices,
                 CommandId::Scope => states.scope,
                 CommandId::Spectrum => states.spectrum,
@@ -236,7 +233,6 @@ impl CommandPalette {
                 CommandId::ScopeBar => states.scope_bar,
                 CommandId::Chat => states.chat,
                 CommandId::Logs => states.logs,
-                CommandId::Options => states.options,
                 CommandId::Debug => states.debug,
                 CommandId::Keybindings => states.keybindings,
                 CommandId::About => states.about,

@@ -21,15 +21,13 @@ enum ContextTarget {
 }
 
 pub struct PanelVisibility {
-    pub server: bool,
-    pub audio: bool,
+    pub sidebar: bool,
     pub devices: bool,
     pub scope: bool,
     pub spectrum: bool,
     pub vu_meter: bool,
     pub scope_bar: bool,
     pub logs: bool,
-    pub options: bool,
     pub debug: bool,
 }
 
@@ -710,9 +708,8 @@ impl ScenePanel {
                 }
             }
             Some(ContextTarget::Void) => {
-                ui.checkbox(&mut panels.server, t!("server.title"));
+                ui.checkbox(&mut panels.sidebar, t!("options.title"));
                 ui.separator();
-                ui.checkbox(&mut panels.audio, t!("audio.title"));
                 ui.checkbox(&mut panels.devices, t!("devices.title"));
                 ui.checkbox(&mut panels.scope, t!("scope.title"));
                 ui.checkbox(&mut panels.spectrum, t!("spectrum.title"));
@@ -721,7 +718,6 @@ impl ScenePanel {
                 ui.separator();
                 ui.checkbox(&mut panels.logs, t!("cmd.logs"));
                 ui.separator();
-                ui.checkbox(&mut panels.options, t!("options.title"));
                 ui.checkbox(&mut panels.debug, t!("debug.title"));
             }
             None => {}

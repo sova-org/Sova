@@ -43,7 +43,6 @@ struct EmbeddedServer {
 }
 
 pub struct ServerPanel {
-    pub open: bool,
     ip: String,
     port: String,
     tempo: String,
@@ -64,7 +63,6 @@ impl ServerPanel {
         settings: ServerSettings,
     ) -> Self {
         Self {
-            open: false,
             ip: settings.ip,
             port: settings.port,
             tempo: settings.tempo,
@@ -345,91 +343,84 @@ impl ServerPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> ServerAction {
+    pub fn show_inside(&mut self, ui: &mut egui::Ui) -> ServerAction {
         let mut action = ServerAction::None;
-        let mut open = self.open;
-        egui::Window::new(t!("server.title"))
-            .open(&mut open)
-            .resizable(true)
-            .collapsible(true)
-            .default_width(280.0)
-            .show(ctx, |ui| {
-                let running = matches!(self.status, ServerStatus::Running);
+        let ctx = ui.ctx().clone();
+        let running = matches!(self.status, ServerStatus::Running);
 
-                ui.add_enabled_ui(!running, |ui| {
-                    egui::Grid::new("server_config")
-                        .num_columns(2)
-                        .spacing([8.0, 4.0])
-                        .show(ui, |ui| {
-                            let label = ui.label(t!("server.ip"));
-                            let field = ui.text_edit_singleline(&mut self.ip);
-                            if label.hovered() || field.hovered() {
-                                crate::widgets::hint::set(ctx, t!("server.hint.ip"));
-                            }
-                            ui.end_row();
-
-                            let label = ui.label(t!("server.port"));
-                            let field = ui.text_edit_singleline(&mut self.port);
-                            if label.hovered() || field.hovered() {
-                                crate::widgets::hint::set(ctx, t!("server.hint.port"));
-                            }
-                            ui.end_row();
-
-                            let label = ui.label(t!("server.tempo"));
-                            let field = ui.text_edit_singleline(&mut self.tempo);
-                            if label.hovered() || field.hovered() {
-                                crate::widgets::hint::set(ctx, t!("server.hint.tempo"));
-                            }
-                            ui.end_row();
-
-                            let label = ui.label(t!("server.quantum"));
-                            let field = ui.text_edit_singleline(&mut self.quantum);
-                            if label.hovered() || field.hovered() {
-                                crate::widgets::hint::set(ctx, t!("server.hint.quantum"));
-                            }
-                            ui.end_row();
-
-                            let label = ui.label(t!("server.password"));
-                            let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
-                            if label.hovered() || field.hovered() {
-                                crate::widgets::hint::set(ctx, t!("server.hint.password"));
-                            }
-                            ui.end_row();
-                        });
-                });
-
-                ui.add_space(8.0);
-
-                ui.horizontal(|ui| {
-                    if running {
-                        let r = ui.button(t!("common.stop"));
-                        if r.hovered() {
-                            crate::widgets::hint::set(ctx, t!("server.hint.stop"));
-                        }
-                        if r.clicked() {
-                            action = ServerAction::Stop;
-                        }
-                    } else {
-                        let r = ui.button(t!("common.start"));
-                        if r.hovered() {
-                            crate::widgets::hint::set(ctx, t!("server.hint.start"));
-                        }
-                        if r.clicked() {
-                            action = ServerAction::Start;
-                        }
+        ui.add_enabled_ui(!running, |ui| {
+            egui::Grid::new("server_config")
+                .num_columns(2)
+                .spacing([8.0, 4.0])
+                .show(ui, |ui| {
+                    let label = ui.label(t!("server.ip"));
+                    let field = ui.text_edit_singleline(&mut self.ip);
+                    if label.hovered() || field.hovered() {
+                        crate::widgets::hint::set(&ctx, t!("server.hint.ip"));
                     }
+                    ui.end_row();
 
-                    let status_r = match &self.status {
-                        ServerStatus::Stopped => ui.label(t!("server.stopped")),
-                        ServerStatus::Running => ui.colored_label(COLOR_OK, t!("server.running")),
-                        ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
-                    };
-                    if status_r.hovered() {
-                        crate::widgets::hint::set(ctx, t!("server.hint.status"));
+                    let label = ui.label(t!("server.port"));
+                    let field = ui.text_edit_singleline(&mut self.port);
+                    if label.hovered() || field.hovered() {
+                        crate::widgets::hint::set(&ctx, t!("server.hint.port"));
                     }
+                    ui.end_row();
+
+                    let label = ui.label(t!("server.tempo"));
+                    let field = ui.text_edit_singleline(&mut self.tempo);
+                    if label.hovered() || field.hovered() {
+                        crate::widgets::hint::set(&ctx, t!("server.hint.tempo"));
+                    }
+                    ui.end_row();
+
+                    let label = ui.label(t!("server.quantum"));
+                    let field = ui.text_edit_singleline(&mut self.quantum);
+                    if label.hovered() || field.hovered() {
+                        crate::widgets::hint::set(&ctx, t!("server.hint.quantum"));
+                    }
+                    ui.end_row();
+
+                    let label = ui.label(t!("server.password"));
+                    let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                    if label.hovered() || field.hovered() {
+                        crate::widgets::hint::set(&ctx, t!("server.hint.password"));
+                    }
+                    ui.end_row();
                 });
-            });
-        self.open = open;
+        });
+
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            if running {
+                let r = ui.button(t!("common.stop"));
+                if r.hovered() {
+                    crate::widgets::hint::set(&ctx, t!("server.hint.stop"));
+                }
+                if r.clicked() {
+                    action = ServerAction::Stop;
+                }
+            } else {
+                let r = ui.button(t!("common.start"));
+                if r.hovered() {
+                    crate::widgets::hint::set(&ctx, t!("server.hint.start"));
+                }
+                if r.clicked() {
+                    action = ServerAction::Start;
+                }
+            }
+
+            let status_r = match &self.status {
+                ServerStatus::Stopped => ui.label(t!("server.stopped")),
+                ServerStatus::Running => ui.colored_label(COLOR_OK, t!("server.running")),
+                ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
+            };
+            if status_r.hovered() {
+                crate::widgets::hint::set(&ctx, t!("server.hint.status"));
+            }
+        });
+
         action
     }
 }

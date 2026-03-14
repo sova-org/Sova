@@ -18,7 +18,6 @@ const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
 ];
 
 pub struct AudioPanel {
-    pub open: bool,
     output_device: String,
     input_device: String,
     channels: u16,
@@ -32,7 +31,6 @@ pub struct AudioPanel {
 impl AudioPanel {
     pub fn new(settings: AudioSettings) -> Self {
         let mut panel = Self {
-            open: false,
             output_device: settings.output_device,
             input_device: settings.input_device,
             channels: settings.channels,
@@ -90,38 +88,29 @@ impl AudioPanel {
         ClientMessage::RestartAudioEngine(self.generate_audio_config())
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
-        let mut open = self.open;
-        egui::Window::new(t!("audio.title"))
-            .open(&mut open)
-            .resizable(true)
-            .collapsible(true)
-            .default_width(320.0)
-            .show(ctx, |ui| {
-                self.show_config(ui);
-                ui.separator();
+    pub fn show_inside(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        self.show_config(ui);
+        ui.separator();
 
-                if !bridge.is_connected() {
-                    ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
-                } else {
-                    ui.horizontal(|ui| {
-                        let r = ui.button(t!("audio.restart"));
-                        if r.hovered() {
-                            crate::widgets::hint::set(ctx, t!("audio.hint.restart"));
-                        }
-                        if r.clicked() {
-                            bridge.send(self.restart_message());
-                        }
-                    });
-
-                    let state = bridge.audio_state();
-                    if state.running || state.error.is_some() {
-                        ui.separator();
-                        self.show_status(ui, state);
-                    }
+        if !bridge.is_connected() {
+            ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
+        } else {
+            ui.horizontal(|ui| {
+                let r = ui.button(t!("audio.restart"));
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), t!("audio.hint.restart"));
+                }
+                if r.clicked() {
+                    bridge.send(self.restart_message());
                 }
             });
-        self.open = open;
+
+            let state = bridge.audio_state();
+            if state.running || state.error.is_some() {
+                ui.separator();
+                self.show_status(ui, state);
+            }
+        }
     }
 
     fn show_config(&mut self, ui: &mut egui::Ui) {

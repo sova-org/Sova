@@ -40,6 +40,8 @@ pub struct DocSettings {
     pub pinned: bool,
     pub trigger: DocTrigger,
     pub width: f32,
+    pub mode: u8,
+    pub settings_tab: u8,
 }
 
 impl Default for DocSettings {
@@ -50,6 +52,8 @@ impl Default for DocSettings {
             pinned: false,
             trigger: DocTrigger::Click,
             width: 400.0,
+            mode: 0,
+            settings_tab: 0,
         }
     }
 }
