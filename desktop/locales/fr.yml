@@ -163,6 +163,7 @@ visuals.share_off: "Partager les visuels avec les pairs"
 
 options.visuals_enabled: "Activer les visuels"
 options.hint.visuals_enabled: "Afficher les shaders en arrière-plan"
+options.scene_opacity: "Opacité de la scène"
 
 # Audio panel
 audio.title: "Audio"

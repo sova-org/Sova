@@ -4,9 +4,8 @@ mod code_editor;
 mod command_palette;
 mod confirm_dialog;
 pub mod hint;
-mod scene_grid;
+pub mod inline_scene_view;
 mod spectrum;
-mod step_editor;
 pub mod syntax_highlight;
 pub mod tip_popup;
 mod vu_meter;
@@ -18,12 +17,7 @@ pub use code_editor::{CodeEditor, EditorSettings, PeerCursor};
 pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
-pub use scene_grid::{
-    HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid,
-    SceneGridResponse,
-};
 pub use spectrum::Spectrum;
-pub use step_editor::StepEditorManager;
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
 

@@ -442,11 +442,7 @@ fn paint_line_numbers(
         egui::pos2(gutter_x, output.text_clip_rect.min.y),
         egui::vec2(gutter_width, output.text_clip_rect.height()),
     );
-    let bg = if ui.visuals().dark_mode {
-        Color32::from_rgba_unmultiplied(255, 255, 255, 6)
-    } else {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 6)
-    };
+    let bg = ui.visuals().extreme_bg_color;
     painter.rect_filled(gutter_rect, 0.0, bg);
 
     let sep_x = gutter_x + gutter_width;

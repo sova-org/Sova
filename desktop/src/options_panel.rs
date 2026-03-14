@@ -109,6 +109,16 @@ impl OptionsPanel {
                 );
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.visuals_enabled"));
                 changed |= r.changed();
+
+                if appearance.visuals_enabled {
+                    ui.horizontal(|ui| {
+                        ui.label(t!("options.scene_opacity"));
+                        let r = ui.add(
+                            egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0)
+                        );
+                        changed |= r.changed();
+                    });
+                }
             });
 
         egui::CollapsingHeader::new(t!("options.sidebar"))

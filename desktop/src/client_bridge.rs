@@ -104,6 +104,9 @@ pub struct ClientBridge {
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
     pub mutation_flashes: HashMap<(usize, usize), Instant>,
 
+    // Latest compilation error for toast display
+    pub last_error: Option<(String, Instant)>,
+
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
 
@@ -144,6 +147,7 @@ impl ClientBridge {
             remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
+            last_error: None,
             feedback_engine: None,
             send_tx: None,
             event_rx: None,
@@ -500,9 +504,14 @@ impl ClientBridge {
                     match &state {
                         CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
                             self.compilation_flashes.insert((li, fi), (true, Instant::now()));
+                            self.last_error = None;
                         }
-                        CompilationState::Error(_) => {
+                        CompilationState::Error(e) => {
                             self.compilation_flashes.insert((li, fi), (false, Instant::now()));
+                            self.last_error = Some((
+                                format!("L{}:F{} — {}", li, fi, e.info),
+                                Instant::now(),
+                            ));
                         }
                         _ => {}
                     }

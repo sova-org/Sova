@@ -106,6 +106,7 @@ pub struct AppearanceSettings {
     pub window_shadows: bool,
     pub locale: String,
     pub visuals_enabled: bool,
+    pub scene_opacity: f32,
     pub ui_font_size: f32,
     pub animation_time: f32,
 }
@@ -118,6 +119,7 @@ impl Default for AppearanceSettings {
             window_shadows: true,
             locale: "en".into(),
             visuals_enabled: false,
+            scene_opacity: 0.5,
             ui_font_size: 13.0,
             animation_time: 0.15,
         }

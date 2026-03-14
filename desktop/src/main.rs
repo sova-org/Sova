@@ -181,7 +181,6 @@ fn main() -> eframe::Result {
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
-                step_editors: widgets::StepEditorManager::new(),
                 appearance: s.appearance,
                 bridge,
                 sample_browser_panel: sample_browser_panel::SampleBrowserPanel::new(),
@@ -225,7 +224,6 @@ struct SovaApp {
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
-    step_editors: widgets::StepEditorManager,
     appearance: AppearanceSettings,
     bridge: client_bridge::ClientBridge,
     sample_browser_panel: sample_browser_panel::SampleBrowserPanel,
@@ -450,7 +448,6 @@ impl eframe::App for SovaApp {
         match self.confirm_exit.show(ctx) {
             widgets::ConfirmAction::Confirmed => {
                 self.save_settings();
-                self.step_editors.close_all();
                 self.bridge.disconnect();
                 self.server.stop();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -590,7 +587,6 @@ impl eframe::App for SovaApp {
                         if ui.button(t!("menu.stop_server")).clicked() {
                             ui.close();
                             self.bridge.disconnect();
-                            self.step_editors.close_all();
                             self.server.stop();
                         }
                     } else if ui.button(t!("menu.start_server")).clicked() {
@@ -792,6 +788,27 @@ impl eframe::App for SovaApp {
             self.bridge.send(ClientMessage::SetMasterVolume(0.0));
         }
 
+        // Compilation error toast (above bottom bar, fades after 5s)
+        let error_fade = 5.0_f32;
+        if let Some((ref msg, instant)) = self.bridge.last_error {
+            let elapsed = instant.elapsed().as_secs_f32();
+            if elapsed < error_fade {
+                let alpha = ((1.0 - elapsed / error_fade) * 255.0) as u8;
+                let error_bg = egui::Color32::from_rgba_unmultiplied(40, 10, 10, alpha);
+                let text_color = egui::Color32::from_rgba_unmultiplied(255, 100, 100, alpha);
+                egui::TopBottomPanel::bottom("error_toast")
+                    .frame(
+                        egui::Frame::NONE
+                            .fill(error_bg)
+                            .inner_margin(egui::Margin::symmetric(8, 4)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.label(egui::RichText::new(msg).color(text_color).small());
+                    });
+                ctx.request_repaint();
+            }
+        }
+
         let bar = egui::TopBottomPanel::bottom("bottom_bar")
             .show(ctx, |ui| {
                 widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge))
@@ -802,7 +819,6 @@ impl eframe::App for SovaApp {
         }
         if bar.disconnect {
             self.bridge.disconnect();
-            self.step_editors.close_all();
         }
 
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
@@ -829,7 +845,6 @@ impl eframe::App for SovaApp {
             }
             ServerAction::Stop => {
                 self.bridge.disconnect();
-                self.step_editors.close_all();
                 self.server.stop();
             }
             ServerAction::None => {}
@@ -877,12 +892,11 @@ impl eframe::App for SovaApp {
                 logs: self.doc_panel.is_logs_open(),
                 debug: self.debug_open,
             };
-            let open_step = egui::CentralPanel::default()
+            egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, &self.editor_settings)
-                })
-                .inner;
+                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings);
+                });
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {
                     self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
@@ -899,20 +913,6 @@ impl eframe::App for SovaApp {
                 self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
             }
             self.debug_open = panels.debug;
-            if let Some((li, fi)) = open_step
-                && let Some(frame) = self
-                    .bridge
-                    .scene()
-                    .and_then(|s| s.lines.get(li))
-                    .and_then(|l| l.frames.get(fi))
-            {
-                self.step_editors.open(li, fi, frame);
-                self.bridge
-                    .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
-            }
-
-            self.step_editors
-                .show(ctx, &self.bridge, &self.editor_settings);
         } else {
             let action = egui::CentralPanel::default()
                 .frame(central_frame)
@@ -985,9 +985,7 @@ impl eframe::App for SovaApp {
         }
 
         // Contextual tips (first match wins)
-        let tip_id = if self.step_editors.has_open() {
-            Some("step_editor")
-        } else if self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings {
+        let tip_id = if self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings {
             Some("settings")
         } else if self.devices.open {
             Some("devices")

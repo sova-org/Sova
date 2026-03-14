@@ -163,6 +163,7 @@ visuals.share_off: "Share visuals with peers"
 
 options.visuals_enabled: "Enable visuals"
 options.hint.visuals_enabled: "Render live-coded shaders as a background layer"
+options.scene_opacity: "Scene opacity"
 
 # Audio panel
 audio.title: "Audio"
