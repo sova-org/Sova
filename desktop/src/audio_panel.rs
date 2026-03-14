@@ -60,7 +60,7 @@ impl AudioPanel {
         }
     }
 
-    fn refresh_devices(&mut self) {
+    pub fn refresh_devices(&mut self) {
         self.output_devices = sova_server::audio::doux_audio::list_output_devices();
         self.input_devices = sova_server::audio::doux_audio::list_input_devices();
     }
@@ -116,54 +116,63 @@ impl AudioPanel {
 
                 let r = ui.label(t!("audio.output"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.output"));
-                let r = egui::ComboBox::from_id_salt("audio_output_device")
-                    .selected_text(if self.output_device.is_empty() {
-                        t!("audio.system_default")
-                    } else {
-                        self.output_device.clone().into()
-                    })
-                    .width(180.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.output_device,
-                            String::new(),
-                            t!("audio.system_default"),
-                        );
-                        for dev in &self.output_devices {
+                ui.horizontal(|ui| {
+                    let r = egui::ComboBox::from_id_salt("audio_output_device")
+                        .selected_text(if self.output_device.is_empty() {
+                            t!("audio.system_default")
+                        } else {
+                            self.output_device.clone().into()
+                        })
+                        .width(160.0)
+                        .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut self.output_device,
-                                dev.name.clone(),
-                                &dev.name,
+                                String::new(),
+                                t!("audio.system_default"),
                             );
-                        }
-                    });
-                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.output"));
+                            for dev in &self.output_devices {
+                                ui.selectable_value(
+                                    &mut self.output_device,
+                                    dev.name.clone(),
+                                    &dev.name,
+                                );
+                            }
+                        });
+                    hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.output"));
+                    let refresh = ui.small_button("\u{21bb}");
+                    hint::on_hover(ui.ctx(), &refresh, t!("hint.refresh_devices"));
+                    if refresh.clicked() {
+                        self.refresh_devices();
+                    }
+                });
                 ui.end_row();
 
                 let r = ui.label(t!("audio.input"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.input"));
-                let r = egui::ComboBox::from_id_salt("audio_input_device")
-                    .selected_text(if self.input_device.is_empty() {
-                        t!("audio.system_default")
-                    } else {
-                        self.input_device.clone().into()
-                    })
-                    .width(180.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.input_device,
-                            String::new(),
-                            t!("audio.system_default"),
-                        );
-                        for dev in &self.input_devices {
+                ui.horizontal(|ui| {
+                    let r = egui::ComboBox::from_id_salt("audio_input_device")
+                        .selected_text(if self.input_device.is_empty() {
+                            t!("audio.system_default")
+                        } else {
+                            self.input_device.clone().into()
+                        })
+                        .width(160.0)
+                        .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut self.input_device,
-                                dev.name.clone(),
-                                &dev.name,
+                                String::new(),
+                                t!("audio.system_default"),
                             );
-                        }
-                    });
-                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.input"));
+                            for dev in &self.input_devices {
+                                ui.selectable_value(
+                                    &mut self.input_device,
+                                    dev.name.clone(),
+                                    &dev.name,
+                                );
+                            }
+                        });
+                    hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.input"));
+                });
                 ui.end_row();
 
                 let r = ui.label(t!("audio.channels"));

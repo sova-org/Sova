@@ -126,12 +126,14 @@ impl SidebarMode {
 pub enum SettingsTab {
     Config = 0,
     Options = 1,
+    Logs = 2,
 }
 
 impl SettingsTab {
     fn from_u8(v: u8) -> Self {
         match v {
             1 => Self::Options,
+            2 => Self::Logs,
             _ => Self::Config,
         }
     }
@@ -140,11 +142,12 @@ impl SettingsTab {
         match self {
             Self::Config => t!("config.title").into(),
             Self::Options => t!("options.title").into(),
+            Self::Logs => t!("log.title").into(),
         }
     }
 }
 
-const SETTINGS_TABS: [SettingsTab; 2] = [SettingsTab::Config, SettingsTab::Options];
+const SETTINGS_TABS: [SettingsTab; 3] = [SettingsTab::Config, SettingsTab::Options, SettingsTab::Logs];
 
 pub struct DocPanel {
     pub settings: DocSettings,
@@ -207,6 +210,16 @@ impl DocPanel {
         self.settings.pinned = true;
     }
 
+    pub fn is_settings_tab_open(&self, tab: SettingsTab) -> bool {
+        !self.settings.collapsed
+            && self.mode() == SidebarMode::Settings
+            && self.settings.settings_tab == tab as u8
+    }
+
+    pub fn is_logs_open(&self) -> bool {
+        self.is_settings_tab_open(SettingsTab::Logs)
+    }
+
     pub fn toggle_settings_tab(&mut self, tab: SettingsTab) {
         if !self.settings.collapsed
             && self.mode() == SidebarMode::Settings
@@ -226,6 +239,7 @@ impl DocPanel {
         server: &mut ServerPanel,
         audio: &mut AudioPanel,
         options: &mut OptionsPanel,
+        logs: &mut crate::log_panel::LogPanel,
         appearance: &mut AppearanceSettings,
         dismissed_tips: &mut Vec<String>,
     ) -> (ServerAction, bool) {
@@ -235,7 +249,7 @@ impl DocPanel {
         };
 
         if self.is_expanded() {
-            self.show_expanded(ctx, bridge, side, editor_settings, server, audio, options, appearance, dismissed_tips)
+            self.show_expanded(ctx, bridge, side, editor_settings, server, audio, options, logs, appearance, dismissed_tips)
         } else {
             self.show_collapsed(ctx, side);
             (ServerAction::None, false)
@@ -244,6 +258,7 @@ impl DocPanel {
 
     fn show_collapsed(&mut self, ctx: &egui::Context, side: Side) {
         let mut top_rect = egui::Rect::NOTHING;
+        let mut mid_rect = egui::Rect::NOTHING;
         let mut bottom_rect = egui::Rect::NOTHING;
 
         let panel = egui::SidePanel::new(side, "doc_panel_collapsed")
@@ -254,25 +269,40 @@ impl DocPanel {
 
         let r = panel.show(ctx, |ui| {
             let rect = ui.max_rect();
-            let mid_y = rect.center().y;
+            let third = rect.height() / 3.0;
 
-            top_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, mid_y));
-            bottom_rect = egui::Rect::from_min_max(egui::pos2(rect.min.x, mid_y), rect.max);
+            top_rect = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.max.x, rect.min.y + third),
+            );
+            mid_rect = egui::Rect::from_min_max(
+                egui::pos2(rect.min.x, rect.min.y + third),
+                egui::pos2(rect.max.x, rect.min.y + 2.0 * third),
+            );
+            bottom_rect = egui::Rect::from_min_max(
+                egui::pos2(rect.min.x, rect.min.y + 2.0 * third),
+                rect.max,
+            );
 
-            let book = egui::RichText::new(icons::BOOK)
-                .color(ui.visuals().weak_text_color())
-                .size(16.0);
+            let icon_size = egui::vec2(COLLAPSED_WIDTH, 24.0);
+            let weak = ui.visuals().weak_text_color();
+
+            let book = egui::RichText::new(icons::BOOK).color(weak).size(16.0);
             ui.put(
-                egui::Rect::from_center_size(top_rect.center(), egui::vec2(COLLAPSED_WIDTH, 24.0)),
+                egui::Rect::from_center_size(top_rect.center(), icon_size),
                 egui::Label::new(book),
             );
 
-            let gear = egui::RichText::new(icons::GEAR)
-                .color(ui.visuals().weak_text_color())
-                .size(16.0);
+            let gear = egui::RichText::new(icons::GEAR).color(weak).size(16.0);
             ui.put(
-                egui::Rect::from_center_size(bottom_rect.center(), egui::vec2(COLLAPSED_WIDTH, 24.0)),
+                egui::Rect::from_center_size(mid_rect.center(), icon_size),
                 egui::Label::new(gear),
+            );
+
+            let output = egui::RichText::new(icons::OUTPUT).color(weak).size(16.0);
+            ui.put(
+                egui::Rect::from_center_size(bottom_rect.center(), icon_size),
+                egui::Label::new(output),
             );
         });
 
@@ -280,8 +310,14 @@ impl DocPanel {
         let strip_rect = r.response.rect;
         let hovering_strip = strip_rect.contains(hover_pos);
         let hovering_top = top_rect.contains(hover_pos);
+        let hovering_mid = mid_rect.contains(hover_pos);
         let hovering_bottom = bottom_rect.contains(hover_pos);
         let clicked = hovering_strip && ctx.input(|i| i.pointer.primary_clicked());
+
+        let open_settings_tab = |s: &mut DocSettings, tab: SettingsTab| {
+            s.mode = SidebarMode::Settings as u8;
+            s.settings_tab = tab as u8;
+        };
 
         match self.settings.trigger {
             DocTrigger::Click => {
@@ -293,37 +329,40 @@ impl DocPanel {
                     self.settings.collapsed = false;
                     self.settings.pinned = true;
                 }
+                if clicked && hovering_mid {
+                    open_settings_tab(&mut self.settings, SettingsTab::Config);
+                    self.settings.collapsed = false;
+                    self.settings.pinned = true;
+                }
                 if clicked && hovering_bottom {
-                    self.settings.mode = SidebarMode::Settings as u8;
+                    open_settings_tab(&mut self.settings, SettingsTab::Logs);
                     self.settings.collapsed = false;
                     self.settings.pinned = true;
                 }
             }
             DocTrigger::Hover => {
+                let start_hover = |me: &mut Self, ctx: &egui::Context| {
+                    let now = ctx.input(|i| i.time);
+                    if let Some(start) = me.hover_timer {
+                        if now - start >= HOVER_DELAY_SECS {
+                            me.hover_expanded = true;
+                            me.hover_timer = None;
+                        }
+                    } else {
+                        me.hover_timer = Some(now);
+                    }
+                    ctx.request_repaint();
+                };
+
                 if hovering_top {
                     self.settings.mode = SidebarMode::Docs as u8;
-                    let now = ctx.input(|i| i.time);
-                    if let Some(start) = self.hover_timer {
-                        if now - start >= HOVER_DELAY_SECS {
-                            self.hover_expanded = true;
-                            self.hover_timer = None;
-                        }
-                    } else {
-                        self.hover_timer = Some(now);
-                    }
-                    ctx.request_repaint();
+                    start_hover(self, ctx);
+                } else if hovering_mid {
+                    open_settings_tab(&mut self.settings, SettingsTab::Config);
+                    start_hover(self, ctx);
                 } else if hovering_bottom {
-                    self.settings.mode = SidebarMode::Settings as u8;
-                    let now = ctx.input(|i| i.time);
-                    if let Some(start) = self.hover_timer {
-                        if now - start >= HOVER_DELAY_SECS {
-                            self.hover_expanded = true;
-                            self.hover_timer = None;
-                        }
-                    } else {
-                        self.hover_timer = Some(now);
-                    }
-                    ctx.request_repaint();
+                    open_settings_tab(&mut self.settings, SettingsTab::Logs);
+                    start_hover(self, ctx);
                 } else {
                     self.hover_timer = None;
                 }
@@ -340,6 +379,7 @@ impl DocPanel {
         server: &mut ServerPanel,
         audio: &mut AudioPanel,
         options: &mut OptionsPanel,
+        logs: &mut crate::log_panel::LogPanel,
         appearance: &mut AppearanceSettings,
         dismissed_tips: &mut Vec<String>,
     ) -> (ServerAction, bool) {
@@ -358,7 +398,7 @@ impl DocPanel {
                 }
                 SidebarMode::Settings => {
                     let (sa, ac) = self.show_settings_content(
-                        ui, server, audio, options, bridge, editor_settings, appearance, dismissed_tips,
+                        ui, server, audio, options, logs, bridge, editor_settings, appearance, dismissed_tips,
                     );
                     server_action = sa;
                     appearance_changed = ac;
@@ -386,6 +426,7 @@ impl DocPanel {
         server: &mut ServerPanel,
         audio: &mut AudioPanel,
         options: &mut OptionsPanel,
+        logs: &mut crate::log_panel::LogPanel,
         bridge: &ClientBridge,
         editor_settings: &mut EditorSettings,
         appearance: &mut AppearanceSettings,
@@ -441,35 +482,57 @@ impl DocPanel {
             });
         });
 
-        egui::ScrollArea::vertical()
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                ui.add_space(4.0);
-                match SettingsTab::from_u8(self.settings.settings_tab) {
-                    SettingsTab::Config => {
-                        ui.horizontal(|ui| {
-                            server_action = server.show_actions(ui);
-                            audio.show_restart_button(ui, bridge);
-                        });
-                        ui.separator();
-                        server.show_config(ui);
+        match SettingsTab::from_u8(self.settings.settings_tab) {
+            SettingsTab::Logs => {
+                logs.show_inside(ui);
+            }
+            tab => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
                         ui.add_space(4.0);
-                        ui.separator();
-                        ui.add_space(4.0);
-                        audio.show_config(ui);
-                        ui.separator();
-                        audio.show_status_section(ui, bridge);
-                    }
-                    SettingsTab::Options => {
-                        appearance_changed = options.show_inside(
-                            ui,
-                            editor_settings,
-                            appearance,
-                            dismissed_tips,
-                        );
-                    }
-                }
-            });
+                        match tab {
+                            SettingsTab::Config => {
+                                egui::CollapsingHeader::new(t!("config.server"))
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            server_action = server.show_actions(ui);
+                                        });
+                                        server.show_config(ui);
+                                    });
+
+                                egui::CollapsingHeader::new(t!("config.audio"))
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            audio.show_restart_button(ui, bridge);
+                                        });
+                                        audio.show_config(ui);
+                                    });
+
+                                if bridge.is_connected() && bridge.audio_state().running {
+                                    egui::CollapsingHeader::new(t!("config.audio_status"))
+                                        .default_open(true)
+                                        .show(ui, |ui| {
+                                            audio.show_status_section(ui, bridge);
+                                        });
+                                }
+                            }
+                            SettingsTab::Options => {
+                                appearance_changed = options.show_inside(
+                                    ui,
+                                    editor_settings,
+                                    appearance,
+                                    &mut self.settings,
+                                    dismissed_tips,
+                                );
+                            }
+                            SettingsTab::Logs => unreachable!(),
+                        }
+                    });
+            }
+        }
 
         (server_action, appearance_changed)
     }

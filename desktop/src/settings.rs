@@ -106,6 +106,8 @@ pub struct AppearanceSettings {
     pub window_shadows: bool,
     pub locale: String,
     pub visuals_enabled: bool,
+    pub ui_font_size: f32,
+    pub animation_time: f32,
 }
 
 impl Default for AppearanceSettings {
@@ -116,6 +118,8 @@ impl Default for AppearanceSettings {
             window_shadows: true,
             locale: "en".into(),
             visuals_enabled: false,
+            ui_font_size: 13.0,
+            animation_time: 0.15,
         }
     }
 }
@@ -130,8 +134,6 @@ pub struct VisualsSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
-    pub logs_collapsed: bool,
-    pub log_panel_height: f32,
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
     pub scope_bar: ScopeBarSettings,
@@ -140,8 +142,6 @@ pub struct WindowSettings {
 impl Default for WindowSettings {
     fn default() -> Self {
         Self {
-            logs_collapsed: true,
-            log_panel_height: 160.0,
             chat_detached: false,
             sample_browser_detached: false,
             scope_bar: ScopeBarSettings::default(),

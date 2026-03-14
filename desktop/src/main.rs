@@ -35,6 +35,10 @@ use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
+const DEMOS: &[(&str, &[u8])] = &[
+    ("Evening jam with th4", include_bytes!("../assets/demos/th4.sova")),
+];
+
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
     ctx.set_theme(egui::ThemePreference::Dark);
 
@@ -73,6 +77,14 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
 
         style.spacing.button_padding = egui::vec2(5.0, 4.0);
         style.spacing.indent_ends_with_horizontal_line = true;
+
+        let ui_size = a.ui_font_size;
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(ui_size));
+        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(ui_size));
+        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional((ui_size - 2.0).max(8.0)));
+        style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(ui_size + 7.0));
+
+        style.animation_time = a.animation_time;
     });
 }
 
@@ -129,7 +141,7 @@ fn main() -> eframe::Result {
                 s.server,
             );
             let client = client_panel::ClientPanel::new(s.client);
-            let logs = log_panel::LogPanel::new(log_rx, s.windows.log_panel_height);
+            let logs = log_panel::LogPanel::new(log_rx);
             let saved_master_volume = s.audio.master_volume;
             let audio = audio_panel::AudioPanel::new(s.audio);
             let devices = devices_panel::DevicesPanel::new();
@@ -183,7 +195,6 @@ fn main() -> eframe::Result {
                 muted: false,
             };
 
-            app.logs.collapsed = s.windows.logs_collapsed;
             app.chat_panel.detached = s.windows.chat_detached;
             app.sample_browser_panel.detached = s.windows.sample_browser_detached;
 
@@ -270,7 +281,7 @@ impl SovaApp {
                     self.scope_bar_panel.open = !self.scope_bar_panel.open;
                 }
                 if i.key_pressed(egui::Key::L) {
-                    self.logs.collapsed = !self.logs.collapsed;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
                 }
                 if i.key_pressed(egui::Key::B) {
                     self.debug_open = !self.debug_open;
@@ -369,6 +380,19 @@ impl SovaApp {
         self.push_recent_scene(path.to_path_buf());
     }
 
+    fn load_scene_from_bytes(&mut self, bytes: &[u8], timing: ActionTiming) {
+        let Ok(snapshot) = serde_json::from_slice::<sova_server::Snapshot>(bytes) else {
+            return;
+        };
+        self.bridge
+            .send(ClientMessage::SetScene(snapshot.scene, timing));
+        self.bridge
+            .send(ClientMessage::SetTempo(snapshot.tempo, timing));
+        self.bridge.send(ClientMessage::SchedulerControl(
+            SchedulerMessage::SetQuantum(snapshot.quantum, timing),
+        ));
+    }
+
     fn push_recent_scene(&mut self, path: std::path::PathBuf) {
         self.recent_scenes.retain(|p| p != &path);
         self.recent_scenes.insert(0, path);
@@ -378,8 +402,6 @@ impl SovaApp {
     fn save_settings(&self) {
         let s = settings::AppSettings {
             windows: settings::WindowSettings {
-                logs_collapsed: self.logs.collapsed,
-                log_panel_height: self.logs.height(),
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
                 scope_bar: settings::ScopeBarSettings {
@@ -523,6 +545,16 @@ impl eframe::App for SovaApp {
                             }
                             if clear {
                                 self.recent_scenes.clear();
+                            }
+                        });
+                    });
+                    ui.add_enabled_ui(connected, |ui| {
+                        ui.menu_button(t!("menu.demos"), |ui| {
+                            for (name, bytes) in DEMOS {
+                                if ui.button(*name).clicked() {
+                                    self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                                    ui.close();
+                                }
                             }
                         });
                     });
@@ -681,47 +713,12 @@ impl eframe::App for SovaApp {
                         t!("sample_browser.title"),
                         &format!("{mod_sym}{shift_sym}E"),
                     );
-                    ui.menu_button(t!("doc.title"), |ui| {
-                        let mut expanded = !self.doc_panel.settings.collapsed;
-                        if ui.checkbox(&mut expanded, t!("doc.title")).changed() {
-                            self.doc_panel.settings.collapsed = !expanded;
-                            if expanded {
-                                self.doc_panel.settings.pinned = true;
-                            }
-                        }
-                        if ui.button(t!("doc.swap_side")).clicked() {
-                            self.doc_panel.settings.side = match self.doc_panel.settings.side {
-                                DocSide::Left => DocSide::Right,
-                                DocSide::Right => DocSide::Left,
-                            };
-                        }
-                        ui.separator();
-                        ui.label(t!("doc.trigger"));
-                        let mut trigger = self.doc_panel.settings.trigger;
-                        ui.radio_value(
-                            &mut trigger,
-                            settings::DocTrigger::Click,
-                            t!("doc.trigger_click"),
-                        );
-                        ui.radio_value(
-                            &mut trigger,
-                            settings::DocTrigger::Hover,
-                            t!("doc.trigger_hover"),
-                        );
-                        self.doc_panel.settings.trigger = trigger;
-                    });
                     menu_checkbox(
                         ui,
                         &mut self.visuals.open,
                         t!("visuals.title"),
                         &format!("{mod_sym}{shift_sym}V"),
                     );
-                    ui.separator();
-                    let mut logs_expanded = !self.logs.collapsed;
-                    let changed = ui.checkbox(&mut logs_expanded, t!("cmd.logs")).changed();
-                    if changed {
-                        self.logs.collapsed = !logs_expanded;
-                    }
                     ui.separator();
                     menu_checkbox(
                         ui,
@@ -808,15 +805,13 @@ impl eframe::App for SovaApp {
             self.step_editors.close_all();
         }
 
-        self.logs.show(ctx);
-
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
         if self.scope_bar_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             self.scope_bar_panel
                 .show_bottom_panel(ctx, self.bridge.scope_data());
         }
 
-        // Sidebar (docs + settings, must be before VU meter and CentralPanel)
+        // Sidebar (docs + settings + logs, must be before VU meter and CentralPanel)
         let (sidebar_server_action, sidebar_appearance_changed) = self.doc_panel.show_side_panel(
             ctx,
             &self.bridge,
@@ -824,6 +819,7 @@ impl eframe::App for SovaApp {
             &mut self.server,
             &mut self.audio,
             &mut self.options,
+            &mut self.logs,
             &mut self.appearance,
             &mut self.dismissed_tips,
         );
@@ -878,7 +874,7 @@ impl eframe::App for SovaApp {
                 spectrum: self.spectrum_panel.open,
                 vu_meter: self.vu_meter_panel.open,
                 scope_bar: self.scope_bar_panel.open,
-                logs: !self.logs.collapsed,
+                logs: self.doc_panel.is_logs_open(),
                 debug: self.debug_open,
             };
             let open_step = egui::CentralPanel::default()
@@ -899,7 +895,9 @@ impl eframe::App for SovaApp {
             self.spectrum_panel.open = panels.spectrum;
             self.vu_meter_panel.open = panels.vu_meter;
             self.scope_bar_panel.open = panels.scope_bar;
-            self.logs.collapsed = !panels.logs;
+            if panels.logs != self.doc_panel.is_logs_open() {
+                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
+            }
             self.debug_open = panels.debug;
             if let Some((li, fi)) = open_step
                 && let Some(frame) = self
@@ -973,7 +971,7 @@ impl eframe::App for SovaApp {
             vu_meter: self.vu_meter_panel.open,
             scope_bar: self.scope_bar_panel.open,
             chat: self.chat_panel.open,
-            logs: !self.logs.collapsed,
+            logs: self.doc_panel.is_logs_open(),
             debug: self.debug_open,
             keybindings: self.keybindings_open,
             about: self.about_open,
@@ -1030,7 +1028,7 @@ impl SovaApp {
             VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,
             ScopeBar => self.scope_bar_panel.open = !self.scope_bar_panel.open,
             Chat => self.chat_panel.open = !self.chat_panel.open,
-            Logs => self.logs.collapsed = !self.logs.collapsed,
+            Logs => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs),
             Options => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options),
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,

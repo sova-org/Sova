@@ -5,7 +5,6 @@ pub const PLAY: &str = "\u{EB2C}";
 pub const PAUSE: &str = "\u{EAD1}";
 
 // Chevrons
-pub const CHEVRON_UP: &str = "\u{EAB7}";
 pub const CHEVRON_DOWN: &str = "\u{EAB4}";
 pub const CHEVRON_LEFT: &str = "\u{EAB5}";
 pub const CHEVRON_RIGHT: &str = "\u{EAB6}";
@@ -35,6 +34,7 @@ pub const MODIFIED: &str = "\u{F069}";
 
 // Log
 pub const TRASH: &str = "\u{EA81}";
+pub const OUTPUT: &str = "\u{EB9D}";
 
 // Doc panel
 pub const BOOK: &str = "\u{EAA4}";

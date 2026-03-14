@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::settings::AppearanceSettings;
+use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::widgets::{EditorSettings, SyntaxThemePref};
 
 pub struct OptionsPanel;
@@ -16,6 +16,7 @@ impl OptionsPanel {
         ui: &mut egui::Ui,
         editor_settings: &mut EditorSettings,
         appearance: &mut AppearanceSettings,
+        doc_settings: &mut DocSettings,
         dismissed_tips: &mut Vec<String>,
     ) -> bool {
         let mut changed = false;
@@ -34,6 +35,20 @@ impl OptionsPanel {
                 );
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
                 changed |= r.changed();
+
+                ui.add_space(4.0);
+
+                ui.horizontal(|ui| {
+                    let r = ui.label(t!("options.ui_font_size"));
+                    hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
+                    let r = ui.add(
+                        egui::DragValue::new(&mut appearance.ui_font_size)
+                            .range(10.0..=20.0)
+                            .speed(0.5),
+                    );
+                    hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
+                    changed |= r.changed();
+                });
 
                 ui.add_space(4.0);
 
@@ -71,6 +86,18 @@ impl OptionsPanel {
 
                 ui.add_space(4.0);
 
+                let r = ui.label(t!("options.animation_speed"));
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.animation_speed"));
+                let r = ui.add(
+                    egui::Slider::new(&mut appearance.animation_time, 0.0..=0.5)
+                        .step_by(0.01)
+                        .suffix("s"),
+                );
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.animation_speed"));
+                changed |= r.changed();
+
+                ui.add_space(4.0);
+
                 let r = ui
                     .checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
@@ -82,6 +109,26 @@ impl OptionsPanel {
                 );
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.visuals_enabled"));
                 changed |= r.changed();
+            });
+
+        egui::CollapsingHeader::new(t!("options.sidebar"))
+            .default_open(true)
+            .show(ui, |ui| {
+                let r = ui.label(t!("options.sidebar_side"));
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.sidebar_side"));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut doc_settings.side, DocSide::Left, t!("options.sidebar_side.left"));
+                    ui.radio_value(&mut doc_settings.side, DocSide::Right, t!("options.sidebar_side.right"));
+                });
+
+                ui.add_space(4.0);
+
+                let r = ui.label(t!("options.sidebar_trigger"));
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.sidebar_trigger"));
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut doc_settings.trigger, DocTrigger::Click, t!("doc.trigger_click"));
+                    ui.radio_value(&mut doc_settings.trigger, DocTrigger::Hover, t!("doc.trigger_hover"));
+                });
             });
 
         egui::CollapsingHeader::new(t!("options.editor"))
