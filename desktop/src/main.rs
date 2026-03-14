@@ -811,7 +811,7 @@ impl eframe::App for SovaApp {
         self.logs.show(ctx);
 
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
-        if self.scope_bar_panel.open && self.bridge.audio_state().running {
+        if self.scope_bar_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             self.scope_bar_panel
                 .show_bottom_panel(ctx, self.bridge.scope_data());
         }
@@ -843,7 +843,7 @@ impl eframe::App for SovaApp {
         }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)
-        if self.vu_meter_panel.open && self.bridge.audio_state().running {
+        if self.vu_meter_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             let vu_side = match self.doc_panel.settings.side {
                 DocSide::Left => egui::containers::panel::Side::Right,
                 DocSide::Right => egui::containers::panel::Side::Left,
