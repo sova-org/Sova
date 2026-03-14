@@ -108,7 +108,7 @@ The core pattern: name a sound, set parameters, emit.
 ```
 "kick" sound .              ;; play a sample
 "sine" snd 440 freq .       ;; play an oscillator
-60 note 100 vel .           ;; MIDI note
+60 note 100 velocity .      ;; MIDI note
 clear                       ;; reset sound register
 ```
 
@@ -142,8 +142,7 @@ clear                       ;; reset sound register
 | `begin` / `end` | Sample start/end (0-1) |
 | `speed` | Playback speed |
 | `dur` | Duration |
-| `gate` | Gate time |
-| `repeat` | Repeat count |
+| `gate` | Gate duration (total note length, 0 = infinite sustain) |
 | `voice` | Voice number |
 | `orbit` | Orbit/bus |
 | `cut` | Cut group |
@@ -159,7 +158,6 @@ clear                       ;; reset sound register
 | `note` | MIDI note number |
 | `freq` | Frequency (Hz) |
 | `detune` | Detune amount |
-| `glide` | Portamento |
 | `pw` | Pulse width |
 | `spread` | Stereo spread |
 | `mult` | Multiplier |
@@ -181,34 +179,25 @@ clear                       ;; reset sound register
 |------|-------------|
 | `gain` | Volume (0-1) |
 | `postgain` | Post gain |
-| `velocity` / `vel` | Velocity |
+| `velocity` | Velocity |
 | `attack` / `att` | Attack time |
 | `decay` / `dec` | Decay time |
 | `sustain` / `sus` | Sustain level |
 | `release` / `rel` | Release time |
+| `envdelay` / `envdly` | Envelope delay time |
+| `hold` / `hld` | Envelope hold time |
 | `adsr` | `(a d s r --)` Set all four |
 | `ad` | `(a d --)` Attack + decay (sustain=0) |
-
-### Pitch Envelope
-
-| Word | Description |
-|------|-------------|
-| `penv` | Pitch envelope amount |
-| `patt` | Pitch attack |
-| `pdec` | Pitch decay |
-| `psus` | Pitch sustain |
-| `prel` | Pitch release |
 
 ## Filter
 
 Lowpass (`lpf`), highpass (`hpf`), bandpass (`bpf`), ladder variants (`llpf`, `lhpf`, `lbpf`).
 
-Each filter has frequency, resonance (Q), and envelope controls:
+Each filter has frequency and resonance (Q) controls:
 
 ```
 2000 lpf 0.5 lpq .
 100 hpf .
-0.5 lpe 0.01 lpa 0.1 lpd .   ;; filter envelope
 ```
 
 ### Lowpass
@@ -217,11 +206,6 @@ Each filter has frequency, resonance (Q), and envelope controls:
 |------|-------------|
 | `lpf` | Lowpass frequency |
 | `lpq` | Lowpass resonance |
-| `lpe` | Lowpass envelope amount |
-| `lpa` | Lowpass attack |
-| `lpd` | Lowpass decay |
-| `lps` | Lowpass sustain |
-| `lpr` | Lowpass release |
 
 ### Highpass
 
@@ -229,11 +213,6 @@ Each filter has frequency, resonance (Q), and envelope controls:
 |------|-------------|
 | `hpf` | Highpass frequency |
 | `hpq` | Highpass resonance |
-| `hpe` | Highpass envelope amount |
-| `hpa` | Highpass attack |
-| `hpd` | Highpass decay |
-| `hps` | Highpass sustain |
-| `hpr` | Highpass release |
 
 ### Bandpass
 
@@ -241,11 +220,6 @@ Each filter has frequency, resonance (Q), and envelope controls:
 |------|-------------|
 | `bpf` | Bandpass frequency |
 | `bpq` | Bandpass resonance |
-| `bpe` | Bandpass envelope amount |
-| `bpa` | Bandpass attack |
-| `bpd` | Bandpass decay |
-| `bps` | Bandpass sustain |
-| `bpr` | Bandpass release |
 
 ### Ladder Filters
 
@@ -322,10 +296,10 @@ Sidechain compression routed by orbit.
 ### FM Synthesis
 
 ```
-200 fm 2 fmh 0.5 fme .
+200 fm 2 fmh .
 ```
 
-Words: `fm`, `fmh`, `fmshape`, `fme`, `fma`, `fmd`, `fms`, `fmr`, `fm2`, `fm2h`, `fmalgo`, `fmfb`.
+Words: `fm`, `fmh`, `fmshape`, `fm2`, `fm2h`, `fmalgo`, `fmfb`.
 
 ### Vibrato & Ring Mod
 
@@ -337,7 +311,7 @@ Vibrato: `vib`, `vibmod`, `vibshape`. AM: `am`, `amdepth`, `amshape`. RM: `rm`, 
 0.5 scan 2048 wtlen .
 ```
 
-Words: `scan`, `wtlen`, `scanlfo`, `scandepth`, `scanshape`.
+Words: `scan`, `wtlen`.
 
 ## Probability
 
@@ -410,6 +384,7 @@ These words produce modulation strings that can be passed to any parameter:
 ```
 200 4000 2 lfo lpf .        ;; sine LFO on filter
 0 1 0.01 slide gain .       ;; fade in
+200 8000 0.01 0.1 ead lpf . ;; percussive envelope on filter
 ```
 
 | Word | Stack | Description |
@@ -421,10 +396,16 @@ These words produce modulation strings that can be passed to any parameter:
 | `slide` | `(start end dur -- str)` | Linear transition |
 | `expslide` | `(start end dur -- str)` | Exponential transition |
 | `sslide` | `(start end dur -- str)` | Smooth transition |
+| `islide` | `(start end dur -- str)` | Swell transition (slow start, fast finish) |
+| `oslide` | `(start end dur -- str)` | Pluck transition (fast attack, slow settle) |
+| `pslide` | `(start end dur -- str)` | Stair transition (8 discrete steps) |
 | `jit` | `(min max period -- str)` | Random hold |
 | `sjit` | `(min max period -- str)` | Smooth random |
 | `drunk` | `(min max period -- str)` | Drunk walk |
-| `env` | `(start t1 d1 ... -- str)` | Multi-segment envelope |
+| `ead` | `(min max a d -- str)` | Percussive envelope (AD) |
+| `eadr` | `(min max a d r -- str)` | Percussive envelope with release (ADR) |
+| `eadsr` / `env` | `(min max a d s r -- str)` | DAHDSR envelope modulation |
+| `lpg` | `(min max depth --)` | Low pass gate (pairs amp envelope with lpf) |
 
 ## Context Variables
 
@@ -449,7 +430,7 @@ Read-only words that push current execution state:
 | Word | Stack | Description |
 |------|-------|-------------|
 | `note` | `(v.. --)` | Set MIDI note |
-| `vel` / `velocity` | `(v.. --)` | Set velocity |
+| `velocity` / `vel` | `(v.. --)` | Set velocity |
 | `chan` | `(v.. --)` | Set MIDI channel 1-16 |
 | `device` / `dev` | `(v.. --)` | Set device slot 1-16 |
 | `ccnum` | `(v.. --)` | Set CC number |

@@ -599,6 +599,7 @@ mod tests {
             max_voices: 64,
             schedule_depth: 32,
             sample_pool_mb: 128.5,
+            volume: 1.0,
         };
 
         ServerMessage::Hello {

@@ -138,7 +138,10 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "jit" => Op::ModRnd(0),
         "sjit" => Op::ModRnd(1),
         "drunk" => Op::ModRnd(2),
-        "env" => Op::ModEnv,
+        "eadsr" | "env" => Op::ModEnv,
+        "ead" => Op::ModEnvAd,
+        "eadr" => Op::ModEnvAdr,
+        "lpg" => Op::Lpg,
         _ => return None,
     })
 }

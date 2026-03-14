@@ -882,20 +882,52 @@ impl CagireVM {
                     stack.push(Value::Str(format!("{min}?{max}:{period}{suffix}").into()));
                 }
                 Op::ModEnv => {
-                    ensure(stack, 1)?;
-                    let values = std::mem::take(stack);
-                    let mut floats = Vec::with_capacity(values.len());
-                    for v in &values { floats.push(v.as_float()?); }
-                    if floats.len() < 3 || (floats.len() - 1) % 2 != 0 {
-                        return Err("env expects: start target1 dur1 [target2 dur2 ...]".into());
-                    }
+                    let release = pop_float(stack)? * ctx.step_duration;
+                    let sustain = pop_float(stack)?;
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
                     use std::fmt::Write;
                     let mut s = String::new();
-                    let _ = write!(&mut s, "{}", floats[0]);
-                    for pair in floats[1..].chunks(2) {
-                        let _ = write!(&mut s, ">{}:{}", pair[0], pair[1] * ctx.step_duration);
-                    }
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:{sustain}:{release}");
                     stack.push(Value::Str(s.into()));
+                }
+                Op::ModEnvAd => {
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    use std::fmt::Write;
+                    let mut s = String::new();
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:0");
+                    stack.push(Value::Str(s.into()));
+                }
+                Op::ModEnvAdr => {
+                    let release = pop_float(stack)? * ctx.step_duration;
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    use std::fmt::Write;
+                    let mut s = String::new();
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:{release}");
+                    stack.push(Value::Str(s.into()));
+                }
+                Op::Lpg => {
+                    let depth = pop_float(stack)?.clamp(0.0, 1.0);
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    let effective_max = min + (max - min) * depth;
+                    let sd = ctx.step_duration;
+                    let a = cmd.get_param_float("attack").unwrap_or(0.0) * sd;
+                    let d = cmd.get_param_float("decay").unwrap_or(1.0) * sd;
+                    let s = cmd.get_param_float("sustain").unwrap_or(0.0);
+                    let r = cmd.get_param_float("release").unwrap_or(0.0) * sd;
+                    use std::fmt::Write;
+                    let mut mod_str = String::new();
+                    let _ = write!(&mut mod_str, "{min}^{effective_max}:{a}:{d}:{s}:{r}");
+                    cmd.set_param("lpf", Value::Str(mod_str.into()));
                 }
 
                 Op::GetMidiCC => {

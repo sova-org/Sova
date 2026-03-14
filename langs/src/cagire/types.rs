@@ -99,6 +99,10 @@ impl CmdRegister {
         self.sound = Some(val);
     }
 
+    pub(super) fn get_param_float(&self, key: &str) -> Option<f64> {
+        self.params.iter().find(|(k, _)| *k == key)?.1.as_float().ok()
+    }
+
     pub(super) fn set_param(&mut self, key: &'static str, val: Value) {
         if let Some(existing) = self.params.iter_mut().find(|(k, _)| *k == key) {
             existing.1 = val;
