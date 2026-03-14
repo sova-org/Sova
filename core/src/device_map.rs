@@ -431,6 +431,50 @@ impl DeviceMap {
         self.map_event_for_slot_id(device_id, event, date, clock)
     }
 
+    pub fn get_input_cc_from_name(&self, device_name: &str, cc: i8, channel: i8) -> Option<i64> {
+        let input_connections = self.input_connections.lock().unwrap();
+        if let Some(device_arc) = input_connections.get(device_name) {
+            if let ProtocolDevice::MIDIInDevice(midi_in) = &**device_arc {
+                if let Ok(memory_guard) = midi_in.memory.lock() {
+                    let midi_chan_0_based =
+                        (channel.saturating_sub(1).max(0).min(15)) as i8;
+                    let control_i8 = (cc.max(0).min(127)) as i8;
+                    let cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
+                    // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
+                    return Some(cc_value);
+                } else {
+                    log_eprintln!(
+                        "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
+                        device_name
+                    );
+                }
+            } else {
+                log_eprintln!(
+                    "[!] GetMidiCC Warning: Device '{}' is not a MIDI Input device.",
+                    device_name
+                );
+            }
+        } else {
+            log_eprintln!(
+                "[!] GetMidiCC Warning: Device name '{}' not found in registered input connections.",
+                device_name,
+            );
+        }
+
+        None
+    }
+
+    pub fn get_input_cc(&self, device_id: usize, cc: i8, channel: i8) -> Option<i64> {
+        let Some(device_name) = self.get_name_for_slot(device_id) else {
+            log_eprintln!(
+                "[!] GetMidiCC Warning: Device slot '{}' not mapped in input connections.",
+                device_id,
+            );
+            return None;
+        };
+        self.get_input_cc_from_name(&device_name, cc, channel)
+    }
+
     /// Generates a list of discoverable and currently connected devices.
     ///
     /// This function aggregates information from:

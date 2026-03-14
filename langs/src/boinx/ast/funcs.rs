@@ -449,6 +449,33 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             Sequence(bitrhythm(i))
         }
     ));
+    funcs.insert("cc".to_owned(), ItemFunc::define(
+        "Access the value of a midi input CC",
+        |ctx, args| {
+            let mut args = unpack_if_one(args);
+            if args.len() == 1 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Not enough arguments for 'cc' ! Ignoring"));
+                return Mute;
+            }
+            if args.len() > 3 {
+                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'cc', taking three last !"));
+            }
+
+            let channel = if args.len() >= 3 {
+                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8
+            } else {
+                1
+            };
+            let device_id = if args.len() >= 2 {
+                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+            } else {
+                1
+            };
+            let cc = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8;
+
+            Note(ctx.device_map.get_input_cc(device_id, cc, channel).unwrap_or_default())
+        } 
+    ));
     funcs
 });
 
