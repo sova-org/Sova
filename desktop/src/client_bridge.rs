@@ -588,6 +588,7 @@ impl ClientBridge {
 
         if let Some(engine) = &self.feedback_engine {
             self.devices = engine.devices().device_list();
+            self.audio_state = engine.audio_state();
             let data = engine.scope_data();
             if !data.is_empty() {
                 self.scope_data = data;
@@ -664,6 +665,14 @@ impl ClientBridge {
 
     pub fn has_feedback(&self) -> bool {
         self.feedback_engine.is_some()
+    }
+
+    pub fn restart_audio(&self, config: AudioRestartConfig) {
+        if let Some(engine) = &self.feedback_engine {
+            engine.restart_audio(config);
+        } else {
+            self.send(ClientMessage::RestartAudioEngine(config));
+        }
     }
 
     pub fn peers(&self) -> &[String] {

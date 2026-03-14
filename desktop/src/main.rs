@@ -609,7 +609,7 @@ impl eframe::App for SovaApp {
                         .clicked()
                     {
                         ui.close();
-                        self.bridge.send(self.audio.restart_message());
+                        self.bridge.restart_audio(self.audio.generate_audio_config());
                     }
                     if ui
                         .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))

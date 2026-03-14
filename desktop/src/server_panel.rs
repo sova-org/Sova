@@ -343,8 +343,42 @@ impl ServerPanel {
         }
     }
 
-    pub fn show_inside(&mut self, ui: &mut egui::Ui) -> ServerAction {
+    pub fn show_actions(&mut self, ui: &mut egui::Ui) -> ServerAction {
         let mut action = ServerAction::None;
+        let ctx = ui.ctx().clone();
+        let running = matches!(self.status, ServerStatus::Running);
+
+        if running {
+            let r = ui.button(t!("common.stop"));
+            if r.hovered() {
+                crate::widgets::hint::set(&ctx, t!("server.hint.stop"));
+            }
+            if r.clicked() {
+                action = ServerAction::Stop;
+            }
+        } else {
+            let r = ui.button(t!("common.start"));
+            if r.hovered() {
+                crate::widgets::hint::set(&ctx, t!("server.hint.start"));
+            }
+            if r.clicked() {
+                action = ServerAction::Start;
+            }
+        }
+
+        let status_r = match &self.status {
+            ServerStatus::Stopped => ui.label(t!("server.stopped")),
+            ServerStatus::Running => ui.colored_label(COLOR_OK, t!("server.running")),
+            ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
+        };
+        if status_r.hovered() {
+            crate::widgets::hint::set(&ctx, t!("server.hint.status"));
+        }
+
+        action
+    }
+
+    pub fn show_config(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let running = matches!(self.status, ServerStatus::Running);
 
@@ -389,39 +423,6 @@ impl ServerPanel {
                     ui.end_row();
                 });
         });
-
-        ui.add_space(8.0);
-
-        ui.horizontal(|ui| {
-            if running {
-                let r = ui.button(t!("common.stop"));
-                if r.hovered() {
-                    crate::widgets::hint::set(&ctx, t!("server.hint.stop"));
-                }
-                if r.clicked() {
-                    action = ServerAction::Stop;
-                }
-            } else {
-                let r = ui.button(t!("common.start"));
-                if r.hovered() {
-                    crate::widgets::hint::set(&ctx, t!("server.hint.start"));
-                }
-                if r.clicked() {
-                    action = ServerAction::Start;
-                }
-            }
-
-            let status_r = match &self.status {
-                ServerStatus::Stopped => ui.label(t!("server.stopped")),
-                ServerStatus::Running => ui.colored_label(COLOR_OK, t!("server.running")),
-                ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
-            };
-            if status_r.hovered() {
-                crate::widgets::hint::set(&ctx, t!("server.hint.status"));
-            }
-        });
-
-        action
     }
 }
 

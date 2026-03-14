@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
 use sova_server::audio::doux_audio::AudioDeviceInfo;
-use sova_server::{AudioRestartConfig, ClientMessage};
+use sova_server::AudioRestartConfig;
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -84,36 +84,30 @@ impl AudioPanel {
         }
     }
 
-    pub fn restart_message(&self) -> ClientMessage {
-        ClientMessage::RestartAudioEngine(self.generate_audio_config())
-    }
-
-    pub fn show_inside(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
-        self.show_config(ui);
-        ui.separator();
-
+    pub fn show_restart_button(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         if !bridge.is_connected() {
-            ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
-        } else {
-            ui.horizontal(|ui| {
-                let r = ui.button(t!("audio.restart"));
-                if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), t!("audio.hint.restart"));
-                }
-                if r.clicked() {
-                    bridge.send(self.restart_message());
-                }
-            });
-
-            let state = bridge.audio_state();
-            if state.running || state.error.is_some() {
-                ui.separator();
-                self.show_status(ui, state);
-            }
+            return;
+        }
+        let r = ui.button(t!("audio.restart"));
+        if r.hovered() {
+            crate::widgets::hint::set(ui.ctx(), t!("audio.hint.restart"));
+        }
+        if r.clicked() {
+            bridge.restart_audio(self.generate_audio_config());
         }
     }
 
-    fn show_config(&mut self, ui: &mut egui::Ui) {
+    pub fn show_status_section(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        if !bridge.is_connected() {
+            return;
+        }
+        let state = bridge.audio_state();
+        if state.running || state.error.is_some() {
+            self.show_status(ui, state);
+        }
+    }
+
+    pub fn show_config(&mut self, ui: &mut egui::Ui) {
         egui::Grid::new("audio_config")
             .num_columns(2)
             .spacing([8.0, 4.0])

@@ -447,11 +447,18 @@ impl DocPanel {
                 ui.add_space(4.0);
                 match SettingsTab::from_u8(self.settings.settings_tab) {
                     SettingsTab::Config => {
-                        server_action = server.show_inside(ui);
-                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            server_action = server.show_actions(ui);
+                            audio.show_restart_button(ui, bridge);
+                        });
                         ui.separator();
-                        ui.add_space(8.0);
-                        audio.show_inside(ui, bridge);
+                        server.show_config(ui);
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        audio.show_config(ui);
+                        ui.separator();
+                        audio.show_status_section(ui, bridge);
                     }
                     SettingsTab::Options => {
                         appearance_changed = options.show_inside(
