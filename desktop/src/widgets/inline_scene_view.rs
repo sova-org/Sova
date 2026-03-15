@@ -26,6 +26,9 @@ pub struct InlineFrameState {
     pub last_cursor_send: Instant,
     pub header_name_buf: String,
     pub editor_has_focus: bool,
+    pub request_focus: bool,
+    pub escape_pressed: bool,
+    pub menu_open: bool,
 }
 
 impl InlineFrameState {
@@ -45,6 +48,9 @@ impl InlineFrameState {
             last_cursor_send: Instant::now(),
             header_name_buf: frame.name.clone().unwrap_or_default(),
             editor_has_focus: false,
+            request_focus: false,
+            escape_pressed: false,
+            menu_open: false,
         }
     }
 
@@ -213,9 +219,21 @@ impl InlineFrameState {
                 }
             }
 
-            // Dirty indicator / discard
-            if self.dirty {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Right-aligned: menu button + dirty indicator
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Menu button
+                let menu_btn = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
+                    )
+                    .fill(egui::Color32::TRANSPARENT),
+                );
+                if menu_btn.clicked() {
+                    self.menu_open = !self.menu_open;
+                }
+
+                // Dirty indicator
+                if self.dirty {
                     let discard_fill = COLOR_ERROR.linear_multiply(0.3);
                     let discard_text = egui::RichText::new(crate::icons::MODIFIED)
                         .small()
@@ -227,9 +245,72 @@ impl InlineFrameState {
                     {
                         self.sync_from_frame(frame);
                     }
-                });
-            }
+                }
+            });
         });
+    }
+
+    pub fn show_frame_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        li: usize,
+        fi: usize,
+        bridge: &ClientBridge,
+    ) {
+        if ui.button(t!("scene.insert_frame_before")).clicked() {
+            bridge.send(ClientMessage::AddFrame(
+                li, fi, Frame::default(), ActionTiming::Immediate,
+            ));
+            self.menu_open = false;
+            ui.close();
+        }
+        if ui.button(t!("scene.insert_frame_after")).clicked() {
+            bridge.send(ClientMessage::AddFrame(
+                li, fi + 1, Frame::default(), ActionTiming::Immediate,
+            ));
+            self.menu_open = false;
+            ui.close();
+        }
+        if ui.button(t!("scene.duplicate_frame")).clicked() {
+            if let Some(frame) = bridge
+                .scene()
+                .and_then(|s| s.lines.get(li))
+                .and_then(|l| l.frames.get(fi))
+            {
+                bridge.send(ClientMessage::AddFrame(
+                    li, fi + 1, frame.clone(), ActionTiming::Immediate,
+                ));
+            }
+            self.menu_open = false;
+            ui.close();
+        }
+
+        ui.separator();
+
+        if ui.button(t!("scene.move_up")).clicked() {
+            // Handled via scene panel's move_frames_vertical
+            self.menu_open = false;
+            ui.close();
+        }
+        if ui.button(t!("scene.move_down")).clicked() {
+            self.menu_open = false;
+            ui.close();
+        }
+
+        ui.separator();
+
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR),
+                ),
+            )
+            .clicked()
+        {
+            bridge.send(ClientMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
+            self.menu_open = false;
+            ui.close();
+        }
     }
 
     fn show_lang_popup(
@@ -364,6 +445,13 @@ impl InlineFrameState {
         bridge: &ClientBridge,
     ) {
         let editor_id = ui.id().with("editor_body");
+        let editor_id_focus = editor_id.with("editor");
+
+        // Handle focus request from Nav → Edit mode transition
+        if self.request_focus {
+            self.request_focus = false;
+            ui.memory_mut(|m| m.request_focus(editor_id_focus));
+        }
 
         egui::ScrollArea::vertical()
             .id_salt(("editor_scroll", li, fi))
@@ -385,9 +473,17 @@ impl InlineFrameState {
                 self.last_cursor_col = output.cursor_col;
             });
 
-        // Eval shortcut
-        let editor_id_focus = editor_id.with("editor");
+        // Track focus and handle edit mode shortcuts
         self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));
+        if self.editor_has_focus {
+            // Escape exits edit mode
+            let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+            if escape {
+                ui.memory_mut(|m| m.surrender_focus(editor_id_focus));
+                self.editor_has_focus = false;
+                self.escape_pressed = true;
+            }
+        }
         if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
             let eval = ui.input(|i| {

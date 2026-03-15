@@ -1172,43 +1172,47 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
             };
 
             let right = |ui: &mut egui::Ui| {
-                ui.heading(t!("kb.scene_grid"));
-                egui::Grid::new("kb_scene")
+                ui.heading(t!("kb.scene_nav"));
+                egui::Grid::new("kb_scene_nav")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
                         row(ui, t!("kb.navigate"), "Arrow keys".into());
-                        row(ui, t!("kb.edit_step"), "Enter".into());
-                        row(ui, t!("kb.edit_duration"), "D".into());
-                        row(ui, t!("kb.edit_repetitions"), "R".into());
-                        row(ui, t!("kb.rename_frame"), "N".into());
-                        row(ui, t!("kb.edit_speed"), "S".into());
-                        row(ui, t!("kb.toggle_looping"), "L".into());
-                        row(ui, t!("kb.toggle_trailing"), "T".into());
-                        row(ui, t!("kb.cancel"), "Escape".into());
-                        row(ui, t!("kb.delete_step"), "Delete".into());
+                        row(ui, t!("kb.navigate_vim"), "h / j / k / l".into());
+                        row(ui, t!("kb.enter_edit"), "Enter / i".into());
+                        row(ui, t!("kb.exit_edit"), "Escape".into());
+                        row(ui, t!("kb.extend_selection"), "Shift+Up/Down".into());
+                        row(ui, t!("kb.duplicate_after"), format!("{m}+D"));
+                        row(ui, t!("kb.duplicate_before"), format!("{m}+Shift+D"));
+                        row(ui, t!("kb.insert_after"), "Shift+I".into());
+                        row(ui, t!("kb.insert_before"), format!("{m}+Shift+I"));
+                        row(ui, t!("kb.delete_frame"), "Delete".into());
+                        row(ui, t!("kb.move_frame_down"), "Shift+J".into());
+                        row(ui, t!("kb.move_frame_up"), "Shift+K".into());
+                        row(ui, t!("kb.toggle_enabled"), "e".into());
+                        row(ui, t!("kb.toggle_looping"), ".".into());
+                        row(ui, t!("kb.toggle_trailing"), ",".into());
+                        row(ui, t!("kb.move_line_left"), "Alt+H".into());
+                        row(ui, t!("kb.move_line_right"), "Alt+L".into());
                         row(ui, t!("kb.select_all"), format!("{m}+A"));
                         row(ui, t!("kb.copy"), format!("{m}+C"));
                         row(ui, t!("kb.cut"), format!("{m}+X"));
                         row(ui, t!("kb.paste"), format!("{m}+V"));
-                        row(ui, t!("kb.duplicate"), format!("{m}+D"));
-                        row(ui, t!("kb.duplicate_line"), format!("{m}+Shift+D"));
-                        row(ui, t!("kb.extend_selection"), "Shift+Up/Down".into());
-                        row(ui, t!("kb.move_frame"), "Alt+Up/Down".into());
-                        row(ui, t!("kb.move_line"), "Alt+Left/Right".into());
                         row(ui, t!("kb.delete_line"), format!("{m}+Delete"));
                     });
 
                 ui.add_space(8.0);
-                ui.heading(t!("kb.code_editor"));
-                egui::Grid::new("kb_editor")
+                ui.heading(t!("kb.scene_edit"));
+                egui::Grid::new("kb_scene_edit")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, t!("kb.search"), format!("{m}+F"));
+                        row(ui, t!("kb.exit_edit"), "Escape".into());
                         row(ui, t!("kb.evaluate"), format!("{m}+Enter"));
+                        row(ui, t!("kb.lang_selector"), format!("{m}+L"));
+                        row(ui, t!("kb.search"), format!("{m}+F"));
                     });
             };
 

@@ -26,36 +26,66 @@ Each frame holds a script and a set of properties:
   occupies remains 4 beats either way.
 - **Enabled** — toggles the frame on or off. Disabled frames are skipped during
   playback. The code is preserved.
-- **Name** — optional label shown on the grid cell.
+- **Name** — optional label shown in the frame header.
 - **Script** — the code, along with the language it uses (Bob, Boinx, Cagire,
   or BaLi).
 
-### Editing frame properties
+Frame properties (duration, repetitions, name, language, enabled) are edited
+directly in the frame header. Each frame also contains an inline code editor.
 
-Select a cell, then press:
+## Modal interaction
 
-| Key | Action |
-|-----|--------|
-| Enter / D | Edit duration |
-| R | Edit repetitions |
-| N | Edit name |
+The scene view uses two modes:
 
-Inside the edit field: Enter commits, Tab commits and moves to the next field,
-Shift+Tab moves to the previous field, Escape cancels.
+**Navigation mode** (default) — arrow keys and vim keys move between frames and
+lines. Single-key shortcuts operate on frames. No typing goes to any editor.
 
-### Frame operations
+**Edit mode** — entered by pressing Enter or i on a frame. The code editor
+receives focus. All typing goes to the editor. Press Escape to return to
+Navigation mode.
+
+Clicking inside a code editor also enters Edit mode. Pressing Escape always
+returns to Navigation mode.
+
+### Navigation mode shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| Delete / Backspace | Delete selected frame(s) |
-| Cmd+D | Duplicate selected frame(s) |
-| Cmd+C / Cmd+X | Copy / Cut |
+| Arrow keys | Move between frames and lines |
+| h / j / k / l | Move (Vim-style) |
+| Shift+Up/Down | Extend selection vertically |
+| Enter / i | Enter Edit mode |
+| Escape | Clear cursor and selection |
+| Cmd+D | Duplicate frame after |
+| Cmd+Shift+D | Duplicate frame before |
+| Shift+I | Insert empty frame after |
+| Cmd+Shift+I | Insert empty frame before |
+| Delete | Delete selected frame(s) |
+| Shift+J | Move frame(s) down |
+| Shift+K | Move frame(s) up |
+| e | Toggle enabled |
+| . | Toggle looping on line |
+| , | Toggle trailing on line |
+| Alt+H | Move line left |
+| Alt+L | Move line right |
+| Cmd+C | Copy |
+| Cmd+X | Cut |
 | Cmd+V | Paste after cursor |
-| Alt+Up / Alt+Down | Move selected frame(s) up / down |
+| Cmd+A | Select all frames in current line |
+| Cmd+Delete | Remove entire line |
+
+### Edit mode shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Escape | Exit to Navigation mode |
+| Cmd+Enter | Evaluate script |
+| Cmd+L | Open language selector |
+| Cmd+F | Search in editor |
 
 ## Lines
 
-Lines have their own controls:
+Lines have their own controls, visible in the line header:
 
 - **Loop** — the line restarts from the top after its last frame. Otherwise, it
   plays once and stops.
@@ -65,33 +95,6 @@ Lines have their own controls:
   One line at normal speed, another at half — polymetric structures emerge.
 - **Start frame / End frame** — restricts playback to a range within the line.
   Narrow the range to loop a section while you build the next one.
-
-### Line shortcuts
-
-| Key | Action |
-|-----|--------|
-| S | Edit speed factor |
-| L | Toggle looping |
-| T | Toggle trailing |
-| Tab | Move between Start Frame and End Frame fields |
-| Cmd+Shift+D | Duplicate line |
-| Cmd+Delete | Remove line |
-| Alt+Left / Alt+Right | Move line left / right |
-
-## Grid navigation
-
-| Input | Action |
-|-------|--------|
-| Arrow keys | Move between frames and lines |
-| Click | Select a cell |
-| Shift+Click | Extend selection to clicked cell |
-| Shift+Arrow Up/Down | Extend selection vertically |
-| Double-click | Open code editor for a frame |
-| Cmd+A | Select all frames in current line |
-| Escape | Clear selection |
-
-Right-click a cell for a context menu: add frames, insert lines, toggle frames,
-open panels.
 
 ## Execution modes
 
@@ -115,14 +118,14 @@ current scene automatically.
 
 ## Workflow tips
 
-- **Name your frames** — press N on a selected cell. A grid of unnamed cells is
-  unreadable during a performance.
+- **Name your frames** — use the name field in the frame header. Unnamed frames
+  are hard to tell apart during a performance.
 - **Duplicate before modifying** — Cmd+D copies the frame. The original stays
   intact as a fallback.
-- **Reorder on the fly** — Alt+Up/Down moves frames mid-performance without
+- **Reorder on the fly** — Shift+J/K moves frames mid-performance without
   stopping playback.
-- **Disable instead of deleting** — right-click a frame to toggle it off. The
-  code stays visible but is skipped.
+- **Disable instead of deleting** — press e to toggle a frame off. The code
+  stays visible but is skipped.
 - **Isolate with ranges** — set start/end frame on a line to loop a section
   while you build the next one.
 - **One role per line** — drums, bass, melody, effects. Easier to mute, isolate,

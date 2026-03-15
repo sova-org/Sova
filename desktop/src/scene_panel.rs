@@ -94,6 +94,8 @@ pub struct ScenePanel {
     frame_states: HashMap<(usize, usize), InlineFrameState>,
     column_widths: Vec<f32>,
     currently_editing: Option<(usize, usize)>,
+    edit_mode: bool,
+    scroll_to_cursor: bool,
     last_line_count: usize,
     last_frame_counts: Vec<usize>,
 }
@@ -172,7 +174,7 @@ impl ScenePanel {
                         let col_width = self.column_widths[li];
                         let line = &scene.lines[li];
 
-                        ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
+                        let col_resp = ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
                             ui.vertical(|ui| {
                                 // Line header
                                 self.show_line_header(ui, li, line, accent, &opacity, bridge);
@@ -217,6 +219,11 @@ impl ScenePanel {
                                                 &theme,
                                                 bridge,
                                             );
+
+                                            // Scroll cursor into view (only on cursor change)
+                                            if is_cursor && self.scroll_to_cursor {
+                                                cell_resp.scroll_to_me(Some(egui::Align::Center));
+                                            }
 
                                             // Track editor focus
                                             if self.frame_states
@@ -291,6 +298,11 @@ impl ScenePanel {
                             });
                         });
 
+                        // Scroll column into view horizontally (only on cursor change)
+                        if self.scroll_to_cursor && self.cursor.is_some_and(|(cur_li, _)| cur_li == li) {
+                            ui.scroll_to_rect(col_resp.response.rect, Some(egui::Align::Center));
+                        }
+
                         // Drag handle between columns
                         if li + 1 < scene.lines.len() {
                             let (handle_rect, handle_resp) = ui.allocate_exact_size(
@@ -347,13 +359,37 @@ impl ScenePanel {
             self.currently_editing = new_editing;
         }
 
-        // Void context menu handled by individual cell/header context menus above
+        // Modal: detect click-into-editor entering/switching edit mode
+        if let Some((li, fi)) = new_editing
+            && (self.cursor != Some((li, fi)) || !self.edit_mode)
+        {
+            self.edit_mode = true;
+            self.update_cursor((li, fi), bridge);
+            self.selection.clear();
+            self.selection.insert((li, fi));
+        }
 
-        // Keyboard shortcuts (only when no text field has focus)
-        if !ui.ctx().memory(|m| m.focused().is_some()) {
+        // Modal: detect Escape from editor exiting edit mode
+        if self.edit_mode {
+            let escaped = self.frame_states.values().any(|s| s.escape_pressed);
+            if escaped {
+                self.edit_mode = false;
+                for state in self.frame_states.values_mut() {
+                    state.escape_pressed = false;
+                }
+            }
+            if new_editing.is_none() && !escaped {
+                self.edit_mode = false;
+            }
+        }
+
+        // Navigation mode: process keyboard shortcuts
+        if !self.edit_mode {
             self.handle_clipboard(ui, bridge);
             self.handle_keyboard(ui, bridge);
         }
+
+        self.scroll_to_cursor = false;
 
         if has_positions {
             ui.ctx().request_repaint();
@@ -381,13 +417,7 @@ impl ScenePanel {
                 ui.horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
 
-                    // Left side: label + toggles
-                    ui.label(
-                        egui::RichText::new(format!("L{}", li))
-                            .small()
-                            .strong(),
-                    );
-
+                    // Left side: toggles
                     let loop_color = if line.looping { accent } else { COLOR_MUTED };
                     if ui
                         .add(
@@ -500,20 +530,10 @@ impl ScenePanel {
             opacity.fill(ui.visuals().faint_bg_color, 1.0)
         };
 
-        // Stroke for cursor/selection
-        let stroke = if is_cursor {
-            egui::Stroke::new(2.0, accent)
-        } else if is_selected {
-            egui::Stroke::new(1.0, accent.linear_multiply(0.5))
-        } else {
-            egui::Stroke::NONE
-        };
-
         // Use push_id to scope all widget IDs within this frame cell
         let resp = ui.push_id(("frame_cell", li, fi), |ui| {
             let cell_frame = egui::Frame::NONE
                 .fill(bg)
-                .stroke(stroke)
                 .inner_margin(egui::Margin { left: 5, ..egui::Margin::ZERO });
 
             let frame_resp = cell_frame.show(ui, |ui| {
@@ -530,6 +550,29 @@ impl ScenePanel {
                         state.show_header(ui, li, fi, frame, opacity, bridge);
                     }
                 });
+
+                // Frame menu popup
+                if self.frame_states.get(&(li, fi)).is_some_and(|s| s.menu_open) {
+                    let popup_id = ui.id().with("frame_menu");
+                    egui::Area::new(popup_id)
+                        .order(egui::Order::Foreground)
+                        .fixed_pos(ui.cursor().min)
+                        .show(ui.ctx(), |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                ui.set_min_width(150.0);
+                                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                                    state.show_frame_menu(ui, li, fi, bridge);
+                                }
+                            });
+                        });
+
+                    // Close on click outside
+                    if ui.input(|i| i.pointer.any_pressed() || i.key_pressed(egui::Key::Escape)) {
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                            state.menu_open = false;
+                        }
+                    }
+                }
 
                 ui.separator();
 
@@ -579,6 +622,22 @@ impl ScenePanel {
             });
 
             let cell_rect = frame_resp.response.rect;
+
+            // Cursor/selection border (top, right, bottom — skip left where playing strip is)
+            let border_stroke = if is_cursor {
+                Some(egui::Stroke::new(2.0, accent))
+            } else if is_selected {
+                Some(egui::Stroke::new(1.0, accent.linear_multiply(0.5)))
+            } else {
+                None
+            };
+            if let Some(s) = border_stroke {
+                let r = cell_rect;
+                let p = ui.painter();
+                p.hline(r.x_range(), r.top(), s);    // top
+                p.hline(r.x_range(), r.bottom(), s);  // bottom
+                p.vline(r.right(), r.y_range(), s);    // right
+            }
 
             // Playing indicator: 4px left strip filling top to bottom
             if is_playing && frame.enabled {
@@ -684,8 +743,11 @@ impl ScenePanel {
     fn update_cursor(&mut self, new_cursor: (usize, usize), bridge: &ClientBridge) {
         let old = self.cursor;
         self.cursor = Some(new_cursor);
-        if old != self.cursor && bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1, None));
+        if old != self.cursor {
+            self.scroll_to_cursor = true;
+            if bridge.is_connected() {
+                bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1, None));
+            }
         }
     }
 
@@ -970,7 +1032,19 @@ impl ScenePanel {
         let Some(scene) = bridge.scene() else {
             return;
         };
-        let Some((cur_li, cur_fi)) = self.cursor else {
+        let Some((li, fi)) = self.cursor else {
+            // No cursor: only allow initial cursor placement
+            let any_nav = ui.input(|i| {
+                i.key_pressed(egui::Key::ArrowDown)
+                    || i.key_pressed(egui::Key::J)
+                    || i.key_pressed(egui::Key::ArrowRight)
+                    || i.key_pressed(egui::Key::L)
+            });
+            if any_nav && !scene.lines.is_empty() {
+                self.update_cursor((0, 0), bridge);
+                self.selection.insert((0, 0));
+                self.anchor = Some((0, 0));
+            }
             return;
         };
 
@@ -980,41 +1054,80 @@ impl ScenePanel {
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
-        let (up, down, left, right, shift, alt, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_shift_d, ctrl_del, key_l, key_t) =
-            ui.input(|i| {
-                let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
-                (
-                    i.key_pressed(egui::Key::ArrowUp),
-                    i.key_pressed(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::ArrowLeft),
-                    i.key_pressed(egui::Key::ArrowRight),
-                    i.modifiers.shift,
-                    i.modifiers.alt,
-                    i.key_pressed(egui::Key::Escape),
-                    i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
-                    i.modifiers.command && i.key_pressed(egui::Key::A),
-                    i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::D),
-                    i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D),
-                    i.modifiers.command
-                        && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
-                    no_mod && i.key_pressed(egui::Key::L),
-                    no_mod && i.key_pressed(egui::Key::T),
-                )
-            });
+        // Read all keys
+        let (
+            up, down, left, right, shift,
+            key_delete, cmd_d, cmd_shift_d, shift_i, cmd_shift_i,
+            key_shift_j, key_shift_k,
+            key_e, key_dot, key_comma,
+            key_enter, key_i, key_escape,
+            ctrl_a, ctrl_del, alt_h, alt_l,
+        ) = ui.input(|i| {
+            let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift;
+            let shift_only = i.modifiers.shift && !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
+            (
+                // Movement (arrows + vim)
+                i.key_pressed(egui::Key::ArrowUp) || (no_mod && i.key_pressed(egui::Key::K)),
+                i.key_pressed(egui::Key::ArrowDown) || (no_mod && i.key_pressed(egui::Key::J)),
+                i.key_pressed(egui::Key::ArrowLeft) || (no_mod && i.key_pressed(egui::Key::H)),
+                i.key_pressed(egui::Key::ArrowRight) || (no_mod && i.key_pressed(egui::Key::L)),
+                i.modifiers.shift,
+                // Frame ops
+                i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
+                i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::D),
+                i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::D),
+                shift_only && i.key_pressed(egui::Key::I),
+                i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::I),
+                shift_only && i.key_pressed(egui::Key::J),
+                shift_only && i.key_pressed(egui::Key::K),
+                // Toggles
+                no_mod && i.key_pressed(egui::Key::E),
+                no_mod && i.key_pressed(egui::Key::Period),
+                no_mod && i.key_pressed(egui::Key::Comma),
+                // Mode switch
+                i.key_pressed(egui::Key::Enter) && !i.modifiers.command && !i.modifiers.ctrl,
+                no_mod && i.key_pressed(egui::Key::I),
+                i.key_pressed(egui::Key::Escape),
+                // Ctrl combos
+                i.modifiers.command && i.key_pressed(egui::Key::A),
+                i.modifiers.command && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
+                i.modifiers.alt && i.key_pressed(egui::Key::H),
+                i.modifiers.alt && i.key_pressed(egui::Key::L),
+            )
+        });
 
-        let li = cur_li;
-        let fi = cur_fi;
+        // Enter edit mode
+        if (key_enter || key_i) && line_lens[li] > 0 {
+            self.edit_mode = true;
+            if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                state.request_focus = true;
+            }
+            return;
+        }
 
-        // Alt+arrow: move frame/line
-        if alt && up && !self.selection.is_empty() {
-            self.move_frames_vertical(-1, bridge);
-        } else if alt && down && !self.selection.is_empty() {
+        // Escape: clear selection
+        if key_escape {
+            self.selection.clear();
+            self.cursor = None;
+            return;
+        }
+
+        // Move frames: Shift+J/K
+        if key_shift_j && !self.selection.is_empty() {
             self.move_frames_vertical(1, bridge);
-        } else if alt && left {
+        } else if key_shift_k && !self.selection.is_empty() {
+            self.move_frames_vertical(-1, bridge);
+        }
+
+        // Move line: Alt+H/L
+        if alt_h {
             self.move_line_horizontal(li, -1, bridge);
-        } else if alt && right {
+        } else if alt_l {
             self.move_line_horizontal(li, 1, bridge);
-        } else {
+        }
+
+        // Navigation
+        if !key_shift_j && !key_shift_k {
             let mut nav_li = li;
             let mut nav_fi = fi;
             let mut moved = false;
@@ -1050,7 +1163,18 @@ impl ScenePanel {
             }
         }
 
-        if ctrl_d {
+        // Frame ops
+        if key_delete && !ctrl_del {
+            let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
+            to_remove.sort_by(|a, b| b.1.cmp(&a.1));
+            for (rli, rfi) in to_remove {
+                bridge.send(ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+            }
+            self.selection.clear();
+            self.cursor = None;
+        }
+
+        if cmd_d {
             let selected: Vec<(usize, usize)> = self.selection.iter().copied().collect();
             let sel_li = selected.first().map(|&(l, _)| l).unwrap_or(li);
             let last_fi = selected.last().map(|&(_, f)| f).unwrap_or(fi);
@@ -1073,36 +1197,38 @@ impl ScenePanel {
             self.anchor = Some((sel_li, last_fi + 1));
         }
 
-        if ctrl_shift_d
-            && let Some(line) = scene.lines.get(li)
-        {
-            bridge.send(ClientMessage::AddLine(
-                li + 1, line.clone(), ActionTiming::Immediate,
+        if cmd_shift_d {
+            if let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi)) {
+                bridge.send(ClientMessage::AddFrame(
+                    li, fi, frame_data.clone(), ActionTiming::Immediate,
+                ));
+            }
+        }
+
+        if shift_i {
+            bridge.send(ClientMessage::AddFrame(
+                li, fi + 1, Frame::default(), ActionTiming::Immediate,
             ));
         }
 
-        if key_delete && !ctrl_del {
-            let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
-            to_remove.sort_by(|a, b| b.1.cmp(&a.1));
-            for (rli, rfi) in to_remove {
-                bridge.send(ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
-            }
-            self.selection.clear();
-            self.cursor = None;
+        if cmd_shift_i {
+            bridge.send(ClientMessage::AddFrame(
+                li, fi, Frame::default(), ActionTiming::Immediate,
+            ));
         }
 
-        if ctrl_del {
-            bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
-            self.selection.clear();
-            self.cursor = None;
+        // Toggles
+        if key_e {
+            self.toggle_enabled(li, fi, bridge);
         }
-
-        if key_l {
+        if key_dot {
             self.toggle_line_field(li, bridge, |l| l.looping = !l.looping);
-        } else if key_t {
+        }
+        if key_comma {
             self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
         }
 
+        // Ctrl combos
         if ctrl_a {
             self.selection.clear();
             for f in 0..line_lens[li] {
@@ -1110,7 +1236,8 @@ impl ScenePanel {
             }
         }
 
-        if key_escape {
+        if ctrl_del {
+            bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
             self.selection.clear();
             self.cursor = None;
         }
