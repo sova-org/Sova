@@ -12,6 +12,7 @@
   title: "",
   authors: (),
   abstract: [],
+  résumé: [],
   doc,
 ) = {
   // Page
@@ -27,9 +28,9 @@
 
   // Fonts
   set text(
-    font: "Times New Roman",
+    font: "Text Gyre Termes",
     size: 10pt,
-    lang: "fr",
+    lang: "en",
   )
   set par(justify: true, first-line-indent: (amount: 12pt, all: true), leading: 0.55em)
 
@@ -115,19 +116,19 @@
       v(1.5em)
       // Authors
       if authors.len() > 0 {
-        align(center, {
-          for (i, author) in authors.enumerate() {
-            if i > 0 { h(1in) }
+      align(center, {
+        for (i, author) in authors.enumerate() {
+          if i > 0 { h(1in) }
             box({
               align(center, {
-                text(style: "italic", author.name)
-                linebreak()
-                author.affiliation
-              })
+              text(style: "italic", author.name)
+              linebreak()
+              author.affiliation
             })
-          }
-        })
-      }
+          })
+        }
+      })
+    }
     },
   )
 
@@ -135,6 +136,11 @@
   {
     set par(first-line-indent: 0pt)
     align(center, text(weight: "bold", smallcaps[Résumé]))
+    résumé
+  }
+  {
+    set par(first-line-indent: 0pt)
+    align(center, text(weight: "bold", smallcaps[Abstract]))
     abstract
   }
 
