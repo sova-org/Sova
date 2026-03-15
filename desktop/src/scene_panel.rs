@@ -393,8 +393,8 @@ impl ScenePanel {
             }
         }
 
-        // Navigation mode: process keyboard shortcuts
-        if !self.edit_mode {
+        // Navigation mode: process keyboard shortcuts (only when no text widget has focus)
+        if !self.edit_mode && !ui.ctx().memory(|m| m.focused().is_some()) {
             self.handle_clipboard(ui, bridge);
             self.handle_keyboard(ui, bridge);
         }
