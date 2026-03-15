@@ -610,6 +610,19 @@ async fn on_message(
             state.devices.panic_all_midi_outputs();
             ServerMessage::Success
         }
+        ClientMessage::ScriptEdit { li, fi, ops } => {
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::ScriptEdit {
+                    sender: client_name.clone(),
+                    li,
+                    fi,
+                    ops,
+                },
+                true,
+            );
+            ServerMessage::Success
+        }
         ClientMessage::Panic => {
             let _ = state
                 .sched_iface

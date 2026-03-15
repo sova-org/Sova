@@ -90,6 +90,12 @@ pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     Ok(buf)
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TextOp {
+    Insert { pos: usize, text: String },
+    Delete { pos: usize, len: usize },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
@@ -143,6 +149,11 @@ pub enum ClientMessage {
     SetMasterVolume(f32),
     Hush,
     Panic,
+    ScriptEdit {
+        li: usize,
+        fi: usize,
+        ops: Vec<TextOp>,
+    },
 }
 
 impl ClientMessage {

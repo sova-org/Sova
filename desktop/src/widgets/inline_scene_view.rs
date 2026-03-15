@@ -5,7 +5,7 @@ use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
-use sova_server::ClientMessage;
+use sova_server::{ClientMessage, TextOp};
 
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, PeerCursor};
@@ -29,13 +29,19 @@ pub struct InlineFrameState {
     pub request_focus: bool,
     pub escape_pressed: bool,
     pub menu_open: bool,
+    pub prev_content: String,
+    pub pending_ops: Vec<TextOp>,
+    pub last_op_send: Instant,
+    pub has_remote_edits: bool,
 }
 
 impl InlineFrameState {
     pub fn new(frame: &Frame) -> Self {
+        let content = frame.script().content().to_owned();
         Self {
+            prev_content: content.clone(),
             editor: CodeEditor::new(),
-            content: frame.script().content().to_owned(),
+            content,
             lang: frame.script().lang().to_owned(),
             dirty: false,
             lang_popup_open: false,
@@ -51,7 +57,77 @@ impl InlineFrameState {
             request_focus: false,
             escape_pressed: false,
             menu_open: false,
+            pending_ops: Vec::new(),
+            last_op_send: Instant::now(),
+            has_remote_edits: false,
         }
+    }
+
+    pub fn compute_diff_ops(&mut self) {
+        if self.content == self.prev_content {
+            return;
+        }
+        let old: Vec<char> = self.prev_content.chars().collect();
+        let new: Vec<char> = self.content.chars().collect();
+
+        let prefix = old.iter().zip(new.iter()).take_while(|(a, b)| a == b).count();
+        let old_rem = old.len() - prefix;
+        let new_rem = new.len() - prefix;
+        let suffix = old[prefix..]
+            .iter()
+            .rev()
+            .zip(new[prefix..].iter().rev())
+            .take_while(|(a, b)| a == b)
+            .count()
+            .min(old_rem)
+            .min(new_rem);
+
+        let del_len = old.len() - prefix - suffix;
+        let ins_len = new.len() - prefix - suffix;
+
+        let byte_prefix: usize = old.iter().take(prefix).map(|c| c.len_utf8()).sum();
+
+        if del_len > 0 {
+            let byte_del: usize = old[prefix..prefix + del_len].iter().map(|c| c.len_utf8()).sum();
+            self.pending_ops.push(TextOp::Delete { pos: byte_prefix, len: byte_del });
+        }
+        if ins_len > 0 {
+            let ins_text: String = new[prefix..prefix + ins_len].iter().collect();
+            self.pending_ops.push(TextOp::Insert { pos: byte_prefix, text: ins_text });
+        }
+
+        self.prev_content = self.content.clone();
+    }
+
+    pub fn integrate_remote_op(&mut self, op: &TextOp) {
+        self.has_remote_edits = true;
+        match op {
+            TextOp::Insert { pos, text } => {
+                let pos = (*pos).min(self.content.len());
+                self.content.insert_str(pos, text);
+                self.prev_content = self.content.clone();
+            }
+            TextOp::Delete { pos, len } => {
+                let pos = (*pos).min(self.content.len());
+                let end = (pos + len).min(self.content.len());
+                if pos < end {
+                    self.content.drain(pos..end);
+                    self.prev_content = self.content.clone();
+                }
+            }
+        }
+    }
+
+    pub fn flush_pending_ops(&mut self, li: usize, fi: usize, bridge: &ClientBridge) {
+        if self.pending_ops.is_empty() {
+            return;
+        }
+        if self.last_op_send.elapsed().as_millis() < 30 {
+            return;
+        }
+        let ops = std::mem::take(&mut self.pending_ops);
+        bridge.send(ClientMessage::ScriptEdit { li, fi, ops });
+        self.last_op_send = Instant::now();
     }
 
     pub fn sync_if_remote_changed(&mut self, frame: &Frame) {
@@ -60,9 +136,20 @@ impl InlineFrameState {
         }
         let remote_content = frame.script().content();
         let remote_lang = frame.script().lang();
+        if self.has_remote_edits {
+            if remote_content == self.content {
+                self.has_remote_edits = false;
+                self.lang = remote_lang.to_owned();
+                self.prev_content = self.content.clone();
+                self.header_name_buf = frame.name.clone().unwrap_or_default();
+            }
+            return;
+        }
         if remote_content != self.content || remote_lang != self.lang {
             self.content = remote_content.to_owned();
             self.lang = remote_lang.to_owned();
+            self.prev_content = self.content.clone();
+            self.pending_ops.clear();
         }
     }
 
@@ -70,6 +157,9 @@ impl InlineFrameState {
         self.content = frame.script().content().to_owned();
         self.lang = frame.script().lang().to_owned();
         self.dirty = false;
+        self.prev_content = self.content.clone();
+        self.pending_ops.clear();
+        self.has_remote_edits = false;
     }
 
     pub fn evaluate(&mut self, li: usize, fi: usize, frame: &Frame, bridge: &ClientBridge) {
@@ -475,10 +565,14 @@ impl InlineFrameState {
                 );
                 if output.response.changed() {
                     self.dirty = true;
+                    self.compute_diff_ops();
                 }
                 self.last_cursor_line = output.cursor_line;
                 self.last_cursor_col = output.cursor_col;
             });
+
+        // Flush pending CRDT operations (throttled)
+        self.flush_pending_ops(li, fi, bridge);
 
         // Track focus and handle edit mode shortcuts
         self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));

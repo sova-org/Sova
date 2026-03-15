@@ -895,7 +895,8 @@ impl eframe::App for SovaApp {
             egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings);
+                    let pending_edits: Vec<_> = self.bridge.pending_script_edits.drain(..).collect();
+                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits);
                 });
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {

@@ -60,6 +60,12 @@ pub enum ServerMessage {
     Feedback(SchedulerMessage),
     CoreRestarted,
     HydraCode(String, String),
+    ScriptEdit {
+        sender: String,
+        li: usize,
+        fi: usize,
+        ops: Vec<crate::TextOp>,
+    },
 }
 
 #[cfg(test)]

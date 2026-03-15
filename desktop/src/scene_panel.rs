@@ -113,6 +113,7 @@ impl ScenePanel {
         visuals_enabled: bool,
         scene_opacity: f32,
         editor_settings: &EditorSettings,
+        pending_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
     ) {
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, t!("scene.no_scene"));
@@ -151,6 +152,15 @@ impl ScenePanel {
 
         // Sync frame state lifecycle
         self.sync_frame_states(scene, bridge);
+
+        // Integrate pending script edits from peers
+        for (li, fi, ops) in pending_edits {
+            if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                for op in &ops {
+                    state.integrate_remote_op(op);
+                }
+            }
+        }
 
         // Ensure column widths match line count
         while self.column_widths.len() < scene.lines.len() {

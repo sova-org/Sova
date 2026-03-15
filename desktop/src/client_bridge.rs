@@ -107,6 +107,9 @@ pub struct ClientBridge {
     // Latest compilation error for toast display
     pub last_error: Option<(String, Instant)>,
 
+    // Incoming script edits from peers
+    pub pending_script_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
+
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
 
@@ -148,6 +151,7 @@ impl ClientBridge {
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
             last_error: None,
+            pending_script_edits: Vec::new(),
             feedback_engine: None,
             send_tx: None,
             event_rx: None,
@@ -569,6 +573,11 @@ impl ClientBridge {
                 ServerMessage::HydraCode(sender, code) => {
                     if self.confirmed_username.as_deref() != Some(&sender) {
                         self.remote_hydra = Some((sender, code));
+                    }
+                }
+                ServerMessage::ScriptEdit { sender, li, fi, ops } => {
+                    if self.confirmed_username.as_deref() != Some(&sender) {
+                        self.pending_script_edits.push((li, fi, ops));
                     }
                 }
                 ServerMessage::CoreRestarted => {
