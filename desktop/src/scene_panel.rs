@@ -676,19 +676,59 @@ impl ScenePanel {
                 }
             }
 
-            // Peer editing indicators in corner
-            if let Some(editors) = bridge.peer_editing().get(&(li, fi))
-                && !editors.is_empty()
-            {
-                let dot_x = cell_rect.right() - 6.0;
-                let dot_y = cell_rect.top() + 6.0;
-                for (i, name) in editors.iter().take(3).enumerate() {
+            // Peer presence: colored border + name tags for peers on this cell
+            let mut tag_offset = 0.0;
+            for (name, &(pli, pfi, _)) in bridge.peer_cursors() {
+                if pli == li && pfi == fi {
                     let color = username_color(name);
-                    ui.painter().circle_filled(
-                        egui::pos2(dot_x - i as f32 * 8.0, dot_y),
-                        3.0,
-                        color,
+                    // Colored border (top, right, bottom — skip left)
+                    let s = egui::Stroke::new(2.0, color);
+                    let p = ui.painter();
+                    p.hline(cell_rect.x_range(), cell_rect.top(), s);
+                    p.hline(cell_rect.x_range(), cell_rect.bottom(), s);
+                    p.vline(cell_rect.right(), cell_rect.y_range(), s);
+
+                    // Name tag at bottom-left
+                    let tag_pos = egui::pos2(
+                        cell_rect.left() + 6.0 + tag_offset,
+                        cell_rect.bottom() - 16.0,
                     );
+                    let font = egui::FontId::proportional(10.0);
+                    let galley = ui.painter().layout_no_wrap(
+                        name.clone(),
+                        font,
+                        egui::Color32::WHITE,
+                    );
+                    let tag_rect = egui::Rect::from_min_size(
+                        tag_pos,
+                        galley.size() + egui::vec2(6.0, 2.0),
+                    );
+                    p.rect_filled(tag_rect, 0.0, color);
+                    p.galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
+                    tag_offset += tag_rect.width() + 4.0;
+                }
+            }
+
+            // Local user name tag on cursor frame
+            if is_cursor {
+                if let Some(my_name) = bridge.confirmed_username() {
+                    let color = username_color(my_name);
+                    let tag_pos = egui::pos2(
+                        cell_rect.left() + 6.0 + tag_offset,
+                        cell_rect.bottom() - 16.0,
+                    );
+                    let font = egui::FontId::proportional(10.0);
+                    let galley = ui.painter().layout_no_wrap(
+                        my_name.to_owned(),
+                        font,
+                        egui::Color32::WHITE,
+                    );
+                    let tag_rect = egui::Rect::from_min_size(
+                        tag_pos,
+                        galley.size() + egui::vec2(6.0, 2.0),
+                    );
+                    ui.painter().rect_filled(tag_rect, 0.0, color);
+                    ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
                 }
             }
 

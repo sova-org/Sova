@@ -152,7 +152,7 @@ impl InlineFrameState {
                 self.lang_popup_selection = 0;
             }
 
-            self.show_lang_popup(ui, &lang_btn, bridge);
+            self.show_lang_popup(ui, &lang_btn, _opacity, bridge);
 
             ui.separator();
 
@@ -317,6 +317,7 @@ impl InlineFrameState {
         &mut self,
         ui: &mut egui::Ui,
         lang_btn: &egui::Response,
+        opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
         if !self.lang_popup_open {
@@ -336,7 +337,13 @@ impl InlineFrameState {
             .order(egui::Order::Foreground)
             .fixed_pos(lang_btn.rect.left_bottom())
             .show(ui.ctx(), |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                let popup_frame = {
+                    let mut f = egui::Frame::popup(ui.style());
+                    f.fill = opacity.fill(f.fill, 1.0);
+                    f
+                };
+                popup_frame.show(ui, |ui| {
+                    opacity.override_widget_visuals(ui);
                     ui.set_min_width(160.0);
                     let filter_id = popup_id.with("filter");
                     let filter_resp = ui.add(
