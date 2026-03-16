@@ -35,11 +35,7 @@ void main() {
 
 pub const DEFAULT_SHADER: &str = "\
 void mainImage(out vec4 c, in vec2 st) {
-  vec4 o = osc(st, 60.0, 0.1, 0.0);
-  st = rotate(st, 0.0, 0.1);
-  vec4 v = voronoi(st, 8.0, 0.3, 0.3);
-  c = add(o, v, 0.5);
-  c = colorama(c, iTime * 0.05);
+  c = vec4(0.0, 0.0, 0.0, 1.0);
 }";
 
 pub fn vertex_source() -> &'static str {

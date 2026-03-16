@@ -499,12 +499,6 @@ fn register_patterns(engine: &mut Engine) {
     });
 }
 
-pub const DEFAULT_SCRIPT: &str = "\
-osc(60.0, 0.1).rotate(0.0, 0.1)
-    .add(voronoi(8.0, 0.3, 0.3), 0.5)
-    .colorama(0.05)
-    .out()";
-
 pub fn eval(code: &str) -> Result<EvalResult, String> {
     let state = Arc::new(Mutex::new(PatchState {
         buffers: [None, None, None, None],

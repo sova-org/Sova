@@ -258,15 +258,18 @@ impl VisualsEngine {
     }
 
     fn compile_code(&mut self) {
-        let code = if self.code.is_empty() {
-            hydra::DEFAULT_SCRIPT
-        } else {
-            &self.code
-        };
         let Some(renderer) = &mut self.renderer else {
             return;
         };
-        match hydra::eval(code) {
+        if self.code.is_empty() {
+            renderer.compile_buffers(
+                &[Some(shader::DEFAULT_SHADER.to_owned()), None, None, None],
+                Default::default(),
+            );
+            self.error = None;
+            return;
+        }
+        match hydra::eval(&self.code) {
             Ok(result) => {
                 if let Some(ref td) = result.text_data {
                     renderer.upload_text(td);
