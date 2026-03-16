@@ -109,9 +109,10 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
             });
         });
 
-    if let Some(inner) = resp {
-        if was_open && inner.response.clicked_elsewhere() {
-            *open = false;
-        }
+    if let Some(inner) = resp
+        && was_open
+        && inner.response.clicked_elsewhere()
+    {
+        *open = false;
     }
 }

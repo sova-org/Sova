@@ -44,6 +44,13 @@ pub struct PeerCursor {
     pub color: Color32,
 }
 
+pub struct EditorContext<'a> {
+    pub settings: &'a EditorSettings,
+    pub syntax: Option<(&'a CompiledSyntax, &'a SyntaxTheme)>,
+    pub reference: Option<&'a BTreeMap<LanguageElement, ReferenceEntry>>,
+    pub peer_cursors: &'a [PeerCursor],
+}
+
 pub struct CodeEditorOutput {
     pub response: egui::Response,
     pub cursor_line: Option<usize>,
@@ -74,11 +81,12 @@ impl CodeEditor {
         ui: &mut egui::Ui,
         id: Id,
         text: &mut String,
-        settings: &EditorSettings,
-        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
-        reference: Option<&BTreeMap<LanguageElement, ReferenceEntry>>,
-        peer_cursors: &[PeerCursor],
+        ctx: &EditorContext,
     ) -> CodeEditorOutput {
+        let settings = ctx.settings;
+        let syntax = ctx.syntax;
+        let reference = ctx.reference;
+        let peer_cursors = ctx.peer_cursors;
         let font_id = FontId::monospace(settings.font_size);
         let is_mac = ui.ctx().os().is_mac();
 

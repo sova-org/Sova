@@ -825,7 +825,7 @@ impl ClientBridge {
 
     pub fn set_latency(&self, name: &str, latency: f64) {
         if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().set_latency(name.to_owned(), latency);
+            engine.devices().set_latency(name.to_owned(), latency);
         } else {
             self.send(ClientMessage::SetDeviceLatency(name.to_owned(), latency));
         }

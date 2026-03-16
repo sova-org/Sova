@@ -828,16 +828,19 @@ impl eframe::App for SovaApp {
         }
 
         // Sidebar (docs + settings + logs, must be before VU meter and CentralPanel)
+        let settings_ctx = doc_panel::SettingsContext {
+            server: &mut self.server,
+            audio: &mut self.audio,
+            options: &mut self.options,
+            logs: &mut self.logs,
+            editor_settings: &mut self.editor_settings,
+            appearance: &mut self.appearance,
+            dismissed_tips: &mut self.dismissed_tips,
+        };
         let (sidebar_server_action, sidebar_appearance_changed) = self.doc_panel.show_side_panel(
             ctx,
             &self.bridge,
-            &mut self.editor_settings,
-            &mut self.server,
-            &mut self.audio,
-            &mut self.options,
-            &mut self.logs,
-            &mut self.appearance,
-            &mut self.dismissed_tips,
+            settings_ctx,
         );
         match sidebar_server_action {
             ServerAction::Start => {
@@ -882,7 +885,7 @@ impl eframe::App for SovaApp {
         if self.bridge.is_connected() {
             let sidebar_open = self.doc_panel.is_expanded()
                 && self.doc_panel.mode() == doc_panel::SidebarMode::Settings;
-            let mut panels = scene_panel::PanelVisibility {
+            let panels = scene_panel::PanelVisibility {
                 sidebar: sidebar_open,
                 devices: self.devices.open,
                 scope: self.scope_panel.open,
@@ -896,7 +899,7 @@ impl eframe::App for SovaApp {
                 .frame(central_frame)
                 .show(ctx, |ui| {
                     let pending_edits: Vec<_> = self.bridge.pending_script_edits.drain(..).collect();
-                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits);
+                    self.scene_panel.show(ui, &self.bridge, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits);
                 });
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {

@@ -228,10 +228,10 @@ impl AudioPanel {
         if r.hovered() {
             crate::widgets::hint::set(ui.ctx(), t!("audio.hint.add_folder"));
         }
-        if r.clicked() {
-            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                self.sample_paths.push(folder);
-            }
+        if r.clicked()
+            && let Some(folder) = rfd::FileDialog::new().pick_folder()
+        {
+            self.sample_paths.push(folder);
         }
     }
 

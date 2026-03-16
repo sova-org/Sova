@@ -7,8 +7,7 @@ use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
 use sova_server::{ClientMessage, TextOp};
 
-use super::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, PeerCursor};
+use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext};
 use crate::client_bridge::ClientBridge;
 
 pub struct InlineFrameState {
@@ -509,36 +508,12 @@ impl InlineFrameState {
         }
     }
 
-    fn show_compilation_dot(&self, ui: &mut egui::Ui, li: usize, fi: usize, bridge: &ClientBridge) {
-        let state = bridge.compilation_state(li, fi);
-        let (color, tip) = match state {
-            Some(CompilationState::Compiled(_)) | Some(CompilationState::Parsed(_)) => {
-                (COLOR_OK, t!("step.compiled"))
-            }
-            Some(CompilationState::Error(_)) => (COLOR_ERROR, t!("step.error")),
-            Some(CompilationState::Compiling) => (COLOR_MUTED, t!("step.compiling")),
-            _ => (COLOR_MUTED, t!("step.not_compiled")),
-        };
-        let dot = egui::RichText::new(crate::icons::CIRCLE_LARGE_FILLED)
-            .small()
-            .color(color);
-        ui.label(dot).on_hover_text(tip);
-    }
-
     pub fn show_body(
         &mut self,
         ui: &mut egui::Ui,
         li: usize,
         fi: usize,
-        settings: &EditorSettings,
-        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
-        reference: Option<
-            &std::collections::BTreeMap<
-                sova_core::vm::language::LanguageElement,
-                sova_core::vm::language::ReferenceEntry,
-            >,
-        >,
-        peer_cursors: &[PeerCursor],
+        ctx: &EditorContext,
         bridge: &ClientBridge,
     ) {
         let editor_id = ui.id().with("editor_body");
@@ -558,10 +533,7 @@ impl InlineFrameState {
                     ui,
                     editor_id,
                     &mut self.content,
-                    settings,
-                    syntax,
-                    reference,
-                    peer_cursors,
+                    ctx,
                 );
                 if output.response.changed() {
                     self.dirty = true;

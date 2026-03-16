@@ -9,7 +9,7 @@ use sova_server::ClientMessage;
 use crate::client_bridge::ClientBridge;
 use crate::widgets::syntax_highlight::SyntaxTheme;
 use crate::widgets::{
-    EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
+    EditorContext, EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
 };
 use crate::widgets::inline_scene_view::InlineFrameState;
 
@@ -66,11 +66,9 @@ impl SceneOpacity {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 enum ContextTarget {
     Cell(usize, usize),
     Header(usize),
-    Void,
 }
 
 pub struct PanelVisibility {
@@ -109,7 +107,6 @@ impl ScenePanel {
         &mut self,
         ui: &mut egui::Ui,
         bridge: &ClientBridge,
-        panels: &mut PanelVisibility,
         visuals_enabled: bool,
         scene_opacity: f32,
         editor_settings: &EditorSettings,
@@ -274,7 +271,6 @@ impl ScenePanel {
                                                     ui,
                                                     Some(ContextTarget::Cell(li, fi)),
                                                     bridge,
-                                                    panels,
                                                 );
                                             });
 
@@ -506,10 +502,7 @@ impl ScenePanel {
 
         // Right-click on header
         resp.context_menu(|ui| {
-            self.show_context_menu(ui, Some(ContextTarget::Header(li)), bridge, &mut PanelVisibility {
-                sidebar: false, devices: false, scope: false, spectrum: false,
-                vu_meter: false, scope_bar: false, logs: false, debug: false,
-            });
+            self.show_context_menu(ui, Some(ContextTarget::Header(li)), bridge);
         });
     }
 
@@ -577,10 +570,10 @@ impl ScenePanel {
                         });
 
                     // Close on click outside
-                    if ui.input(|i| i.pointer.any_pressed() || i.key_pressed(egui::Key::Escape)) {
-                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                            state.menu_open = false;
-                        }
+                    if ui.input(|i| i.pointer.any_pressed() || i.key_pressed(egui::Key::Escape))
+                        && let Some(state) = self.frame_states.get_mut(&(li, fi))
+                    {
+                        state.menu_open = false;
                     }
                 }
 
@@ -617,17 +610,14 @@ impl ScenePanel {
                     })
                     .collect();
 
+                let editor_ctx = EditorContext {
+                    settings: editor_settings,
+                    syntax: syntax_pair,
+                    reference,
+                    peer_cursors: &peer_cursors,
+                };
                 if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                    state.show_body(
-                        ui,
-                        li,
-                        fi,
-                        editor_settings,
-                        syntax_pair,
-                        reference,
-                        &peer_cursors,
-                        bridge,
-                    );
+                    state.show_body(ui, li, fi, &editor_ctx, bridge);
                 }
             });
 
@@ -720,26 +710,26 @@ impl ScenePanel {
             }
 
             // Local user name tag on cursor frame
-            if is_cursor {
-                if let Some(my_name) = bridge.confirmed_username() {
-                    let color = username_color(my_name);
-                    let tag_pos = egui::pos2(
-                        cell_rect.left() + 6.0 + tag_offset,
-                        cell_rect.bottom() - 16.0,
-                    );
-                    let font = egui::FontId::proportional(10.0);
-                    let galley = ui.painter().layout_no_wrap(
-                        my_name.to_owned(),
-                        font,
-                        egui::Color32::WHITE,
-                    );
-                    let tag_rect = egui::Rect::from_min_size(
-                        tag_pos,
-                        galley.size() + egui::vec2(6.0, 2.0),
-                    );
-                    ui.painter().rect_filled(tag_rect, 0.0, color);
-                    ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
-                }
+            if is_cursor
+                && let Some(my_name) = bridge.confirmed_username()
+            {
+                let color = username_color(my_name);
+                let tag_pos = egui::pos2(
+                    cell_rect.left() + 6.0 + tag_offset,
+                    cell_rect.bottom() - 16.0,
+                );
+                let font = egui::FontId::proportional(10.0);
+                let galley = ui.painter().layout_no_wrap(
+                    my_name.to_owned(),
+                    font,
+                    egui::Color32::WHITE,
+                );
+                let tag_rect = egui::Rect::from_min_size(
+                    tag_pos,
+                    galley.size() + egui::vec2(6.0, 2.0),
+                );
+                ui.painter().rect_filled(tag_rect, 0.0, color);
+                ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
             }
 
             frame_resp.response
@@ -806,7 +796,6 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         target: Option<ContextTarget>,
         bridge: &ClientBridge,
-        panels: &mut PanelVisibility,
     ) {
         let m = if cfg!(target_os = "macos") {
             "Cmd"
@@ -1033,19 +1022,6 @@ impl ScenePanel {
                     ui.close();
                 }
             }
-            Some(ContextTarget::Void) => {
-                ui.checkbox(&mut panels.sidebar, t!("options.title"));
-                ui.separator();
-                ui.checkbox(&mut panels.devices, t!("devices.title"));
-                ui.checkbox(&mut panels.scope, t!("scope.title"));
-                ui.checkbox(&mut panels.spectrum, t!("spectrum.title"));
-                ui.checkbox(&mut panels.vu_meter, t!("cmd.vu_meter"));
-                ui.checkbox(&mut panels.scope_bar, t!("cmd.scope_bar"));
-                ui.separator();
-                ui.checkbox(&mut panels.logs, t!("cmd.logs"));
-                ui.separator();
-                ui.checkbox(&mut panels.debug, t!("debug.title"));
-            }
             None => {}
         }
     }
@@ -1247,12 +1223,12 @@ impl ScenePanel {
             self.anchor = Some((sel_li, last_fi + 1));
         }
 
-        if cmd_shift_d {
-            if let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi)) {
-                bridge.send(ClientMessage::AddFrame(
-                    li, fi, frame_data.clone(), ActionTiming::Immediate,
-                ));
-            }
+        if cmd_shift_d
+            && let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi))
+        {
+            bridge.send(ClientMessage::AddFrame(
+                li, fi, frame_data.clone(), ActionTiming::Immediate,
+            ));
         }
 
         if shift_i {

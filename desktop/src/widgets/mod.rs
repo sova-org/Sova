@@ -13,13 +13,20 @@ mod waveform;
 
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
-pub use code_editor::{CodeEditor, EditorSettings, PeerCursor};
+pub use code_editor::{CodeEditor, EditorContext, EditorSettings, PeerCursor};
 pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
 pub use spectrum::Spectrum;
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
+
+pub fn smooth(buffer: &mut Vec<f32>, source: &[f32], factor: f32) {
+    buffer.resize(source.len(), 0.0);
+    for (b, &s) in buffer.iter_mut().zip(source) {
+        *b = *b * factor + s * (1.0 - factor);
+    }
+}
 
 pub const COLOR_OK: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(100, 200, 100);
 pub const COLOR_ERROR: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(200, 100, 100);

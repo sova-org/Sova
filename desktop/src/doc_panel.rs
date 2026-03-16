@@ -20,78 +20,62 @@ use doux::types::{ModuleGroup, ModuleInfo, Source};
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
-const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[
-    ("About Sova", include_str!("../docs/en/about.md")),
-    ("Getting Started", include_str!("../docs/en/getting-started.md")),
-    ("The Scene", include_str!("../docs/en/the-scene.md")),
-    ("Timing", include_str!("../docs/en/timing.md")),
-    ("Languages", include_str!("../docs/en/languages.md")),
-    ("Events", include_str!("../docs/en/events.md")),
-    ("Devices", include_str!("../docs/en/devices.md")),
-    ("Variables", include_str!("../docs/en/variables.md")),
-    ("Audio Engine", include_str!("../docs/en/audio-engine.md")),
-    ("Multiplayer", include_str!("../docs/en/multiplayer.md")),
+pub struct SettingsContext<'a> {
+    pub server: &'a mut ServerPanel,
+    pub audio: &'a mut AudioPanel,
+    pub options: &'a mut OptionsPanel,
+    pub logs: &'a mut crate::log_panel::LogPanel,
+    pub editor_settings: &'a mut EditorSettings,
+    pub appearance: &'a mut AppearanceSettings,
+    pub dismissed_tips: &'a mut Vec<String>,
+}
+
+const GENERAL_ARTICLES_EN: &[(&str, &str, &str)] = &[
+    ("about", "About Sova", include_str!("../docs/en/about.md")),
+    ("getting-started", "Getting Started", include_str!("../docs/en/getting-started.md")),
+    ("the-scene", "The Scene", include_str!("../docs/en/the-scene.md")),
+    ("timing", "Timing", include_str!("../docs/en/timing.md")),
+    ("languages", "Languages", include_str!("../docs/en/languages.md")),
+    ("events", "Events", include_str!("../docs/en/events.md")),
+    ("devices", "Devices", include_str!("../docs/en/devices.md")),
+    ("variables", "Variables", include_str!("../docs/en/variables.md")),
+    ("audio-engine", "Audio Engine", include_str!("../docs/en/audio-engine.md")),
+    ("multiplayer", "Multiplayer", include_str!("../docs/en/multiplayer.md")),
 ];
-fn general_articles() -> &'static [(&'static str, &'static str)] {
+fn general_articles() -> &'static [(&'static str, &'static str, &'static str)] {
     // FR articles deferred — serve EN for all locales until FR rewrite is done
     GENERAL_ARTICLES_EN
 }
 
-const HYDRA_ARTICLES: &[(&str, &str)] = &[
-    ("Introduction", include_str!("../docs/en/hydra/intro.md")),
-    ("Chaining", include_str!("../docs/en/hydra/chaining.md")),
-    ("Sources", include_str!("../docs/en/hydra/sources.md")),
-    ("Geometry", include_str!("../docs/en/hydra/geometry.md")),
-    ("Color", include_str!("../docs/en/hydra/color.md")),
-    ("Blending", include_str!("../docs/en/hydra/blending.md")),
-    ("Modulation", include_str!("../docs/en/hydra/modulation.md")),
-    ("Buffers", include_str!("../docs/en/hydra/buffers.md")),
-    ("Feedback", include_str!("../docs/en/hydra/feedback.md")),
-    ("Animation", include_str!("../docs/en/hydra/animation.md")),
-    ("Text", include_str!("../docs/en/hydra/text.md")),
-    ("Differences", include_str!("../docs/en/hydra/differences.md")),
+const HYDRA_ARTICLES: &[(&str, &str, &str)] = &[
+    ("hydra-intro", "Introduction", include_str!("../docs/en/hydra/intro.md")),
+    ("hydra-chaining", "Chaining", include_str!("../docs/en/hydra/chaining.md")),
+    ("hydra-sources", "Sources", include_str!("../docs/en/hydra/sources.md")),
+    ("hydra-geometry", "Geometry", include_str!("../docs/en/hydra/geometry.md")),
+    ("hydra-color", "Color", include_str!("../docs/en/hydra/color.md")),
+    ("hydra-blending", "Blending", include_str!("../docs/en/hydra/blending.md")),
+    ("hydra-modulation", "Modulation", include_str!("../docs/en/hydra/modulation.md")),
+    ("hydra-buffers", "Buffers", include_str!("../docs/en/hydra/buffers.md")),
+    ("hydra-feedback", "Feedback", include_str!("../docs/en/hydra/feedback.md")),
+    ("hydra-animation", "Animation", include_str!("../docs/en/hydra/animation.md")),
+    ("hydra-text", "Text", include_str!("../docs/en/hydra/text.md")),
+    ("hydra-differences", "Differences", include_str!("../docs/en/hydra/differences.md")),
 ];
-fn hydra_articles() -> &'static [(&'static str, &'static str)] {
+fn hydra_articles() -> &'static [(&'static str, &'static str, &'static str)] {
     HYDRA_ARTICLES
 }
 
 const COLLAPSED_WIDTH: f32 = 24.0;
 const HOVER_DELAY_SECS: f64 = 0.2;
 
-const ARTICLE_SLUGS: &[&str] = &[
-    "about", "getting-started", "the-scene", "timing", "languages",
-    "events", "devices", "variables", "audio-engine", "multiplayer",
-    "hydra-intro", "hydra-chaining", "hydra-sources", "hydra-geometry",
-    "hydra-color", "hydra-blending", "hydra-modulation", "hydra-buffers",
-    "hydra-feedback", "hydra-animation", "hydra-text", "hydra-differences",
-];
-
 fn resolve_article_link(slug: &str) -> Option<DocView> {
-    match slug {
-        "about"              => Some(DocView::GeneralArticle(0)),
-        "getting-started"    => Some(DocView::GeneralArticle(1)),
-        "the-scene"          => Some(DocView::GeneralArticle(2)),
-        "timing"             => Some(DocView::GeneralArticle(3)),
-        "languages"          => Some(DocView::GeneralArticle(4)),
-        "events"             => Some(DocView::GeneralArticle(5)),
-        "devices"            => Some(DocView::GeneralArticle(6)),
-        "variables"          => Some(DocView::GeneralArticle(7)),
-        "audio-engine"       => Some(DocView::GeneralArticle(8)),
-        "multiplayer"        => Some(DocView::GeneralArticle(9)),
-        "hydra-intro"        => Some(DocView::HydraArticle(0)),
-        "hydra-chaining"     => Some(DocView::HydraArticle(1)),
-        "hydra-sources"      => Some(DocView::HydraArticle(2)),
-        "hydra-geometry"     => Some(DocView::HydraArticle(3)),
-        "hydra-color"        => Some(DocView::HydraArticle(4)),
-        "hydra-blending"     => Some(DocView::HydraArticle(5)),
-        "hydra-modulation"   => Some(DocView::HydraArticle(6)),
-        "hydra-buffers"      => Some(DocView::HydraArticle(7)),
-        "hydra-feedback"     => Some(DocView::HydraArticle(8)),
-        "hydra-animation"    => Some(DocView::HydraArticle(9)),
-        "hydra-text"         => Some(DocView::HydraArticle(10)),
-        "hydra-differences"  => Some(DocView::HydraArticle(11)),
-        _ => None,
+    if let Some(i) = general_articles().iter().position(|(s, _, _)| *s == slug) {
+        return Some(DocView::GeneralArticle(i));
     }
+    if let Some(i) = hydra_articles().iter().position(|(s, _, _)| *s == slug) {
+        return Some(DocView::HydraArticle(i));
+    }
+    None
 }
 
 fn find_clicked_hook(cache: &CommonMarkCache) -> Option<String> {
@@ -168,7 +152,7 @@ impl DocPanel {
 
     pub fn new(settings: DocSettings) -> Self {
         let mut md_cache = CommonMarkCache::default();
-        for slug in ARTICLE_SLUGS {
+        for (slug, _, _) in general_articles().iter().chain(hydra_articles()) {
             md_cache.add_link_hook(*slug);
         }
         Self {
@@ -235,13 +219,7 @@ impl DocPanel {
         &mut self,
         ctx: &egui::Context,
         bridge: &ClientBridge,
-        editor_settings: &mut EditorSettings,
-        server: &mut ServerPanel,
-        audio: &mut AudioPanel,
-        options: &mut OptionsPanel,
-        logs: &mut crate::log_panel::LogPanel,
-        appearance: &mut AppearanceSettings,
-        dismissed_tips: &mut Vec<String>,
+        settings: SettingsContext<'_>,
     ) -> (ServerAction, bool) {
         let side = match self.settings.side {
             DocSide::Left => Side::Left,
@@ -249,7 +227,7 @@ impl DocPanel {
         };
 
         if self.is_expanded() {
-            self.show_expanded(ctx, bridge, side, editor_settings, server, audio, options, logs, appearance, dismissed_tips)
+            self.show_expanded(ctx, bridge, side, settings)
         } else {
             self.show_collapsed(ctx, side);
             (ServerAction::None, false)
@@ -375,13 +353,7 @@ impl DocPanel {
         ctx: &egui::Context,
         bridge: &ClientBridge,
         side: Side,
-        editor_settings: &mut EditorSettings,
-        server: &mut ServerPanel,
-        audio: &mut AudioPanel,
-        options: &mut OptionsPanel,
-        logs: &mut crate::log_panel::LogPanel,
-        appearance: &mut AppearanceSettings,
-        dismissed_tips: &mut Vec<String>,
+        settings: SettingsContext<'_>,
     ) -> (ServerAction, bool) {
         let mut server_action = ServerAction::None;
         let mut appearance_changed = false;
@@ -394,12 +366,10 @@ impl DocPanel {
         let r = panel.show(ctx, |ui| {
             match self.mode() {
                 SidebarMode::Docs => {
-                    self.show_content(ui, bridge, editor_settings);
+                    self.show_content(ui, bridge, settings.editor_settings);
                 }
                 SidebarMode::Settings => {
-                    let (sa, ac) = self.show_settings_content(
-                        ui, server, audio, options, logs, bridge, editor_settings, appearance, dismissed_tips,
-                    );
+                    let (sa, ac) = self.show_settings_content(ui, bridge, settings);
                     server_action = sa;
                     appearance_changed = ac;
                 }
@@ -423,15 +393,13 @@ impl DocPanel {
     fn show_settings_content(
         &mut self,
         ui: &mut egui::Ui,
-        server: &mut ServerPanel,
-        audio: &mut AudioPanel,
-        options: &mut OptionsPanel,
-        logs: &mut crate::log_panel::LogPanel,
         bridge: &ClientBridge,
-        editor_settings: &mut EditorSettings,
-        appearance: &mut AppearanceSettings,
-        dismissed_tips: &mut Vec<String>,
+        settings: SettingsContext<'_>,
     ) -> (ServerAction, bool) {
+        let SettingsContext {
+            server, audio, options, logs,
+            editor_settings, appearance, dismissed_tips,
+        } = settings;
         let mut server_action = ServerAction::None;
         let mut appearance_changed = false;
 
@@ -709,26 +677,26 @@ impl DocPanel {
             });
         });
 
-        if let Some(slug) = nav_target {
-            if let Some(view) = resolve_article_link(&slug) {
-                let tab = match &view {
-                    DocView::GeneralArticle(_) => 0,
-                    DocView::HydraArticle(_) => hydra_tab,
-                    DocView::DouxModule(_) => doux_tab,
-                    _ => self.selected_tab,
-                };
-                self.selected_tab = tab;
-                self.set_view(view);
-                self.example_output = None;
-                self.edited_example.clear();
-            }
+        if let Some(slug) = nav_target
+            && let Some(view) = resolve_article_link(&slug)
+        {
+            let tab = match &view {
+                DocView::GeneralArticle(_) => 0,
+                DocView::HydraArticle(_) => hydra_tab,
+                DocView::DouxModule(_) => doux_tab,
+                _ => self.selected_tab,
+            };
+            self.selected_tab = tab;
+            self.set_view(view);
+            self.example_output = None;
+            self.edited_example.clear();
         }
     }
 
     fn show_general_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
         ui.strong(t!("doc.articles").as_ref());
         ui.add_space(4.0);
-        for (i, (title, content)) in general_articles().iter().enumerate() {
+        for (i, (_, title, content)) in general_articles().iter().enumerate() {
             if !needle.is_empty()
                 && !title.to_lowercase().contains(needle)
                 && !content.to_lowercase().contains(needle)
@@ -759,7 +727,7 @@ impl DocPanel {
         let articles = general_articles();
         match &self.view {
             Some(DocView::GeneralArticle(idx)) => {
-                if let Some((title, content)) = articles.get(*idx) {
+                if let Some((_, title, content)) = articles.get(*idx) {
                     if *idx == 0 {
                         show_welcome_header(ui);
                     } else {
@@ -770,7 +738,7 @@ impl DocPanel {
                 }
             }
             _ => {
-                if let Some((_title, content)) = articles.first() {
+                if let Some((_, _title, content)) = articles.first() {
                     show_welcome_header(ui);
                     ui.add_space(8.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
@@ -783,7 +751,7 @@ impl DocPanel {
     fn show_hydra_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
         ui.strong(t!("doc.articles").as_ref());
         ui.add_space(4.0);
-        for (i, (title, content)) in hydra_articles().iter().enumerate() {
+        for (i, (_, title, content)) in hydra_articles().iter().enumerate() {
             if !needle.is_empty()
                 && !title.to_lowercase().contains(needle)
                 && !content.to_lowercase().contains(needle)
@@ -815,7 +783,7 @@ impl DocPanel {
             Some(DocView::HydraArticle(i)) => *i,
             _ => 0,
         };
-        if let Some((title, content)) = articles.get(idx) {
+        if let Some((_, title, content)) = articles.get(idx) {
             let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
             ui.heading(*title);
             ui.add_space(8.0);

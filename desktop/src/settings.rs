@@ -133,22 +133,12 @@ pub struct VisualsSettings {
     pub shared: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
     pub scope_bar: ScopeBarSettings,
-}
-
-impl Default for WindowSettings {
-    fn default() -> Self {
-        Self {
-            chat_detached: false,
-            sample_browser_detached: false,
-            scope_bar: ScopeBarSettings::default(),
-        }
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

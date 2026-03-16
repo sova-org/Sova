@@ -13,7 +13,7 @@ use eframe::egui;
 
 use crate::settings::VisualsSettings;
 use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use crate::widgets::{CodeEditor, EditorSettings, COLOR_ERROR, COLOR_MUTED, COLOR_OK};
+use crate::widgets::{CodeEditor, EditorContext, EditorSettings, COLOR_ERROR, COLOR_MUTED, COLOR_OK};
 use renderer::ShaderRenderer;
 
 pub struct VisualsEngine {
@@ -173,12 +173,18 @@ impl VisualsEngine {
         let editor_id = egui::Id::new("visuals_editor_body");
         let theme = SyntaxTheme::from_pref(settings.syntax_theme);
         let syn = self.compiled_syntax.as_ref().map(|cs| (cs, &theme));
+        let ctx = EditorContext {
+            settings,
+            syntax: syn,
+            reference: None,
+            peer_cursors: &[],
+        };
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
                 let output =
                     self.editor
-                        .show(ui, editor_id, &mut self.code, settings, syn, None, &[]);
+                        .show(ui, editor_id, &mut self.code, &ctx);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -300,10 +306,17 @@ impl VisualsEngine {
 
         let snap = renderer.snapshot();
         let ping = renderer.ping().clone();
-        let resolution = [res_w as f32, res_h as f32];
+        let uniforms = renderer::RenderUniforms {
+            time,
+            resolution: [res_w as f32, res_h as f32],
+            mouse,
+            beat,
+            tempo,
+            phase,
+        };
 
         let cb = eframe::egui_glow::CallbackFn::new(move |_info, painter| {
-            renderer::render_multipass(painter.gl(), &snap, &ping, time, resolution, mouse, beat, tempo, phase);
+            renderer::render_multipass(painter.gl(), &snap, &ping, uniforms);
         });
 
         let painter = ctx.layer_painter(egui::LayerId::background());
