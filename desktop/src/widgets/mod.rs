@@ -115,6 +115,34 @@ pub fn show_detached_viewport(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn paint_highlighted_text(
+    ui: &eframe::egui::Ui,
+    pos: eframe::egui::Pos2,
+    text: &str,
+    match_indices: &[usize],
+    font: eframe::egui::FontId,
+    normal_color: eframe::egui::Color32,
+    highlight_color: eframe::egui::Color32,
+) {
+    let painter = ui.painter();
+    let chars: Vec<char> = text.chars().collect();
+    let mut x = pos.x;
+
+    for (i, &ch) in chars.iter().enumerate() {
+        let color = if match_indices.contains(&i) {
+            highlight_color
+        } else {
+            normal_color
+        };
+        let s = String::from(ch);
+        let galley = painter.layout_no_wrap(s, font.clone(), color);
+        let char_width = galley.rect.width();
+        painter.galley(eframe::egui::pos2(x, pos.y), galley, color);
+        x += char_width;
+    }
+}
+
 pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<(i32, Vec<usize>)> {
     let needle: Vec<char> = needle.to_lowercase().chars().collect();
     let hay: Vec<char> = haystack.to_lowercase().chars().collect();

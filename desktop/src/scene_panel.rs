@@ -16,7 +16,10 @@ use crate::widgets::inline_scene_view::InlineFrameState;
 const MIN_COL_WIDTH: f32 = 120.0;
 const MAX_COL_WIDTH: f32 = 800.0;
 const DEFAULT_COL_WIDTH: f32 = 450.0;
-const CELL_HEIGHT: f32 = 180.0;
+pub const CELL_HEIGHT: f32 = 180.0;
+const MIN_FRAME_HEIGHT: f32 = 60.0;
+const MAX_FRAME_HEIGHT: f32 = 600.0;
+const DRAG_HANDLE_HEIGHT: f32 = 6.0;
 const HEADER_HEIGHT: f32 = 26.0;
 const LINE_HEADER_HEIGHT: f32 = 26.0;
 const GAP: f32 = 1.0;
@@ -275,6 +278,28 @@ impl ScenePanel {
                                             });
 
                                             ui.add_space(GAP);
+
+                                            // Drag handle below every frame for vertical resizing
+                                            let handle_width = ui.available_width();
+                                            let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                                                egui::vec2(handle_width, DRAG_HANDLE_HEIGHT),
+                                                egui::Sense::drag(),
+                                            );
+                                            if handle_resp.dragged() {
+                                                let delta = handle_resp.drag_delta().y;
+                                                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                                                    state.height = (state.height + delta).clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
+                                                }
+                                            }
+                                            if handle_resp.hovered() || handle_resp.dragged() {
+                                                let center_y = handle_rect.center().y;
+                                                ui.painter().hline(
+                                                    handle_rect.x_range(),
+                                                    center_y,
+                                                    egui::Stroke::new(1.0, accent),
+                                                );
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                            }
                                         }
 
                                         // Add frame button
@@ -336,9 +361,11 @@ impl ScenePanel {
                     ui.add_space(4.0);
                     ui.vertical(|ui| {
                         ui.add_space(LINE_HEADER_HEIGHT);
+                        let add_line_fill = ui.visuals().widgets.inactive.bg_fill.linear_multiply(0.5);
                         if ui
                             .add(
-                                egui::Button::new(egui::RichText::new("+").strong())
+                                egui::Button::new(egui::RichText::new(crate::icons::ADD))
+                                    .fill(add_line_fill)
                                     .min_size(egui::vec2(28.0, 28.0)),
                             )
                             .clicked()
@@ -537,11 +564,13 @@ impl ScenePanel {
         let resp = ui.push_id(("frame_cell", li, fi), |ui| {
             let cell_frame = egui::Frame::NONE
                 .fill(bg)
-                .inner_margin(egui::Margin { left: 5, ..egui::Margin::ZERO });
+                .inner_margin(egui::Margin { left: 5, right: 5, ..egui::Margin::ZERO });
 
             let frame_resp = cell_frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.set_height(HEADER_HEIGHT + CELL_HEIGHT);
+                let frame_height = self.frame_states.get(&(li, fi))
+                    .map_or(CELL_HEIGHT, |s| s.height);
+                ui.set_height(HEADER_HEIGHT + frame_height);
 
                 opacity.override_widget_visuals(ui);
 
@@ -557,7 +586,7 @@ impl ScenePanel {
                 // Frame menu popup
                 if self.frame_states.get(&(li, fi)).is_some_and(|s| s.menu_open) {
                     let popup_id = ui.id().with("frame_menu");
-                    egui::Area::new(popup_id)
+                    let popup_resp = egui::Area::new(popup_id)
                         .order(egui::Order::Foreground)
                         .fixed_pos(ui.cursor().min)
                         .show(ui.ctx(), |ui| {
@@ -569,8 +598,14 @@ impl ScenePanel {
                             });
                         });
 
-                    // Close on click outside
-                    if ui.input(|i| i.pointer.any_pressed() || i.key_pressed(egui::Key::Escape))
+                    // Close on click outside popup or Escape
+                    let clicked_outside = ui.input(|i| i.pointer.any_pressed())
+                        && ui.input(|i| {
+                            i.pointer
+                                .interact_pos()
+                                .is_some_and(|pos| !popup_resp.response.rect.contains(pos))
+                        });
+                    if (clicked_outside || ui.input(|i| i.key_pressed(egui::Key::Escape)))
                         && let Some(state) = self.frame_states.get_mut(&(li, fi))
                     {
                         state.menu_open = false;

@@ -369,7 +369,7 @@ impl CommandPalette {
                                     label_normal,
                                 );
                             } else {
-                                paint_highlighted_text(
+                                super::paint_highlighted_text(
                                     ui,
                                     label_pos,
                                     &cmd.label,
@@ -458,29 +458,3 @@ impl CommandPalette {
     }
 }
 
-fn paint_highlighted_text(
-    ui: &egui::Ui,
-    pos: egui::Pos2,
-    text: &str,
-    match_indices: &[usize],
-    font: egui::FontId,
-    normal_color: egui::Color32,
-    highlight_color: egui::Color32,
-) {
-    let painter = ui.painter();
-    let chars: Vec<char> = text.chars().collect();
-    let mut x = pos.x;
-
-    for (i, &ch) in chars.iter().enumerate() {
-        let color = if match_indices.contains(&i) {
-            highlight_color
-        } else {
-            normal_color
-        };
-        let s = String::from(ch);
-        let galley = painter.layout_no_wrap(s, font.clone(), color);
-        let char_width = galley.rect.width();
-        painter.galley(egui::pos2(x, pos.y), galley, color);
-        x += char_width;
-    }
-}

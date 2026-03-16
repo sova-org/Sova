@@ -32,6 +32,7 @@ pub struct InlineFrameState {
     pub pending_ops: Vec<TextOp>,
     pub last_op_send: Instant,
     pub has_remote_edits: bool,
+    pub height: f32,
 }
 
 impl InlineFrameState {
@@ -59,6 +60,7 @@ impl InlineFrameState {
             pending_ops: Vec::new(),
             last_op_send: Instant::now(),
             has_remote_edits: false,
+            height: crate::scene_panel::CELL_HEIGHT,
         }
     }
 
@@ -376,18 +378,6 @@ impl InlineFrameState {
 
         ui.separator();
 
-        if ui.button(t!("scene.move_up")).clicked() {
-            // Handled via scene panel's move_frames_vertical
-            self.menu_open = false;
-            ui.close();
-        }
-        if ui.button(t!("scene.move_down")).clicked() {
-            self.menu_open = false;
-            ui.close();
-        }
-
-        ui.separator();
-
         if ui
             .add(
                 egui::Button::new(
@@ -549,9 +539,9 @@ impl InlineFrameState {
         // Track focus and handle edit mode shortcuts
         self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));
         if self.editor_has_focus {
-            // Escape exits edit mode
+            // Escape exits edit mode (but not if completion popup is open)
             let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
-            if escape {
+            if escape && !self.editor.is_completion_open() {
                 ui.memory_mut(|m| m.surrender_focus(editor_id_focus));
                 self.editor_has_focus = false;
                 self.escape_pressed = true;

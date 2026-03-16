@@ -44,6 +44,9 @@ pub const SWAP: &str = "\u{EBCB}";
 pub const MUTE: &str = "\u{EB24}";
 pub const UNMUTE: &str = "\u{EB75}";
 
+// Actions
+pub const ADD: &str = "\u{EA60}";
+
 // Transport actions
 pub const HUSH: &str = "\u{EB24}"; // codicon mute
 pub const PANIC: &str = "\u{EA6C}"; // codicon warning
