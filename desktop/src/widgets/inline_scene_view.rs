@@ -4,6 +4,7 @@ use eframe::egui;
 use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
+use crate::scene_panel::new_frame;
 use sova_core::schedule::ActionTiming;
 use sova_server::{ClientMessage, TextOp};
 
@@ -347,17 +348,18 @@ impl InlineFrameState {
         li: usize,
         fi: usize,
         bridge: &ClientBridge,
+        default_lang: &str,
     ) {
         if ui.button(t!("scene.insert_frame_before")).clicked() {
             bridge.send(ClientMessage::AddFrame(
-                li, fi, Frame::default(), ActionTiming::Immediate,
+                li, fi, new_frame(default_lang), ActionTiming::Immediate,
             ));
             self.menu_open = false;
             ui.close();
         }
         if ui.button(t!("scene.insert_frame_after")).clicked() {
             bridge.send(ClientMessage::AddFrame(
-                li, fi + 1, Frame::default(), ActionTiming::Immediate,
+                li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
             ));
             self.menu_open = false;
             ui.close();

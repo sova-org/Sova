@@ -1,4 +1,5 @@
 use eframe::egui;
+use sova_core::vm::language::LanguageDefinition;
 
 use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::widgets::{EditorSettings, SyntaxThemePref};
@@ -18,6 +19,7 @@ impl OptionsPanel {
         appearance: &mut AppearanceSettings,
         doc_settings: &mut DocSettings,
         dismissed_tips: &mut Vec<String>,
+        languages: &[LanguageDefinition],
     ) -> bool {
         let mut changed = false;
 
@@ -203,6 +205,26 @@ impl OptionsPanel {
                             );
                         }
                     });
+
+                ui.add_space(4.0);
+
+                let r = ui.label(t!("options.default_language"));
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.default_language"));
+                if languages.is_empty() {
+                    ui.label(&editor_settings.default_language);
+                } else {
+                    egui::ComboBox::from_id_salt("default_language_selector")
+                        .selected_text(&editor_settings.default_language)
+                        .show_ui(ui, |ui| {
+                            for lang in languages {
+                                ui.selectable_value(
+                                    &mut editor_settings.default_language,
+                                    lang.name.clone(),
+                                    &lang.name,
+                                );
+                            }
+                        });
+                }
             });
 
         ui.add_space(8.0);

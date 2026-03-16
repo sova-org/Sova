@@ -2,8 +2,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use eframe::egui;
+use sova_core::scene::script::Script;
 use sova_core::scene::{Frame, Line};
 use sova_core::schedule::ActionTiming;
+use sova_core::vm::language::LanguageDefinition;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
@@ -12,6 +14,18 @@ use crate::widgets::{
     EditorContext, EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
 };
 use crate::widgets::inline_scene_view::InlineFrameState;
+
+pub fn resolve_default_language(preferred: &str, available: &[LanguageDefinition]) -> String {
+    if available.is_empty() || available.iter().any(|l| l.name == preferred) {
+        preferred.to_string()
+    } else {
+        available[0].name.clone()
+    }
+}
+
+pub fn new_frame(lang: &str) -> Frame {
+    Frame::from(Script::new(String::new(), lang.to_string()))
+}
 
 const MIN_COL_WIDTH: f32 = 120.0;
 const MAX_COL_WIDTH: f32 = 800.0;
@@ -120,6 +134,11 @@ impl ScenePanel {
             return;
         };
 
+        let default_lang = resolve_default_language(
+            &editor_settings.default_language,
+            bridge.languages(),
+        );
+
         let has_positions = bridge.positions().iter().any(|p| !p.is_empty());
         let accent = ui.visuals().selection.bg_fill;
         let opacity = SceneOpacity::new(visuals_enabled, scene_opacity);
@@ -187,7 +206,7 @@ impl ScenePanel {
                         let col_resp = ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
                             ui.vertical(|ui| {
                                 // Line header
-                                self.show_line_header(ui, li, line, accent, &opacity, bridge);
+                                self.show_line_header(ui, li, line, accent, &opacity, bridge, &default_lang);
 
                                 // Independent vertical scroll for frames
                                 egui::ScrollArea::vertical()
@@ -228,6 +247,7 @@ impl ScenePanel {
                                                 editor_settings,
                                                 &theme,
                                                 bridge,
+                                                &default_lang,
                                             );
 
                                             // Scroll cursor into view (only on cursor change)
@@ -274,6 +294,7 @@ impl ScenePanel {
                                                     ui,
                                                     Some(ContextTarget::Cell(li, fi)),
                                                     bridge,
+                                                    &default_lang,
                                                 );
                                             });
 
@@ -321,7 +342,7 @@ impl ScenePanel {
                                             bridge.send(ClientMessage::AddFrame(
                                                 li,
                                                 fi,
-                                                Frame::default(),
+                                                new_frame(&default_lang),
                                                 ActionTiming::Immediate,
                                             ));
                                         }
@@ -419,7 +440,7 @@ impl ScenePanel {
         // Navigation mode: process keyboard shortcuts (only when no text widget has focus)
         if !self.edit_mode && !ui.ctx().memory(|m| m.focused().is_some()) {
             self.handle_clipboard(ui, bridge);
-            self.handle_keyboard(ui, bridge);
+            self.handle_keyboard(ui, bridge, &default_lang);
         }
 
         self.scroll_to_cursor = false;
@@ -429,6 +450,7 @@ impl ScenePanel {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn show_line_header(
         &mut self,
         ui: &mut egui::Ui,
@@ -437,6 +459,7 @@ impl ScenePanel {
         accent: egui::Color32,
         opacity: &SceneOpacity,
         bridge: &ClientBridge,
+        default_lang: &str,
     ) {
         let header_bg = opacity.fill(ui.visuals().faint_bg_color, 0.9);
         let header_frame = egui::Frame::NONE
@@ -529,7 +552,7 @@ impl ScenePanel {
 
         // Right-click on header
         resp.context_menu(|ui| {
-            self.show_context_menu(ui, Some(ContextTarget::Header(li)), bridge);
+            self.show_context_menu(ui, Some(ContextTarget::Header(li)), bridge, default_lang);
         });
     }
 
@@ -548,6 +571,7 @@ impl ScenePanel {
         editor_settings: &EditorSettings,
         theme: &SyntaxTheme,
         bridge: &ClientBridge,
+        default_lang: &str,
     ) -> egui::Response {
         // Background color — scaled by opacity
         let bg = if !frame.enabled {
@@ -593,7 +617,7 @@ impl ScenePanel {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_min_width(150.0);
                                 if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                                    state.show_frame_menu(ui, li, fi, bridge);
+                                    state.show_frame_menu(ui, li, fi, bridge, default_lang);
                                 }
                             });
                         });
@@ -831,6 +855,7 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         target: Option<ContextTarget>,
         bridge: &ClientBridge,
+        default_lang: &str,
     ) {
         let m = if cfg!(target_os = "macos") {
             "Cmd"
@@ -886,13 +911,13 @@ impl ScenePanel {
                 if !multi {
                     if ui.button(t!("scene.insert_frame_before")).clicked() {
                         bridge.send(ClientMessage::AddFrame(
-                            li, fi, Frame::default(), ActionTiming::Immediate,
+                            li, fi, new_frame(default_lang), ActionTiming::Immediate,
                         ));
                         ui.close();
                     }
                     if ui.button(t!("scene.insert_frame_after")).clicked() {
                         bridge.send(ClientMessage::AddFrame(
-                            li, fi + 1, Frame::default(), ActionTiming::Immediate,
+                            li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
                         ));
                         ui.close();
                     }
@@ -1089,7 +1114,7 @@ impl ScenePanel {
         }
     }
 
-    fn handle_keyboard(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+    fn handle_keyboard(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge, default_lang: &str) {
         let Some(scene) = bridge.scene() else {
             return;
         };
@@ -1268,13 +1293,13 @@ impl ScenePanel {
 
         if shift_i {
             bridge.send(ClientMessage::AddFrame(
-                li, fi + 1, Frame::default(), ActionTiming::Immediate,
+                li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
             ));
         }
 
         if cmd_shift_i {
             bridge.send(ClientMessage::AddFrame(
-                li, fi, Frame::default(), ActionTiming::Immediate,
+                li, fi, new_frame(default_lang), ActionTiming::Immediate,
             ));
         }
 

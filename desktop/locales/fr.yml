@@ -151,6 +151,8 @@ options.syntax_theme.nord: "Nord"
 options.syntax_theme.catppuccin: "Catppuccin"
 options.syntax_theme.tokyo_night: "Tokyo Night"
 options.hint.syntax_theme: "Palette de couleurs pour la coloration syntaxique"
+options.default_language: "Langage par défaut"
+options.hint.default_language: "Langage utilisé lors de la création de nouvelles frames"
 
 # Visuals
 visuals.title: "Visuels"

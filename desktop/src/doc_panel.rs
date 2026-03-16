@@ -494,6 +494,7 @@ impl DocPanel {
                                     appearance,
                                     &mut self.settings,
                                     dismissed_tips,
+                                    bridge.languages(),
                                 );
                             }
                             SettingsTab::Logs => unreachable!(),

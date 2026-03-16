@@ -22,6 +22,7 @@ pub struct EditorSettings {
     pub show_whitespace: bool,
     pub highlight_current_line: bool,
     pub syntax_theme: SyntaxThemePref,
+    pub default_language: String,
 }
 
 impl Default for EditorSettings {
@@ -33,6 +34,7 @@ impl Default for EditorSettings {
             show_whitespace: false,
             highlight_current_line: true,
             syntax_theme: SyntaxThemePref::default(),
+            default_language: "boinx".to_string(),
         }
     }
 }
