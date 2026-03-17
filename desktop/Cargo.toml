@@ -7,6 +7,10 @@ edition = "2024"
 name = "sova-frontend"
 path = "src/main.rs"
 
+[features]
+default = []
+asio = ["doux/asio", "sova_server/asio"]
+
 [dependencies]
 eframe = "0.33.3"
 sova_server = { path = "../server", package = "sova-server", features = ["audio"] }

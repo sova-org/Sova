@@ -1,25 +1,23 @@
 <h1 align="center">Sova (сова)</h1>
 
-<p align="center"><em>A Polyglot Script Sequencer and a Virtual Machine for Live Coding</em></p>
+<p align="center"><em>A Polyglot Live Coding Sequencer</em></p>
 
 <p align="center">
-  <img src="pictures/sova_gui.png" alt="Sova GUI">
+  <img src="pictures/sova_gui_real.webp" alt="Sova GUI">
 </p>
 
-Sova is a new sequencer and musical programming environment designed in Rust, under active development. It is based on a robust virtual machine that allows to improvise music in real time through code. The virtual machine allows Sova to support multiple bespoke programming languages, each tailored to a specific way to think about music. **Sova is free and open-source software**, developed for artists, developers and researchers alike. 
+Sova is a sequencer and musical programming environment written in Rust. It is built on a virtual machine designed for real-time musical improvisation through code, supporting multiple programming languages concurrently — each offering a different way to think about musical expression. **Sova is free and open-source software** (AGPL-3.0), built for artists, students, researchers and developers.
 
-* **Virtual machine**: Sova is built on a robust virtual machine that specializes in executing code precisely in realtime. The virtual machine is tightly coupled with a realtime musical scheduler based on [Ableton Link](https://developer.ableton.com/link/). Code execution is temporized, offering very strong guarantees of accuracy.
+### Features
 
-
-* **Polyglocy**: Sova supports using multiple programming languages concurrently in the same session, both compiled and interpreted. You can build bespoke musical programming languages for Sova or adapt your favorite live coding library to the Sova virtual machine. Each language can provide a different way to think about musical expression or a different way to describe musical sequences and musical objects.
-* **Sequencer Session**: Sova code execution works following a timeline-like paradigm. It allows you to order and sequence multiple scripts both sequentialy or in parallel. It is possible to execute multiple scripts written in different languages in the same session. 
-  * _Composers_ can leverage the timeline to compose pieces of music through code.
-  * _Live coders_ can ignore the timeline or use it to structure a live improvisation.
-* **Server/Client Architecture:** Sova is designed to support multiple clients in a same networked session. By default, Sova is ready for collaborative jamming. Anybody can start a session, anybody can join on the local network.
-* **Modular**: Sova is not a monolithic piece of software. You can think of it as multiple objects forming a coherent framework or system. There is the virtual machine, the server, the various clients, etc. Take the bits you like, leave the other stuff behind.
-* **I/O**: Sova is capable of emitting and receiving MIDI and OSC messages. Thanks to its modular design, it is relatively easy to add support for other protocols if the need arises.
-
-<br>
+* **Precision**: Two-thread execution model — a scheduler running ~30ms ahead of real time and a world thread at real-time priority with microsecond-accurate dispatch. Tightly coupled with [Ableton Link](https://developer.ableton.com/link/) for tempo synchronization.
+* **Languages**: Ships with four languages — Bob (imperative), BaLi (Lisp-like), Boinx (pattern streams) and Cagire (stack-based). Compiled or interpreted, all sharing the same VM and I/O. Extensible via a single trait.
+* **Sequencer**: A timeline of Lines (parallel tracks) and Frames (sequential steps). Per-line speed, loop boundaries, multiple execution modes. Compose structured pieces or improvise freely.
+* **Multiplayer**: TCP client-server architecture with shared scene editing, real-time peer awareness and integrated chat. Start a session, anyone on the network can join.
+* **Protocols**: MIDI I/O (16 device slots, notes/CC/bend/sysex/transport), OSC with timetag-accurate scheduling, SuperDirt integration. Per-device latency compensation.
+* **Audio**: Built-in Doux engine — oscillators, filters, effects, sample playback with slicing and stretching. Also compatible with SuperDirt and Dough.
+* **Visuals**: Built-in GLSL shader editor with real-time compilation.
+* **Modular**: VM, server and clients are separate components. Use the whole system or just the parts you need.
 
 <p align="center">
   <img src="pictures/sova_architecture.svg" alt="Sova Architecture">
@@ -27,29 +25,65 @@ Sova is a new sequencer and musical programming environment designed in Rust, un
 
 ## Quick Start
 
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (latest stable)
-
-### Build and run
-
 ```bash
 git clone https://github.com/Bubobubobubobubo/Sova.git
 cd Sova
-cargo run -p sova-desktop --release
+cargo run -p sova-desktop --release    # requires Rust (latest stable)
 ```
 
 Pre-built releases are available on the [Releases](https://github.com/Bubobubobubobubo/Sova/releases) page.
 
-## Project status
-
-Sova is a young project, still to be considered in alpha stage. The virtual machine is entirely functional and works quite well. It already supports multiple programming languages, both compiled and interpreted. Clients and languages are still under development but already more than usable! Documentation and more bespoke programming languages are already on the way. You can start hacking freely, the code is stable!
-
-Feel free to ask questions! The project is slowly growing and we are always looking for contributors or critical feedback.
-
 ## Build
 
-See the [Quick Start](#quick-start) section above, or the [Contributing Guide](CONTRIBUTING.md) for detailed development setup.
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (stable toolchain)
+- CMake (`brew install cmake` on macOS, `apt install cmake` on Linux)
+- Linux only: `build-essential pkg-config libasound2-dev libclang-dev libjack-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgl1-mesa-dev libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev`
+
+### Workspace
+
+| Crate | Binary | Description |
+|-------|--------|-------------|
+| `core` | — | Library: VM, scheduler, clock, MIDI/OSC |
+| `langs` | — | Library: Bob, BaLi, Boinx, Cagire |
+| `server` | `sova-server` | TCP server for multiplayer sessions |
+| `desktop` | `sova-frontend` | Primary GUI client (egui) |
+| `solo-tui` | `solo-tui` | Standalone terminal client |
+
+### Commands
+
+```bash
+cargo build                                    # whole workspace
+cargo build -p sova-desktop --release          # desktop client (release)
+cargo build -p sova-server --release           # server (release)
+cargo build -p solo-tui --release              # TUI client (release)
+cargo test -p langs                            # language tests
+cargo test -p core                             # core tests
+cargo clippy -p core -p langs -p sova-server -p sova-desktop
+```
+
+### Running
+
+```bash
+cargo run -p sova-desktop --release            # desktop app (embeds server)
+cargo run -p sova-server --release -- -p 8080  # standalone server on port 8080
+cargo run -p solo-tui --release                # terminal client (embeds core)
+```
+
+### Feature flags
+
+The server and desktop include the Doux audio engine by default. To build without audio:
+
+```bash
+cargo build -p sova-server --release --no-default-features
+```
+
+Additional flags on `server`: `soundfont` (soundfont support), `asio` (Windows ASIO driver).
+
+## Status
+
+Sova is in active development (alpha). The VM is fully functional, languages and clients are usable and improving. Contributions and feedback are welcome — see the [Contributing Guide](CONTRIBUTING.md).
 
 ## License
 
@@ -63,9 +97,6 @@ Sova is distributed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.e
 
 ## Acknowledgments
 
-The research and design work on Sova was supported by the following institutions:
+Sova is developed by Raphaël Forment, Loïg Jezequel and Tanguy Dubois as part of a research/creation project supported by [Athénor CNCM](https://www.athenor.com) and the [LS2N laboratory](https://www.ls2n.fr) at the [University of Nantes](https://www.univ-nantes.fr).
 
-- The [LS2N Laboratory](https://www.ls2n.fr) and the [University of Nantes](https://www.univ-nantes.fr).
-- [Athenor CNCM](https://www.athenor.com) and its director, Camel Zekri.
-
-Many thanks for their continuous support.
+Website: [sova.livecoding.fr](https://sova.livecoding.fr)

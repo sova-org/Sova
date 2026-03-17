@@ -15,6 +15,7 @@ path = "src/main.rs"
 default = ["audio", "soundfont"]
 audio = ["dep:doux-sova"]
 soundfont = ["audio", "doux-sova/soundfont"]
+asio = ["doux-sova/asio"]
 
 [dependencies]
 sova_core = { path = "../core", package = "core" }

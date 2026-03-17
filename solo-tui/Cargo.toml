@@ -6,6 +6,10 @@ authors = ["Tanguy Dubois <dubois.tanguy@gmail.com>"]
 license = "MIT"
 edition = "2024"
 
+[features]
+default = []
+asio = ["doux-sova/asio", "sova_server/asio"]
+
 [dependencies]
 crossterm = "0.28.1"
 ratatui = "0.29.0"
