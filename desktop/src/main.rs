@@ -264,7 +264,7 @@ impl SovaApp {
                     self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::I) {
-                    self.devices.open = !self.devices.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices);
                 }
                 if i.key_pressed(egui::Key::O) {
                     self.scope_panel.open = !self.scope_panel.open;
@@ -575,14 +575,6 @@ impl eframe::App for SovaApp {
                     ("Ctrl+", "Shift+")
                 };
                 let r = ui.menu_button(t!("menu.server"), |ui| {
-                    let menu_checkbox = |ui: &mut egui::Ui,
-                                         checked: &mut bool,
-                                         label: std::borrow::Cow<'_, str>,
-                                         shortcut: &str| {
-                        let text = egui::RichText::new(shortcut).weak();
-                        ui.checkbox(checked, label).on_hover_text(text);
-                    };
-
                     if self.server.is_running() {
                         if ui.button(t!("menu.stop_server")).clicked() {
                             ui.close();
@@ -619,13 +611,6 @@ impl eframe::App for SovaApp {
                             self.rename_input = Some(current);
                         }
                     }
-                    ui.separator();
-                    menu_checkbox(
-                        ui,
-                        &mut self.devices.open,
-                        t!("devices.title"),
-                        &format!("{mod_sym}{shift_sym}I"),
-                    );
                 });
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.server_menu"));
@@ -832,6 +817,7 @@ impl eframe::App for SovaApp {
             server: &mut self.server,
             audio: &mut self.audio,
             options: &mut self.options,
+            devices: &mut self.devices,
             logs: &mut self.logs,
             editor_settings: &mut self.editor_settings,
             appearance: &mut self.appearance,
@@ -1024,7 +1010,7 @@ impl SovaApp {
         match cmd {
             Server => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
             Audio => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
-            Devices => self.devices.open = !self.devices.open,
+            Devices => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices),
             Scope => self.scope_panel.open = !self.scope_panel.open,
             Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
             VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,

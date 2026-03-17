@@ -24,6 +24,7 @@ pub struct SettingsContext<'a> {
     pub server: &'a mut ServerPanel,
     pub audio: &'a mut AudioPanel,
     pub options: &'a mut OptionsPanel,
+    pub devices: &'a mut crate::devices_panel::DevicesPanel,
     pub logs: &'a mut crate::log_panel::LogPanel,
     pub editor_settings: &'a mut EditorSettings,
     pub appearance: &'a mut AppearanceSettings,
@@ -110,14 +111,16 @@ impl SidebarMode {
 pub enum SettingsTab {
     Config = 0,
     Options = 1,
-    Logs = 2,
+    Devices = 2,
+    Logs = 3,
 }
 
 impl SettingsTab {
     fn from_u8(v: u8) -> Self {
         match v {
             1 => Self::Options,
-            2 => Self::Logs,
+            2 => Self::Devices,
+            3 => Self::Logs,
             _ => Self::Config,
         }
     }
@@ -126,12 +129,13 @@ impl SettingsTab {
         match self {
             Self::Config => t!("config.title").into(),
             Self::Options => t!("options.title").into(),
+            Self::Devices => t!("devices.title").into(),
             Self::Logs => t!("log.title").into(),
         }
     }
 }
 
-const SETTINGS_TABS: [SettingsTab; 3] = [SettingsTab::Config, SettingsTab::Options, SettingsTab::Logs];
+const SETTINGS_TABS: [SettingsTab; 4] = [SettingsTab::Config, SettingsTab::Options, SettingsTab::Devices, SettingsTab::Logs];
 
 pub struct DocPanel {
     pub settings: DocSettings,
@@ -397,7 +401,7 @@ impl DocPanel {
         settings: SettingsContext<'_>,
     ) -> (ServerAction, bool) {
         let SettingsContext {
-            server, audio, options, logs,
+            server, audio, options, devices, logs,
             editor_settings, appearance, dismissed_tips,
         } = settings;
         let mut server_action = ServerAction::None;
@@ -496,6 +500,9 @@ impl DocPanel {
                                     dismissed_tips,
                                     bridge.languages(),
                                 );
+                            }
+                            SettingsTab::Devices => {
+                                devices.show_inside(ui, bridge);
                             }
                             SettingsTab::Logs => unreachable!(),
                         }
