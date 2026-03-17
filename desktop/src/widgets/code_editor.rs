@@ -11,6 +11,8 @@ use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use sova_core::vm::language::{LanguageElement, ReferenceEntry};
 
+use crate::scene_panel::SceneOpacity;
+
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme, SyntaxThemePref};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -51,6 +53,7 @@ pub struct EditorContext<'a> {
     pub syntax: Option<(&'a CompiledSyntax, &'a SyntaxTheme)>,
     pub reference: Option<&'a BTreeMap<LanguageElement, ReferenceEntry>>,
     pub peer_cursors: &'a [PeerCursor],
+    pub opacity: Option<&'a SceneOpacity>,
 }
 
 struct CompletionEntry {
@@ -371,7 +374,7 @@ impl CodeEditor {
         if let Some(state) = &self.completion
             && let Some(cc) = cursor_char
         {
-            paint_completion_popup(ui, &edit_output, id, &font_id, state, cc);
+            paint_completion_popup(ui, &edit_output, id, &font_id, state, cc, ctx.opacity);
         }
 
         let cursor = edit_output
@@ -983,6 +986,7 @@ fn paint_completion_popup(
     font_id: &FontId,
     state: &CompletionState,
     cursor_char: usize,
+    opacity: Option<&SceneOpacity>,
 ) {
     let cursor_rect = output.galley.pos_from_cursor(CCursor::new(cursor_char));
     let cursor_screen = egui::pos2(
@@ -1007,9 +1011,17 @@ fn paint_completion_popup(
         .order(egui::Order::Foreground)
         .fixed_pos(popup_pos)
         .show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style())
-                .corner_radius(0.0)
-                .show(ui, |ui| {
+            let popup_frame = {
+                let mut f = egui::Frame::popup(ui.style()).corner_radius(0.0);
+                if let Some(opacity) = opacity {
+                    f.fill = opacity.fill(f.fill, 1.0);
+                }
+                f
+            };
+            popup_frame.show(ui, |ui| {
+                if let Some(opacity) = opacity {
+                    opacity.override_widget_visuals(ui);
+                }
                     ui.set_max_width(350.0);
                     let row_height = font_id.size + 16.0;
                     let accent = ui.visuals().selection.bg_fill;

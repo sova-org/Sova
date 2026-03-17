@@ -674,6 +674,7 @@ impl ScenePanel {
                     syntax: syntax_pair,
                     reference,
                     peer_cursors: &peer_cursors,
+                    opacity: Some(opacity),
                 };
                 if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
                     state.show_body(ui, li, fi, &editor_ctx, bridge);

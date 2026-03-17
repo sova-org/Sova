@@ -1,6 +1,7 @@
 use eframe::egui;
 use sova_core::scene::ExecutionMode;
 use sova_core::schedule::ActionTiming;
+use sova_core::schedule::SchedulerMessage;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
@@ -12,6 +13,8 @@ pub enum TransportAction {
 pub struct TransportBar {
     editing_tempo: bool,
     tempo_buf: String,
+    editing_quantum: bool,
+    quantum_buf: String,
 }
 
 impl TransportBar {
@@ -19,6 +22,8 @@ impl TransportBar {
         Self {
             editing_tempo: false,
             tempo_buf: String::new(),
+            editing_quantum: false,
+            quantum_buf: String::new(),
         }
     }
 
@@ -218,12 +223,42 @@ impl TransportBar {
 
                 ui.separator();
 
-                let r = ui.monospace(
-                    t!("transport.quantum_value", val = clock.quantum as u32)
-                        .to_string(),
-                );
-                if r.hovered() {
-                    crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
+                if self.editing_quantum {
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.quantum_buf)
+                            .desired_width(30.0)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                    if resp.hovered() {
+                        crate::widgets::hint::set(ctx, t!("transport.hint.quantum_edit"));
+                    }
+                    if resp.lost_focus() {
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            && let Ok(q) = self.quantum_buf.parse::<u32>()
+                        {
+                            let q = q.clamp(1, 16);
+                            bridge.send(ClientMessage::SchedulerControl(
+                                SchedulerMessage::SetQuantum(
+                                    q as f64,
+                                    ActionTiming::Immediate,
+                                ),
+                            ));
+                        }
+                        self.editing_quantum = false;
+                    }
+                } else {
+                    let resp = ui.monospace(
+                        t!("transport.quantum_value", val = clock.quantum as u32)
+                            .to_string(),
+                    );
+                    if resp.hovered() {
+                        crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
+                    }
+                    if resp.clicked() {
+                        self.editing_quantum = true;
+                        self.quantum_buf = format!("{}", clock.quantum as u32);
+                    }
+                    resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                 }
 
                 ui.separator();

@@ -178,6 +178,7 @@ impl VisualsEngine {
             syntax: syn,
             reference: None,
             peer_cursors: &[],
+            opacity: None,
         };
         egui::ScrollArea::vertical()
             .auto_shrink(false)
