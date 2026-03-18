@@ -465,6 +465,10 @@ impl ClientBridge {
                 }
                 ServerMessage::PlaybackStateChanged(state) => {
                     self.clock.playing = !matches!(state, PlaybackState::Stopped);
+                    if !self.clock.playing {
+                        self.positions.clear();
+                        self.position_start.clear();
+                    }
                 }
                 ServerMessage::DeviceList(devices) => {
                     self.devices = devices;

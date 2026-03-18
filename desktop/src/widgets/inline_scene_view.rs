@@ -251,7 +251,7 @@ impl InlineFrameState {
             egui::DragValue::new(&mut dur)
                 .range(0.001..=f64::MAX)
                 .speed(0.1)
-                .suffix("b"),
+                .prefix("dur: "),
         );
         if dur_resp.changed() && dur > 0.0 {
             let mut f = frame.clone();
@@ -267,7 +267,7 @@ impl InlineFrameState {
         let rep_resp = ui.add(
             egui::DragValue::new(&mut rep)
                 .range(1..=usize::MAX)
-                .prefix("×"),
+                .prefix("rep: "),
         );
         if rep_resp.changed() && rep > 0 {
             let mut f = frame.clone();

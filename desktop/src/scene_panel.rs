@@ -545,7 +545,7 @@ impl ScenePanel {
                             egui::DragValue::new(&mut speed)
                                 .range(0.01..=f64::MAX)
                                 .speed(0.05)
-                                .prefix("×"),
+                                .prefix("speed: "),
                         );
                         if speed_resp.changed() && speed > 0.0 {
                             self.toggle_line_field(li, bridge, |l| l.speed_factor = speed);
