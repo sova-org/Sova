@@ -164,7 +164,7 @@ impl ScenePanel {
                     if dur <= 0.0 {
                         return 0.0;
                     }
-                    (elapsed / dur).clamp(0.0, 1.0) as f32
+                    ((elapsed % dur) / dur) as f32
                 })
                 .collect()
         };
@@ -672,7 +672,7 @@ impl ScenePanel {
                     .filter(|l| !l.documentation.reference.is_empty())
                     .map(|l| &l.documentation.reference);
 
-                let peer_cursors: Vec<PeerCursor> = bridge
+                let mut cursors: Vec<PeerCursor> = bridge
                     .text_cursors_for_frame(li, fi)
                     .into_iter()
                     .map(|(name, line, col)| PeerCursor {
@@ -683,11 +683,25 @@ impl ScenePanel {
                     })
                     .collect();
 
+                // Include the local user's text cursor
+                if let Some(my_name) = bridge.confirmed_username()
+                    && let Some(state) = self.frame_states.get(&(li, fi))
+                    && let (Some(line), Some(col)) =
+                        (state.last_cursor_line, state.last_cursor_col)
+                {
+                    cursors.push(PeerCursor {
+                        name: my_name.to_owned(),
+                        line,
+                        col,
+                        color: username_color(my_name),
+                    });
+                }
+
                 let editor_ctx = EditorContext {
                     settings: editor_settings,
                     syntax: syntax_pair,
                     reference,
-                    peer_cursors: &peer_cursors,
+                    peer_cursors: &cursors,
                     opacity: Some(opacity),
                 };
                 if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
@@ -713,15 +727,37 @@ impl ScenePanel {
                 p.vline(r.right(), r.y_range(), s);    // right
             }
 
-            // Playing indicator: 4px left strip filling top to bottom
+            // Playing indicator
             if is_playing && frame.enabled {
-                let strip_w = 4.0;
-                let fill_h = cell_rect.height() * progress;
-                let strip_rect = egui::Rect::from_min_size(
+                let p = ui.painter();
+                // Static accent strip on the left edge
+                let accent_strip = egui::Rect::from_min_size(
                     cell_rect.min,
-                    egui::vec2(strip_w, fill_h),
+                    egui::vec2(3.0, cell_rect.height()),
                 );
-                ui.painter().rect_filled(strip_rect, 0.0, accent);
+                p.rect_filled(accent_strip, 0.0, accent);
+
+                // Header fill (left→right)
+                let fill_w = cell_rect.width() * progress;
+                let header = egui::Rect::from_min_size(
+                    cell_rect.min,
+                    egui::vec2(fill_w, HEADER_HEIGHT),
+                );
+                let hc = egui::Color32::from_rgba_unmultiplied(
+                    accent.r(), accent.g(), accent.b(), 100,
+                );
+                p.rect_filled(header, 0.0, hc);
+                // Background fill (top→bottom)
+                let fill_h = cell_rect.height() * progress;
+                let bg = egui::Rect::from_min_size(
+                    cell_rect.min,
+                    egui::vec2(cell_rect.width(), fill_h),
+                );
+                let bc = egui::Color32::from_rgba_unmultiplied(
+                    accent.r(), accent.g(), accent.b(), 15,
+                );
+                p.rect_filled(bg, 0.0, bc);
+                ui.ctx().request_repaint();
             }
 
             // Overlay effects (compilation/mutation flashes)
@@ -750,60 +786,28 @@ impl ScenePanel {
                 }
             }
 
-            // Peer presence: colored border + name tags for peers on this cell
-            let mut tag_offset = 0.0;
+            // Peer presence: colored border for peers on this cell
             for (name, &(pli, pfi, _)) in bridge.peer_cursors() {
                 if pli == li && pfi == fi {
                     let color = username_color(name);
-                    // Colored border (top, right, bottom — skip left)
                     let s = egui::Stroke::new(2.0, color);
                     let p = ui.painter();
                     p.hline(cell_rect.x_range(), cell_rect.top(), s);
                     p.hline(cell_rect.x_range(), cell_rect.bottom(), s);
                     p.vline(cell_rect.right(), cell_rect.y_range(), s);
-
-                    // Name tag at bottom-left
-                    let tag_pos = egui::pos2(
-                        cell_rect.left() + 6.0 + tag_offset,
-                        cell_rect.bottom() - 16.0,
-                    );
-                    let font = egui::FontId::proportional(10.0);
-                    let galley = ui.painter().layout_no_wrap(
-                        name.clone(),
-                        font,
-                        egui::Color32::WHITE,
-                    );
-                    let tag_rect = egui::Rect::from_min_size(
-                        tag_pos,
-                        galley.size() + egui::vec2(6.0, 2.0),
-                    );
-                    p.rect_filled(tag_rect, 0.0, color);
-                    p.galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
-                    tag_offset += tag_rect.width() + 4.0;
                 }
             }
 
-            // Local user name tag on cursor frame
+            // Local user: colored border on cursor frame
             if is_cursor
                 && let Some(my_name) = bridge.confirmed_username()
             {
                 let color = username_color(my_name);
-                let tag_pos = egui::pos2(
-                    cell_rect.left() + 6.0 + tag_offset,
-                    cell_rect.bottom() - 16.0,
-                );
-                let font = egui::FontId::proportional(10.0);
-                let galley = ui.painter().layout_no_wrap(
-                    my_name.to_owned(),
-                    font,
-                    egui::Color32::WHITE,
-                );
-                let tag_rect = egui::Rect::from_min_size(
-                    tag_pos,
-                    galley.size() + egui::vec2(6.0, 2.0),
-                );
-                ui.painter().rect_filled(tag_rect, 0.0, color);
-                ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
+                let s = egui::Stroke::new(2.0, color);
+                let p = ui.painter();
+                p.hline(cell_rect.x_range(), cell_rect.top(), s);
+                p.hline(cell_rect.x_range(), cell_rect.bottom(), s);
+                p.vline(cell_rect.right(), cell_rect.y_range(), s);
             }
 
             // Re-register with actual rect (updates in-place, keeping early list position)

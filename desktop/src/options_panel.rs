@@ -121,6 +121,7 @@ impl OptionsPanel {
                         changed |= r.changed();
                     });
                 }
+
             });
 
         egui::CollapsingHeader::new(t!("options.sidebar"))
