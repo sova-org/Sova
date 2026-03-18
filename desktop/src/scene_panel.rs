@@ -548,7 +548,8 @@ impl ScenePanel {
                     });
                 });
             })
-            .response;
+            .response
+            .interact(egui::Sense::click());
 
         // Right-click on header
         resp.context_menu(|ui| {
@@ -792,7 +793,7 @@ impl ScenePanel {
                 ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
             }
 
-            frame_resp.response
+            frame_resp.response.interact(egui::Sense::click())
         });
 
         resp.inner
