@@ -288,7 +288,11 @@ impl SovaApp {
                     self.chat_panel.open = !self.chat_panel.open;
                 }
                 if i.key_pressed(egui::Key::E) {
-                    self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                    let sample_browser_available =
+                        !self.bridge.is_connected() || self.server.is_running();
+                    if sample_browser_available {
+                        self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                    }
                 }
                 if i.key_pressed(egui::Key::H) {
                     self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
@@ -688,12 +692,18 @@ impl eframe::App for SovaApp {
                         t!("chat.title"),
                         &format!("{mod_sym}{shift_sym}C"),
                     );
-                    menu_checkbox(
-                        ui,
-                        &mut self.sample_browser_panel.open,
-                        t!("sample_browser.title"),
-                        &format!("{mod_sym}{shift_sym}E"),
-                    );
+                    {
+                        let sample_browser_available =
+                            !self.bridge.is_connected() || self.server.is_running();
+                        ui.add_enabled_ui(sample_browser_available, |ui| {
+                            menu_checkbox(
+                                ui,
+                                &mut self.sample_browser_panel.open,
+                                t!("sample_browser.title"),
+                                &format!("{mod_sym}{shift_sym}E"),
+                            );
+                        });
+                    }
                     menu_checkbox(
                         ui,
                         &mut self.visuals.open,
@@ -930,8 +940,9 @@ impl eframe::App for SovaApp {
         self.devices.show(ctx, &self.bridge);
 
         let sample_paths = self.audio.sample_paths();
+        let is_hosting = self.server.is_running();
         self.sample_browser_panel
-            .show(ctx, &self.bridge, sample_paths, &self.appearance);
+            .show(ctx, &self.bridge, sample_paths, &self.appearance, is_hosting);
 
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data, &self.appearance);
@@ -1021,7 +1032,13 @@ impl SovaApp {
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,
-            SampleBrowser => self.sample_browser_panel.open = !self.sample_browser_panel.open,
+            SampleBrowser => {
+                let sample_browser_available =
+                    !self.bridge.is_connected() || self.server.is_running();
+                if sample_browser_available {
+                    self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                }
+            }
             Documentation => {
                 self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
                 if !self.doc_panel.settings.collapsed {
