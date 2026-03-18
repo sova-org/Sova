@@ -20,6 +20,14 @@ voronoi(5).out(o3)
 render()
 ```
 
+## Clearing with hush()
+
+`hush()` stops all visuals immediately — clears every buffer and outputs a black screen.
+
+```
+hush()
+```
+
 ## Cross-referencing with src()
 
 `src()` reads from a buffer, allowing you to pipe one buffer's output into

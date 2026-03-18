@@ -556,6 +556,17 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
             s.lock().unwrap().render_mode = RenderMode::Single(idx as usize);
         });
     }
+    // hush() → clear all buffers, output black
+    {
+        let s = state.clone();
+        engine.register_fn("hush", move || {
+            let mut st = s.lock().unwrap();
+            st.buffers = [None, None, None, None];
+            st.buffers[0] = Some(Node::source("solid", vec![
+                Arg::Lit(0.0), Arg::Lit(0.0), Arg::Lit(0.0), Arg::Lit(1.0),
+            ]));
+        });
+    }
 
     let mut scope = Scope::new();
     scope.push_constant("o0", 0_i64);
