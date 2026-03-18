@@ -466,6 +466,11 @@ impl ScenePanel {
             .inner_margin(egui::Margin::symmetric(4, 2))
             .fill(header_bg);
 
+        // Pre-register click widget so inner buttons win hit-test ties
+        let hdr_bg_id = ui.id().with(("line_hdr_bg", li));
+        let pre_rect = ui.available_rect_before_wrap();
+        ui.interact(pre_rect, hdr_bg_id, egui::Sense::click());
+
         let resp = header_frame
             .show(ui, |ui| {
                 ui.set_height(LINE_HEADER_HEIGHT - 4.0);
@@ -548,8 +553,10 @@ impl ScenePanel {
                     });
                 });
             })
-            .response
-            .interact(egui::Sense::click());
+            .response;
+
+        // Re-register with actual rect for correct context_menu positioning
+        let resp = ui.interact(resp.rect, hdr_bg_id, egui::Sense::click());
 
         // Right-click on header
         resp.context_menu(|ui| {
@@ -587,6 +594,12 @@ impl ScenePanel {
 
         // Use push_id to scope all widget IDs within this frame cell
         let resp = ui.push_id(("frame_cell", li, fi), |ui| {
+            // Pre-register a click-sensing widget BEFORE drawing content.
+            // Inner buttons drawn later will win hit-test ties over this earlier widget.
+            let bg_id = ui.id().with("cell_bg");
+            let pre_rect = ui.available_rect_before_wrap();
+            ui.interact(pre_rect, bg_id, egui::Sense::click());
+
             let cell_frame = egui::Frame::NONE
                 .fill(bg)
                 .inner_margin(egui::Margin { left: 5, right: 5, ..egui::Margin::ZERO });
@@ -793,7 +806,8 @@ impl ScenePanel {
                 ui.painter().galley(tag_pos + egui::vec2(3.0, 1.0), galley, color);
             }
 
-            frame_resp.response.interact(egui::Sense::click())
+            // Re-register with actual rect (updates in-place, keeping early list position)
+            ui.interact(frame_resp.response.rect, bg_id, egui::Sense::click())
         });
 
         resp.inner

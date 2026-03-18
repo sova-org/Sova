@@ -203,142 +203,138 @@ impl InlineFrameState {
             }
         }
 
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-
-            // Enabled toggle (first)
-            let enabled = frame.enabled;
-            let toggle_icon = if enabled {
-                crate::icons::CIRCLE_LARGE_FILLED
-            } else {
-                crate::icons::CIRCLE_LARGE_OUTLINE
-            };
-            let toggle_color = if enabled { COLOR_OK } else { COLOR_MUTED };
-            if ui
-                .add(
-                    egui::Button::new(egui::RichText::new(toggle_icon).color(toggle_color))
-                        .fill(egui::Color32::TRANSPARENT),
-                )
-                .clicked()
-            {
-                let mut f = frame.clone();
-                f.enabled = !enabled;
-                bridge.send(ClientMessage::SetFrames(
-                    vec![(li, fi, f)],
-                    ActionTiming::Immediate,
-                ));
-            }
-
-            // Language selector
-            let btn_fill = ui.visuals().widgets.inactive.bg_fill;
-            let lang_btn = ui.add(
-                egui::Button::new(
-                    egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
-                        .small(),
-                )
-                .fill(btn_fill),
-            );
-            if lang_btn.clicked() {
-                self.lang_popup_open = !self.lang_popup_open;
-                self.lang_filter.clear();
-                self.lang_popup_selection = 0;
-            }
-
-            self.show_lang_popup(ui, &lang_btn, _opacity, bridge);
-
-            ui.separator();
-
-            // Duration
-            let mut dur = frame.duration;
-            let dur_resp = ui.add(
-                egui::DragValue::new(&mut dur)
-                    .range(0.001..=f64::MAX)
-                    .speed(0.1)
-                    .suffix("b"),
-            );
-            if dur_resp.changed() && dur > 0.0 {
-                let mut f = frame.clone();
-                f.duration = dur;
-                bridge.send(ClientMessage::SetFrames(
-                    vec![(li, fi, f)],
-                    ActionTiming::Immediate,
-                ));
-            }
-
-            // Repetitions
-            let mut rep = frame.repetitions;
-            let rep_resp = ui.add(
-                egui::DragValue::new(&mut rep)
-                    .range(1..=usize::MAX)
-                    .prefix("×"),
-            );
-            if rep_resp.changed() && rep > 0 {
-                let mut f = frame.clone();
-                f.repetitions = rep;
-                bridge.send(ClientMessage::SetFrames(
-                    vec![(li, fi, f)],
-                    ActionTiming::Immediate,
-                ));
-            }
-
-            // Name (last)
-            let name_id = ui.id().with("hdr_name");
-            let name_focused = ui.memory(|m| m.has_focus(name_id));
-            if !name_focused {
-                self.header_name_buf = frame.name.clone().unwrap_or_default();
-            }
-            let name_resp = ui.add(
-                egui::TextEdit::singleline(&mut self.header_name_buf)
-                    .id(name_id)
-                    .desired_width(60.0)
-                    .hint_text("name")
-                    .font(egui::TextStyle::Small),
-            );
-            if name_resp.lost_focus() {
-                let trimmed = self.header_name_buf.trim();
-                let new_name = if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_owned())
-                };
-                if new_name != frame.name {
-                    let mut f = frame.clone();
-                    f.name = new_name;
-                    bridge.send(ClientMessage::SetFrames(
-                        vec![(li, fi, f)],
-                        ActionTiming::Immediate,
-                    ));
-                }
-            }
-
-            // Right-aligned: menu button + dirty indicator
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Menu button
-                let menu_btn = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
-                    )
+        // Enabled toggle (first)
+        let enabled = frame.enabled;
+        let toggle_icon = if enabled {
+            crate::icons::CIRCLE_LARGE_FILLED
+        } else {
+            crate::icons::CIRCLE_LARGE_OUTLINE
+        };
+        let toggle_color = if enabled { COLOR_OK } else { COLOR_MUTED };
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new(toggle_icon).color(toggle_color))
                     .fill(egui::Color32::TRANSPARENT),
-                );
-                if menu_btn.clicked() {
-                    self.menu_open = !self.menu_open;
-                }
+            )
+            .clicked()
+        {
+            let mut f = frame.clone();
+            f.enabled = !enabled;
+            bridge.send(ClientMessage::SetFrames(
+                vec![(li, fi, f)],
+                ActionTiming::Immediate,
+            ));
+        }
 
-                // Dirty indicator
-                if self.dirty {
-                    let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                    let discard_text = egui::RichText::new(crate::icons::MODIFIED)
-                        .small()
-                        .color(COLOR_ERROR);
-                    if ui
-                        .add(egui::Button::new(discard_text).fill(discard_fill))
-                        .on_hover_text(t!("step.discard"))
-                        .clicked()
-                    {
-                        self.sync_from_frame(frame);
-                    }
+        // Language selector
+        let btn_fill = ui.visuals().widgets.inactive.bg_fill;
+        let lang_btn = ui.add(
+            egui::Button::new(
+                egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
+                    .small(),
+            )
+            .fill(btn_fill),
+        );
+        if lang_btn.clicked() {
+            self.lang_popup_open = !self.lang_popup_open;
+            self.lang_filter.clear();
+            self.lang_popup_selection = 0;
+        }
+
+        self.show_lang_popup(ui, &lang_btn, _opacity, bridge);
+
+        ui.separator();
+
+        // Duration
+        let mut dur = frame.duration;
+        let dur_resp = ui.add(
+            egui::DragValue::new(&mut dur)
+                .range(0.001..=f64::MAX)
+                .speed(0.1)
+                .suffix("b"),
+        );
+        if dur_resp.changed() && dur > 0.0 {
+            let mut f = frame.clone();
+            f.duration = dur;
+            bridge.send(ClientMessage::SetFrames(
+                vec![(li, fi, f)],
+                ActionTiming::Immediate,
+            ));
+        }
+
+        // Repetitions
+        let mut rep = frame.repetitions;
+        let rep_resp = ui.add(
+            egui::DragValue::new(&mut rep)
+                .range(1..=usize::MAX)
+                .prefix("×"),
+        );
+        if rep_resp.changed() && rep > 0 {
+            let mut f = frame.clone();
+            f.repetitions = rep;
+            bridge.send(ClientMessage::SetFrames(
+                vec![(li, fi, f)],
+                ActionTiming::Immediate,
+            ));
+        }
+
+        // Name (last)
+        let name_id = ui.id().with("hdr_name");
+        let name_focused = ui.memory(|m| m.has_focus(name_id));
+        if !name_focused {
+            self.header_name_buf = frame.name.clone().unwrap_or_default();
+        }
+        let name_resp = ui.add(
+            egui::TextEdit::singleline(&mut self.header_name_buf)
+                .id(name_id)
+                .desired_width(60.0)
+                .hint_text("name")
+                .font(egui::TextStyle::Small),
+        );
+        if name_resp.lost_focus() {
+            let trimmed = self.header_name_buf.trim();
+            let new_name = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            };
+            if new_name != frame.name {
+                let mut f = frame.clone();
+                f.name = new_name;
+                bridge.send(ClientMessage::SetFrames(
+                    vec![(li, fi, f)],
+                    ActionTiming::Immediate,
+                ));
+            }
+        }
+
+        // Right-aligned: menu button + dirty indicator
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Menu button
+            let menu_btn = ui.add(
+                egui::Button::new(
+                    egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
+                )
+                .fill(egui::Color32::TRANSPARENT),
+            );
+            if menu_btn.clicked() {
+                self.menu_open = !self.menu_open;
+            }
+
+            // Dirty indicator
+            if self.dirty {
+                let discard_fill = COLOR_ERROR.linear_multiply(0.3);
+                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                    .small()
+                    .color(COLOR_ERROR);
+                if ui
+                    .add(egui::Button::new(discard_text).fill(discard_fill))
+                    .on_hover_text(t!("step.discard"))
+                    .clicked()
+                {
+                    self.sync_from_frame(frame);
                 }
-            });
+            }
         });
     }
 
