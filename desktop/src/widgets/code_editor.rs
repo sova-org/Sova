@@ -119,15 +119,15 @@ impl CodeEditor {
 
         // Completion: consume keys before TextEdit sees them
         let completion_open = self.completion.is_some();
-        let (ctrl_space, consumed_tab, consumed_up, consumed_down, consumed_escape) =
+        let (ctrl_space, consumed_tab, consumed_prev, consumed_next, consumed_escape) =
             ui.input_mut(|i| {
                 let cs = i.consume_key(egui::Modifiers::CTRL, egui::Key::Space);
                 if completion_open {
                     (
                         cs,
                         i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                        i.consume_key(egui::Modifiers::CTRL, egui::Key::P),
+                        i.consume_key(egui::Modifiers::CTRL, egui::Key::N),
                         i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
                     )
                 } else {
@@ -322,10 +322,10 @@ impl CodeEditor {
         if consumed_escape {
             self.completion = None;
         } else if let Some(state) = &mut self.completion {
-            if consumed_up && state.selected > 0 {
+            if consumed_prev && state.selected > 0 {
                 state.selected -= 1;
             }
-            if consumed_down && state.selected + 1 < state.entries.len() {
+            if consumed_next && state.selected + 1 < state.entries.len() {
                 state.selected += 1;
             }
             if consumed_tab && !state.entries.is_empty() {

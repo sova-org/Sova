@@ -311,6 +311,7 @@ impl ClientBridge {
         }
         self.event_rx = None;
         self.status = ConnectionStatus::Disconnected;
+        self.clear_state();
     }
 
     pub fn send(&self, msg: ClientMessage) {
