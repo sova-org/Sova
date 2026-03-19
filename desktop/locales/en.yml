@@ -53,6 +53,7 @@ hint.unmute: "Unmute audio"
 config.title: "Config"
 config.server: "Server"
 config.audio: "Audio"
+config.link: "Link"
 config.audio_status: "Audio Status"
 hint.refresh_devices: "Rescan audio devices"
 server.title: "Server"
@@ -75,6 +76,16 @@ server.hint.password: "Require a password to connect (leave blank for open acces
 server.hint.start: "Start the embedded server"
 server.hint.stop: "Stop the embedded server"
 server.hint.status: "Current server status"
+
+# Link section
+link.enabled: "Enabled"
+link.start_stop_sync: "Start/Stop Sync"
+link.peers: "Peers"
+link.hint.enabled: "Enable or disable Ableton Link"
+link.hint.start_stop_sync: "Synchronize transport start/stop with Link peers"
+link.hint.peers: "Number of connected Link peers"
+link.status.disabled: "Disabled"
+link.status.listening: "Listening"
 
 # Client panel
 client.heading: "S O V A"

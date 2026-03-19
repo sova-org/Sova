@@ -280,6 +280,7 @@ impl TransportBar {
                         ActionTiming::Immediate,
                     ));
                 }
+
             });
 
             if clock.playing {

@@ -56,6 +56,9 @@ pub struct ClockState {
     pub phase: f64,
     pub quantum: f64,
     pub playing: bool,
+    pub num_peers: u32,
+    pub start_stop_sync: bool,
+    pub link_enabled: bool,
 }
 
 impl Default for ClockState {
@@ -66,6 +69,9 @@ impl Default for ClockState {
             phase: 0.0,
             quantum: 4.0,
             playing: false,
+            num_peers: 0,
+            start_stop_sync: true,
+            link_enabled: true,
         }
     }
 }
@@ -339,6 +345,7 @@ impl ClientBridge {
                     is_playing,
                     languages,
                     audio_engine_state,
+                    link_enabled,
                 } => {
                     self.confirmed_username = Some(username);
                     self.scene = Some(scene);
@@ -358,6 +365,9 @@ impl ClientBridge {
                         phase: 0.0,
                         quantum: link_state.2,
                         playing: is_playing,
+                        num_peers: link_state.3,
+                        start_stop_sync: link_state.4,
+                        link_enabled,
                     };
                     self.audio_state = audio_engine_state;
                     self.status = ConnectionStatus::Connected;
@@ -596,6 +606,11 @@ impl ClientBridge {
                     self.mutation_flashes.clear();
                     self.positions.clear();
                     self.position_start.clear();
+                }
+                ServerMessage::LinkState { enabled, start_stop_sync, num_peers } => {
+                    self.clock.link_enabled = enabled;
+                    self.clock.start_stop_sync = start_stop_sync;
+                    self.clock.num_peers = num_peers;
                 }
                 ServerMessage::Snapshot(snapshot) => {
                     self.scene = Some(snapshot.scene);

@@ -623,6 +623,32 @@ async fn on_message(
             );
             ServerMessage::Success
         }
+        ClientMessage::SetLinkEnabled(enabled) => {
+            state.clock_server.link.enable(enabled);
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::LinkState {
+                    enabled,
+                    start_stop_sync: state.clock_server.link.is_start_stop_sync_enabled(),
+                    num_peers: state.clock_server.link.num_peers() as u32,
+                },
+                false,
+            );
+            ServerMessage::Success
+        }
+        ClientMessage::SetStartStopSync(enabled) => {
+            state.clock_server.link.enable_start_stop_sync(enabled);
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::LinkState {
+                    enabled: state.clock_server.link.is_enabled(),
+                    start_stop_sync: enabled,
+                    num_peers: state.clock_server.link.num_peers() as u32,
+                },
+                false,
+            );
+            ServerMessage::Success
+        }
         ClientMessage::Panic => {
             let _ = state
                 .sched_iface
@@ -978,6 +1004,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 is_playing: initial_is_playing,
                 languages: available_languages,
                 audio_engine_state: state.get_audio_engine_state(),
+                link_enabled: state.clock_server.link.is_enabled(),
             };
 
             if !matches!(

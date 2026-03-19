@@ -474,6 +474,12 @@ impl DocPanel {
                                         server.show_config(ui);
                                     });
 
+                                egui::CollapsingHeader::new(t!("config.link"))
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        show_link_section(ui, bridge);
+                                    });
+
                                 egui::CollapsingHeader::new(t!("config.audio"))
                                     .default_open(true)
                                     .show(ui, |ui| {
@@ -1008,6 +1014,53 @@ impl DocPanel {
         });
     }
 
+}
+
+fn show_link_section(ui: &mut egui::Ui, bridge: &ClientBridge) {
+    let ctx = ui.ctx().clone();
+    let clock = bridge.clock();
+    let connected = bridge.is_connected();
+
+    egui::Grid::new("link_config")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            let label = ui.label(t!("link.enabled"));
+            let mut link_on = clock.link_enabled;
+            let toggle = ui.add_enabled(connected, egui::Checkbox::without_text(&mut link_on));
+            if label.hovered() || toggle.hovered() {
+                crate::widgets::hint::set(&ctx, t!("link.hint.enabled"));
+            }
+            if toggle.changed() {
+                bridge.send(ClientMessage::SetLinkEnabled(link_on));
+            }
+            ui.end_row();
+
+            let label = ui.label(t!("link.start_stop_sync"));
+            let mut sss = clock.start_stop_sync;
+            let toggle = ui.add_enabled(connected, egui::Checkbox::without_text(&mut sss));
+            if label.hovered() || toggle.hovered() {
+                crate::widgets::hint::set(&ctx, t!("link.hint.start_stop_sync"));
+            }
+            if toggle.changed() {
+                bridge.send(ClientMessage::SetStartStopSync(sss));
+            }
+            ui.end_row();
+
+            let label = ui.label(t!("link.peers"));
+            let status = if !clock.link_enabled {
+                t!("link.status.disabled").to_string()
+            } else if clock.num_peers == 0 {
+                t!("link.status.listening").to_string()
+            } else {
+                format!("{}", clock.num_peers)
+            };
+            let value = ui.monospace(&status);
+            if label.hovered() || value.hovered() {
+                crate::widgets::hint::set(&ctx, t!("link.hint.peers"));
+            }
+            ui.end_row();
+        });
 }
 
 fn show_welcome_header(ui: &mut egui::Ui) {
