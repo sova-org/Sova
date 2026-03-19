@@ -100,6 +100,14 @@ impl FeedbackEngine {
             .and_then(|guard| guard.as_ref().map(|scope| scope.read_samples()))
             .unwrap_or_default()
     }
+
+    pub fn peak_data(&self) -> Vec<f32> {
+        self.audio_thread
+            .as_ref()
+            .and_then(|at| at.peaks.lock().ok())
+            .and_then(|guard| guard.as_ref().map(|p| p.read_and_reset()))
+            .unwrap_or_default()
+    }
 }
 
 impl Drop for FeedbackEngine {

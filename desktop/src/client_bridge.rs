@@ -88,6 +88,7 @@ pub struct ClientBridge {
     clock: ClockState,
     audio_state: AudioEngineState,
     scope_data: Vec<f32>,
+    peak_data: Vec<f32>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
     languages: Vec<LanguageDefinition>,
@@ -139,6 +140,7 @@ impl ClientBridge {
             clock: ClockState::default(),
             audio_state: AudioEngineState::default(),
             scope_data: Vec::new(),
+            peak_data: Vec::new(),
             peers: Vec::new(),
             confirmed_username: None,
             languages: Vec::new(),
@@ -479,6 +481,9 @@ impl ClientBridge {
                 ServerMessage::ScopeData(data) => {
                     self.scope_data = data;
                 }
+                ServerMessage::PeakData(data) => {
+                    self.peak_data = data;
+                }
                 ServerMessage::PeersUpdated(new_peers) => {
                     let time = now_hhmm();
                     for p in &new_peers {
@@ -616,6 +621,10 @@ impl ClientBridge {
             if !data.is_empty() {
                 self.scope_data = data;
             }
+            let peaks = engine.peak_data();
+            if !peaks.is_empty() {
+                self.peak_data = peaks;
+            }
         }
     }
 
@@ -627,6 +636,7 @@ impl ClientBridge {
         self.clock = ClockState::default();
         self.audio_state = AudioEngineState::default();
         self.scope_data.clear();
+        self.peak_data.clear();
         self.peers.clear();
         self.confirmed_username = None;
         self.languages.clear();
@@ -677,6 +687,10 @@ impl ClientBridge {
 
     pub fn scope_data(&self) -> &[f32] {
         &self.scope_data
+    }
+
+    pub fn peak_data(&self) -> &[f32] {
+        &self.peak_data
     }
 
     pub fn start_feedback(&mut self, audio_config: AudioRestartConfig) {

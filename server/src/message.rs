@@ -50,6 +50,7 @@ pub enum ServerMessage {
     },
     AudioEngineState(AudioEngineState),
     ScopeData(Vec<f32>),
+    PeakData(Vec<f32>),
     Error(SovaError),
     FeedbackEnabled {
         scene: Scene,
@@ -196,6 +197,7 @@ mod tests {
             },
             ServerMessage::AudioEngineState(audio),
             ServerMessage::ScopeData(vec![0.1, -0.5, 0.9]),
+            ServerMessage::PeakData(vec![0.8, 0.6]),
             ServerMessage::Error(SovaError {
                 line: 0,
                 frame: 1,

@@ -5,7 +5,7 @@ use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
 
-use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
+use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture};
 use crate::client::serialize_to_wire_frame;
 use crate::message::ServerMessage;
 use crate::server::{AudioRestartConfig, BroadcastItem, ClientRegistry};
@@ -17,6 +17,7 @@ pub struct AudioThread {
     pub thread_handle: std::thread::JoinHandle<()>,
     pub running: Arc<AtomicBool>,
     pub scope: Arc<StdMutex<Option<Arc<ScopeCapture>>>>,
+    pub peaks: Arc<StdMutex<Option<Arc<PeakCapture>>>>,
     pub master_gain: Arc<AtomicU32>,
 }
 
@@ -33,6 +34,8 @@ pub fn spawn_audio_thread(
     let running_flag = Arc::clone(&running);
     let scope_slot: Arc<StdMutex<Option<Arc<ScopeCapture>>>> = Arc::new(StdMutex::new(None));
     let scope_slot_inner = Arc::clone(&scope_slot);
+    let peaks_slot: Arc<StdMutex<Option<Arc<PeakCapture>>>> = Arc::new(StdMutex::new(None));
+    let peaks_slot_inner = Arc::clone(&peaks_slot);
     let master_gain = Arc::new(AtomicU32::new(1.0f32.to_bits()));
     let master_gain_inner = Arc::clone(&master_gain);
 
@@ -63,6 +66,9 @@ pub fn spawn_audio_thread(
                             }
                             if let Ok(mut slot) = scope_slot_inner.lock() {
                                 *slot = mgr.scope_capture();
+                            }
+                            if let Ok(mut slot) = peaks_slot_inner.lock() {
+                                *slot = mgr.peak_capture();
                             }
                             #[cfg(feature = "soundfont")]
                             mgr.load_soundfont_from_paths(&initial_config.sample_paths);
@@ -128,6 +134,9 @@ pub fn spawn_audio_thread(
                                     if let Ok(mut slot) = scope_slot_inner.lock() {
                                         *slot = new_mgr.scope_capture();
                                     }
+                                    if let Ok(mut slot) = peaks_slot_inner.lock() {
+                                        *slot = new_mgr.peak_capture();
+                                    }
                                     #[cfg(feature = "soundfont")]
                                     new_mgr.load_soundfont_from_paths(&request.config.sample_paths);
                                     manager = Some(new_mgr);
@@ -180,6 +189,9 @@ pub fn spawn_audio_thread(
                             if let Ok(mut slot) = scope_slot_inner.lock() {
                                 *slot = mgr.scope_capture();
                             }
+                            if let Ok(mut slot) = peaks_slot_inner.lock() {
+                                *slot = mgr.peak_capture();
+                            }
                         }
                         Err(e) => {
                             eprintln!("[ audio ] Reconnection failed: {e:?}");
@@ -195,6 +207,17 @@ pub fn spawn_audio_thread(
                 if let Some(scope) = mgr.scope_capture() {
                     let samples = scope.read_samples();
                     let msg = ServerMessage::ScopeData(samples);
+                    if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                        client_registry.broadcast(BroadcastItem::Raw {
+                            bytes: Arc::new(bytes),
+                            droppable: true,
+                        });
+                    }
+                }
+
+                if let Some(peaks) = mgr.peak_capture() {
+                    let data = peaks.read_and_reset();
+                    let msg = ServerMessage::PeakData(data);
                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
                         client_registry.broadcast(BroadcastItem::Raw {
                             bytes: Arc::new(bytes),
@@ -233,6 +256,7 @@ pub fn spawn_audio_thread(
         thread_handle,
         running,
         scope: scope_slot,
+        peaks: peaks_slot,
         master_gain,
     }
 }

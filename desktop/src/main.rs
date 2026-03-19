@@ -859,7 +859,7 @@ impl eframe::App for SovaApp {
                 DocSide::Right => egui::containers::panel::Side::Left,
             };
             self.vu_meter_panel
-                .show_side_panel(ctx, self.bridge.scope_data(), vu_side);
+                .show_side_panel(ctx, self.bridge.peak_data(), vu_side);
         }
 
         // Render visuals shader as background layer
