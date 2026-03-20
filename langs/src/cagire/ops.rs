@@ -101,7 +101,7 @@ pub enum Op {
     ClearCmd,
     SetSpeed,
     At,
-    Arp,
+    AtLoop(Arc<[Op]>),
     IntRange,
     StepRange,
     Generate,

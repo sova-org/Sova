@@ -11,7 +11,6 @@ pub enum Value {
     Str(Arc<str>),
     Quotation(Arc<[Op]>),
     CycleList(Arc<[Value]>),
-    ArpList(Arc<[Value]>),
 }
 
 impl Value {
@@ -44,7 +43,7 @@ impl Value {
             Value::Float(f) => *f != 0.0,
             Value::Str(s) => !s.is_empty(),
             Value::Quotation(..) => true,
-            Value::CycleList(items) | Value::ArpList(items) => !items.is_empty(),
+            Value::CycleList(items) => !items.is_empty(),
         }
     }
 
@@ -53,7 +52,7 @@ impl Value {
             Value::Int(i) => i.to_string(),
             Value::Float(f) => f.to_string(),
             Value::Str(s) => s.to_string(),
-            Value::Quotation(..) | Value::CycleList(_) | Value::ArpList(_) => String::new(),
+            Value::Quotation(..) | Value::CycleList(_) => String::new(),
         }
     }
 
@@ -62,7 +61,7 @@ impl Value {
             Value::Int(i) => Some(VariableValue::Integer(*i)),
             Value::Float(f) => Some(VariableValue::Float(*f)),
             Value::Str(s) => Some(VariableValue::Str(s.to_string())),
-            Value::Quotation(_) | Value::CycleList(_) | Value::ArpList(_) => None,
+            Value::Quotation(_) | Value::CycleList(_) => None,
         }
     }
 
@@ -83,6 +82,7 @@ pub(super) struct CmdRegister {
     params: Vec<(&'static str, Value)>,
     deltas: Vec<Value>,
     global_params: Vec<(&'static str, Value)>,
+    delta_secs: Option<f64>,
 }
 
 impl CmdRegister {
@@ -92,6 +92,7 @@ impl CmdRegister {
             params: Vec::with_capacity(16),
             deltas: Vec::with_capacity(4),
             global_params: Vec::new(),
+            delta_secs: None,
         }
     }
 
@@ -158,9 +159,26 @@ impl CmdRegister {
         std::mem::take(&mut self.global_params)
     }
 
+    pub(super) fn set_delta_secs(&mut self, secs: f64) {
+        self.delta_secs = Some(secs);
+    }
+
+    pub(super) fn take_delta_secs(&mut self) -> Option<f64> {
+        self.delta_secs.take()
+    }
+
+    pub(super) fn clear_sound(&mut self) {
+        self.sound = None;
+    }
+
+    pub(super) fn clear_params(&mut self) {
+        self.params.clear();
+    }
+
     pub(super) fn clear(&mut self) {
         self.sound = None;
         self.params.clear();
         self.deltas.clear();
+        self.delta_secs = None;
     }
 }

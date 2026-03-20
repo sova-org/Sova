@@ -97,7 +97,6 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "tempo!" => Op::SetTempo,
         "speed!" => Op::SetSpeed,
         "at" => Op::At,
-        "arp" => Op::Arp,
         "adsr" => Op::Adsr,
         "ad" => Op::Ad,
         "apply" => Op::Apply,

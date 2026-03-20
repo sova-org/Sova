@@ -267,10 +267,10 @@ A chord progression cycling every line iteration:
 note sine snd .
 ```
 
-Arpeggiate a chord across the frame's time divisions:
+Arpeggiate a chord across time divisions using `at`:
 
 ```forth
-c4 min7 arp note 0.5 decay sine snd .
+0 0.25 0.5 0.75 at c4 e4 g4 b4 4 cycle note 0.5 decay sine snd .
 ```
 
 Random notes from a scale:

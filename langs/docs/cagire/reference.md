@@ -119,7 +119,6 @@ clear                       ;; reset sound register
 | `sound` / `snd` | `(name --)` | Set sound name |
 | `.` | `(--)` | Emit current event |
 | `clear` | `(--)` | Reset sound register |
-| `arp` | `(v..n -- arplist)` | Wrap stack values as arpeggio list |
 | `all` | `(--)` | Apply current params to all subsequent sounds |
 | `noall` | `(--)` | Clear global params set by `all` |
 
@@ -350,7 +349,7 @@ Words: `scan`, `wtlen`.
 | `bjork` | `(quot k n --)` | Euclidean distribution by step |
 | `pbjork` | `(quot k n --)` | Euclidean distribution by pattern |
 | `loop` | `(n --)` | Fit sample to n beats |
-| `at` | `(v..n --)` | Set delta timing for emit |
+| `at` | `(v..n --)` | Looping block: re-executes body per delta. Close with `.` or `done` |
 | `tempo!` | `(bpm --)` | Set global tempo |
 | `speed!` | `(multiplier --)` | Set line speed multiplier |
 

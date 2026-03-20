@@ -4,8 +4,7 @@ pub(super) const WORDS: &[Word] = &[
     // Sound
     Word { name: "sound", aliases: &["snd"], category: "Sound", stack: "(name --)", desc: "Begin sound command", example: "\"kick\" sound", compile: Simple, varargs: false },
     Word { name: ".", aliases: &[], category: "Sound", stack: "(--)", desc: "Emit current sound", example: "\"kick\" snd .", compile: Simple, varargs: false },
-    Word { name: "arp", aliases: &[], category: "Sound", stack: "(v1..vn -- arplist)", desc: "Wrap stack values as arpeggio list", example: "c4 e4 g4 arp note", compile: Simple, varargs: true },
-    Word { name: "clear", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear sound register", example: "clear", compile: Simple, varargs: false },
+Word { name: "clear", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear sound register", example: "clear", compile: Simple, varargs: false },
     Word { name: "all", aliases: &[], category: "Sound", stack: "(--)", desc: "Apply current params to all sounds", example: "500 lpf 0.5 verb all", compile: Simple, varargs: false },
     Word { name: "noall", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear global params", example: "noall", compile: Simple, varargs: false },
     Word { name: "rec", aliases: &[], category: "Sound", stack: "(name --)", desc: "Toggle recording audio output to named sample", example: "\"loop1\" rec", compile: Simple, varargs: false },

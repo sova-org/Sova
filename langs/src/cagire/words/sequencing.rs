@@ -33,7 +33,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "loop", aliases: &[], category: "Time", stack: "(n --)", desc: "Fit sample to n beats", example: "\"break\" snd 4 loop .", compile: Simple, varargs: false },
     Word { name: "tempo!", aliases: &[], category: "Time", stack: "(bpm --)", desc: "Set global tempo", example: "140 tempo!", compile: Simple, varargs: false },
     Word { name: "speed!", aliases: &[], category: "Time", stack: "(multiplier --)", desc: "Set pattern speed multiplier", example: "2.0 speed!", compile: Simple, varargs: false },
-    Word { name: "at", aliases: &[], category: "Time", stack: "(v1..vn --)", desc: "Set delta context for emit timing", example: "0 0.5 at \"kick\" snd .", compile: Simple, varargs: true },
+    Word { name: "at", aliases: &[], category: "Time", stack: "(v1..vn --)", desc: "Looping block: re-executes body per delta. Close with . or done", example: "0 0.5 at kick snd . | 0 0.5 at !x done", compile: Simple, varargs: true },
     // Context
     Word { name: "step", aliases: &[], category: "Context", stack: "(-- n)", desc: "Current step index", example: "step", compile: Context("step"), varargs: false },
     Word { name: "beat", aliases: &[], category: "Context", stack: "(-- f)", desc: "Current beat position", example: "beat", compile: Context("beat"), varargs: false },
