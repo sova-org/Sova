@@ -200,6 +200,7 @@ impl Default for ClientSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioSettings {
+    pub host: String,
     pub output_device: String,
     pub input_device: String,
     pub channels: u16,
@@ -212,6 +213,7 @@ pub struct AudioSettings {
 impl Default for AudioSettings {
     fn default() -> Self {
         Self {
+            host: String::new(),
             output_device: String::new(),
             input_device: String::new(),
             channels: 2,

@@ -29,8 +29,10 @@ use sova_core::{
 
 use crate::message::ServerMessage;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AudioRestartConfig {
+    pub host: Option<String>,
     pub device: Option<String>,
     pub input_device: Option<String>,
     pub channels: u16,

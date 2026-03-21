@@ -265,6 +265,9 @@ fn build_doux_config(cfg: &AudioRestartConfig) -> DouxConfig {
     let mut config = DouxConfig::default()
         .with_channels(cfg.channels)
         .with_max_voices(cfg.max_voices);
+    if let Some(ref host) = cfg.host {
+        config = config.with_host(host);
+    }
     if let Some(ref device) = cfg.device {
         config = config.with_output_device(device);
     }

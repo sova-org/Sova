@@ -74,6 +74,11 @@ struct Cli {
     no_audio: bool,
 
     #[cfg(feature = "audio")]
+    /// Audio host/driver (e.g. coreaudio, jack, alsa, wasapi)
+    #[arg(long, value_name = "HOST")]
+    audio_host: Option<String>,
+
+    #[cfg(feature = "audio")]
     /// Audio output device (name or index, uses system default if not specified)
     #[arg(long, value_name = "DEVICE")]
     audio_device: Option<String>,
@@ -148,6 +153,7 @@ async fn main() {
     #[cfg(feature = "audio")]
     let (audio_restart_tx, audio_cmd_tx, audio_thread) = if !cli.no_audio {
         let initial_config = AudioRestartConfig {
+            host: cli.audio_host.clone(),
             device: cli.audio_device.clone(),
             input_device: cli.audio_input_device.clone(),
             channels: cli.audio_channels,
