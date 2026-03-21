@@ -58,3 +58,4 @@ DEBUG*
 **/claude-debug*
 
 releases/
+.cache/

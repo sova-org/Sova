@@ -1,0 +1,9 @@
+# Sova build targets — each triple defines a compilation platform.
+# Everything else (os, arch, cross, alias, label) is derived by build.py.
+triples = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
