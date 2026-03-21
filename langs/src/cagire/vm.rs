@@ -284,10 +284,30 @@ impl CagireVM {
                 }
 
                 Op::NewCmd => {
-                    cmd.set_sound(pop_or_collect(stack)?);
+                    ensure(stack, 1)?;
+                    let values = drain_skip_quotations(stack);
+                    if values.is_empty() {
+                        return Err("expected sound name".into());
+                    }
+                    let val = if values.len() == 1 {
+                        values.into_iter().next().unwrap()
+                    } else {
+                        Value::CycleList(Arc::from(values))
+                    };
+                    cmd.set_sound(val);
                 }
                 Op::SetParam(param) => {
-                    cmd.set_param(param, pop_or_collect(stack)?);
+                    ensure(stack, 1)?;
+                    let values = drain_skip_quotations(stack);
+                    if values.is_empty() {
+                        return Err("expected parameter value".into());
+                    }
+                    let val = if values.len() == 1 {
+                        values.into_iter().next().unwrap()
+                    } else {
+                        Value::CycleList(Arc::from(values))
+                    };
+                    cmd.set_param(param, val);
                 }
 
                 Op::Emit => {
@@ -1405,18 +1425,23 @@ fn drain_select_run(
     select_and_run(selected, stack, events, cmd, vm, ctx, eval_ctx)
 }
 
+fn drain_skip_quotations(stack: &mut Vec<Value>) -> Vec<Value> {
+    let values = std::mem::take(stack);
+    let mut result = Vec::new();
+    for v in values {
+        if matches!(v, Value::Quotation(..)) {
+            stack.push(v);
+        } else {
+            result.push(v);
+        }
+    }
+    result
+}
+
 fn pop(stack: &mut Vec<Value>) -> Result<Value, String> {
     stack.pop().ok_or_else(|| "stack underflow".to_string())
 }
 
-fn pop_or_collect(stack: &mut Vec<Value>) -> Result<Value, String> {
-    ensure(stack, 1)?;
-    Ok(if stack.len() == 1 {
-        stack.pop().unwrap()
-    } else {
-        Value::CycleList(Arc::from(std::mem::take(stack)))
-    })
-}
 
 fn pop_int(stack: &mut Vec<Value>) -> Result<i64, String> {
     pop(stack)?.as_int()
@@ -1812,5 +1837,148 @@ mod tests {
         let events = eval("10 1 ccval note .");
         assert_eq!(events.len(), 1);
         assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(0, _, _, _, _)));
+    }
+
+    // --- at + cycle tests (ported from standalone Cagire) ---
+
+    fn eval_with_runs(script: &str, runs: usize) -> Vec<(ConcreteEvent, SyncTime)> {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        eval_ctx.frame_triggers = runs;
+        vm.evaluate(script, &mut eval_ctx).unwrap()
+    }
+
+    fn get_midi_notes(events: &[(ConcreteEvent, SyncTime)]) -> Vec<u64> {
+        events.iter().filter_map(|(ev, _)| match ev {
+            ConcreteEvent::MidiNote(note, _, _, _, _) => Some(*note),
+            _ => None,
+        }).collect()
+    }
+
+    fn get_event_times(events: &[(ConcreteEvent, SyncTime)]) -> Vec<SyncTime> {
+        events.iter().map(|(_, t)| *t).collect()
+    }
+
+    fn get_dirt_param(ev: &ConcreteEvent, key: &str) -> Option<f64> {
+        match ev {
+            ConcreteEvent::Dirt { args, .. } => {
+                args.get(key).and_then(|v| match v {
+                    VariableValue::Float(f) => Some(*f),
+                    VariableValue::Integer(i) => Some(*i as f64),
+                    _ => None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn test_at_single_delta() {
+        let events = eval("0.5 at sine snd 440 freq .");
+        assert_eq!(events.len(), 1);
+        assert!(events[0].1 > 0, "0.5 delta should produce non-zero time offset");
+    }
+
+    #[test]
+    fn test_at_list_deltas() {
+        let events = eval("0 0.5 at sine snd 440 freq .");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1, 0, "first delta=0 should have time 0");
+        assert!(events[1].1 > 0, "second delta=0.5 should have non-zero time");
+    }
+
+    #[test]
+    fn test_at_loop_with_cycle_notes() {
+        let events = eval_with_runs(
+            "0 0.25 0.5 0.75 at [ c4 e4 g4 b4 ] cycle note .",
+            0,
+        );
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 64, 67, 71]);
+    }
+
+    #[test]
+    fn test_at_loop_cycle_wraps() {
+        let events = eval_with_runs(
+            "0 0.25 0.5 0.75 at [ c4 e4 ] cycle note .",
+            0,
+        );
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 64, 60, 64]);
+    }
+
+    #[test]
+    fn test_at_loop_rand_different_per_subdivision() {
+        let events = eval("0 0.5 at sine snd 1 1000 rand freq .");
+        assert_eq!(events.len(), 2);
+        let f0 = get_dirt_param(&events[0].0, "freq");
+        let f1 = get_dirt_param(&events[1].0, "freq");
+        assert!(f0.is_some() && f1.is_some());
+        assert_ne!(f0, f1, "rand should produce different values per at subdivision");
+    }
+
+    #[test]
+    fn test_at_loop_poly_cycling() {
+        let events = eval("0 0.5 at sine snd c4 e4 note .");
+        assert_eq!(events.len(), 4);
+        // Each at iteration emits 2 poly voices (c4=60, e4=64)
+        let notes: Vec<f64> = events.iter().filter_map(|(ev, _)| get_dirt_param(ev, "note")).collect();
+        assert_eq!(notes, vec![60.0, 64.0, 60.0, 64.0]);
+    }
+
+    #[test]
+    fn test_at_loop_cycle_advances_across_runs() {
+        for base_runs in 0..3 {
+            let events = eval_with_runs(
+                "0 0.5 at [ c4 e4 g4 ] cycle note .",
+                base_runs,
+            );
+            assert_eq!(events.len(), 2, "base_runs={base_runs}");
+            let notes = get_midi_notes(&events);
+            let expected_0 = [60, 64, 67][(base_runs * 2) % 3];
+            let expected_1 = [60, 64, 67][(base_runs * 2 + 1) % 3];
+            assert_eq!(notes[0], expected_0, "runs={base_runs}: iter 0");
+            assert_eq!(notes[1], expected_1, "runs={base_runs}: iter 1");
+        }
+    }
+
+    #[test]
+    fn test_at_loop_done_no_emit() {
+        let events = eval("0 0.5 at [ 1 2 ] cycle drop done");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_at_loop_done_sets_variables() {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let events = eval_vm(&mut vm, &mut tctx, "0 0.5 at [ 10 20 ] cycle !x done @x note .");
+        assert_eq!(events.len(), 1);
+        // Last iteration wins: cycle idx 1 -> 20
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes[0], 20);
+    }
+
+    #[test]
+    fn test_at_loop_timing_increases() {
+        let events = eval("0 0.25 0.5 0.75 at sine snd 440 freq .");
+        assert_eq!(events.len(), 4);
+        let times = get_event_times(&events);
+        assert_eq!(times[0], 0);
+        assert!(times[1] > times[0]);
+        assert!(times[2] > times[1]);
+        assert!(times[3] > times[2]);
+    }
+
+    #[test]
+    fn test_at_loop_midi_note_emit() {
+        let events = eval("0 0.25 0.5 at 60 note .");
+        assert_eq!(events.len(), 3);
+        for (ev, _) in &events {
+            assert!(matches!(ev, ConcreteEvent::MidiNote(60, _, _, _, _)));
+        }
     }
 }

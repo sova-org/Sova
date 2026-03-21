@@ -105,11 +105,7 @@ impl CmdRegister {
     }
 
     pub(super) fn set_param(&mut self, key: &'static str, val: Value) {
-        if let Some(existing) = self.params.iter_mut().find(|(k, _)| *k == key) {
-            existing.1 = val;
-        } else {
-            self.params.push((key, val));
-        }
+        self.params.push((key, val));
     }
 
     pub(super) fn set_deltas(&mut self, deltas: Vec<Value>) {
