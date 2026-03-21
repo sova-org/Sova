@@ -1156,9 +1156,17 @@ impl ScenePanel {
 
         let num_lines = scene.lines.len();
         if num_lines == 0 {
+            self.cursor = None;
             return;
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
+
+        // Clamp cursor if scene shrank
+        let li = li.min(num_lines - 1);
+        let fi = fi.min(line_lens[li].saturating_sub(1));
+        if (li, fi) != self.cursor.unwrap() {
+            self.cursor = Some((li, fi));
+        }
 
         // Read all keys
         let (
