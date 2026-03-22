@@ -16,6 +16,7 @@ pub struct AppSettings {
     pub spectrum: SpectrumSettings,
     pub visuals: VisualsSettings,
     pub doc: DocSettings,
+    pub scene: SceneSettings,
     pub recent_scenes: Vec<PathBuf>,
     pub dismissed_tips: Vec<String>,
 }
@@ -221,6 +222,22 @@ impl Default for AudioSettings {
             max_voices: 32,
             sample_paths: Vec::new(),
             master_volume: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SceneSettings {
+    pub prelude_collapsed: bool,
+    pub prelude_col_width: f32,
+}
+
+impl Default for SceneSettings {
+    fn default() -> Self {
+        Self {
+            prelude_collapsed: true,
+            prelude_col_width: 300.0,
         }
     }
 }

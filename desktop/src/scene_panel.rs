@@ -13,7 +13,8 @@ use crate::widgets::syntax_highlight::SyntaxTheme;
 use crate::widgets::{
     EditorContext, EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
 };
-use crate::widgets::inline_scene_view::InlineFrameState;
+use crate::widgets::inline_scene_view::{InlineFrameState, InlineScriptState};
+use sova_core::schedule::SchedulerMessage;
 
 pub fn resolve_default_language(preferred: &str, available: &[LanguageDefinition]) -> String {
     if available.is_empty() || available.iter().any(|l| l.name == preferred) {
@@ -99,7 +100,6 @@ pub struct PanelVisibility {
     pub debug: bool,
 }
 
-#[derive(Default)]
 pub struct ScenePanel {
     cursor: Option<(usize, usize)>,
     anchor: Option<(usize, usize)>,
@@ -113,6 +113,31 @@ pub struct ScenePanel {
     scroll_to_cursor: bool,
     last_line_count: usize,
     last_frame_counts: Vec<usize>,
+    pub prelude_states: Vec<InlineScriptState>,
+    pub prelude_collapsed: bool,
+    pub prelude_col_width: f32,
+}
+
+impl Default for ScenePanel {
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            anchor: None,
+            selection: BTreeSet::new(),
+            clipboard: Vec::new(),
+            context_target: None,
+            frame_states: HashMap::new(),
+            column_widths: Vec::new(),
+            currently_editing: None,
+            edit_mode: false,
+            scroll_to_cursor: false,
+            last_line_count: 0,
+            last_frame_counts: Vec::new(),
+            prelude_states: Vec::new(),
+            prelude_collapsed: true,
+            prelude_col_width: 300.0,
+        }
+    }
 }
 
 impl ScenePanel {
@@ -172,6 +197,9 @@ impl ScenePanel {
         // Sync frame state lifecycle
         self.sync_frame_states(scene, bridge);
 
+        // Sync prelude states
+        self.sync_prelude_states(&scene.prelude);
+
         // Integrate pending script edits from peers
         for (li, fi, ops) in pending_edits {
             if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
@@ -198,6 +226,9 @@ impl ScenePanel {
             .show(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+
+                    // Prelude column
+                    self.show_prelude_column(ui, available_height, accent, &opacity, &theme, editor_settings, bridge, &default_lang);
 
                     for li in 0..scene.lines.len() {
                         let col_width = self.column_widths[li];
@@ -1535,5 +1566,248 @@ impl ScenePanel {
             self.selection.insert((li, f));
         }
         self.cursor = Some(target);
+    }
+
+    fn sync_prelude_states(&mut self, prelude: &[Script]) {
+        // Grow or shrink to match
+        while self.prelude_states.len() < prelude.len() {
+            self.prelude_states
+                .push(InlineScriptState::new(&prelude[self.prelude_states.len()]));
+        }
+        self.prelude_states.truncate(prelude.len());
+        // Sync content from remote
+        for (state, script) in self.prelude_states.iter_mut().zip(prelude.iter()) {
+            state.sync_from_script(script);
+        }
+    }
+
+    fn show_prelude_column(
+        &mut self,
+        ui: &mut egui::Ui,
+        available_height: f32,
+        accent: egui::Color32,
+        opacity: &SceneOpacity,
+        theme: &SyntaxTheme,
+        editor_settings: &EditorSettings,
+        bridge: &ClientBridge,
+        default_lang: &str,
+    ) {
+        // Collapsed strip
+        if self.prelude_collapsed {
+            let strip_width = 24.0;
+            ui.allocate_ui(egui::vec2(strip_width, available_height), |ui| {
+                let rect = ui.available_rect_before_wrap();
+                ui.painter().rect_filled(
+                    rect,
+                    0.0,
+                    opacity.fill(ui.visuals().faint_bg_color, 1.0),
+                );
+
+                // Click to expand
+                let resp = ui.allocate_rect(rect, egui::Sense::click());
+                if resp.clicked() {
+                    self.prelude_collapsed = false;
+                }
+            });
+            ui.add_space(DRAG_HANDLE_WIDTH);
+            return;
+        }
+
+        let col_width = self.prelude_col_width;
+        ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
+            ui.vertical(|ui| {
+                // Header — matches line header pattern
+                let header_bg = opacity.fill(ui.visuals().faint_bg_color, 0.9);
+                egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(4, 2))
+                    .fill(header_bg)
+                    .show(ui, |ui| {
+                        opacity.override_widget_visuals(ui);
+                        ui.set_height(LINE_HEADER_HEIGHT - 4.0);
+                        ui.horizontal_centered(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+
+                            // Collapse button
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(crate::icons::CHEVRON_DOWN)
+                                            .small(),
+                                    )
+                                    .fill(egui::Color32::TRANSPARENT),
+                                )
+                                .clicked()
+                            {
+                                self.prelude_collapsed = true;
+                            }
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new(crate::icons::ADD)
+                                                    .small(),
+                                            )
+                                            .fill(egui::Color32::TRANSPARENT),
+                                        )
+                                        .clicked()
+                                    {
+                                        let mut scripts: Vec<Script> = bridge
+                                            .scene()
+                                            .map(|s| s.prelude.clone())
+                                            .unwrap_or_default();
+                                        scripts.push(Script::new(
+                                            String::new(),
+                                            default_lang.to_string(),
+                                        ));
+                                        bridge.send(ClientMessage::SchedulerControl(
+                                            SchedulerMessage::SetScenePrelude(scripts),
+                                        ));
+                                    }
+                                },
+                            );
+                        });
+                    });
+
+                // Script cells
+                egui::ScrollArea::vertical()
+                    .id_salt("prelude_scroll")
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        let prelude_len = self.prelude_states.len();
+                        for idx in 0..prelude_len {
+                            ui.push_id(("prelude_cell", idx), |ui| {
+                                let bg = opacity.fill(ui.visuals().faint_bg_color, 1.0);
+                                let cell_frame = egui::Frame::NONE
+                                    .fill(bg)
+                                    .inner_margin(egui::Margin {
+                                        left: 5,
+                                        right: 5,
+                                        ..egui::Margin::ZERO
+                                    });
+
+                                let frame_resp = cell_frame.show(ui, |ui| {
+                                    let frame_height = self.prelude_states[idx].height;
+                                    ui.set_width(ui.available_width());
+                                    ui.set_height(HEADER_HEIGHT + frame_height);
+
+                                    opacity.override_widget_visuals(ui);
+
+                                    // Header
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        ui.set_height(HEADER_HEIGHT);
+                                        self.prelude_states[idx].show_header(
+                                            ui,
+                                            idx,
+                                            prelude_len,
+                                            opacity,
+                                            bridge,
+                                        );
+                                    });
+
+                                    ui.separator();
+
+                                    // Body (code editor)
+                                    let syntax = bridge.syntax_map.get(
+                                        self.prelude_states[idx].lang.as_str(),
+                                    );
+                                    let syntax_pair = syntax.map(|cs| (cs, theme));
+                                    let reference = bridge
+                                        .languages()
+                                        .iter()
+                                        .find(|l| l.name == self.prelude_states[idx].lang)
+                                        .filter(|l| !l.documentation.reference.is_empty())
+                                        .map(|l| &l.documentation.reference);
+                                    let ctx = EditorContext {
+                                        settings: editor_settings,
+                                        syntax: syntax_pair,
+                                        reference,
+                                        peer_cursors: &[],
+                                        opacity: Some(opacity),
+                                    };
+                                    self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
+                                });
+
+                                let cell_rect = frame_resp.response.rect;
+
+                                // Height resize handle
+                                let handle_rect = egui::Rect::from_min_size(
+                                    egui::pos2(cell_rect.left(), cell_rect.bottom()),
+                                    egui::vec2(cell_rect.width(), DRAG_HANDLE_HEIGHT),
+                                );
+                                let handle_resp =
+                                    ui.allocate_rect(handle_rect, egui::Sense::drag());
+                                if handle_resp.dragged() {
+                                    self.prelude_states[idx].height =
+                                        (self.prelude_states[idx].height
+                                            + handle_resp.drag_delta().y)
+                                            .clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
+                                }
+                                if handle_resp.hovered() || handle_resp.dragged() {
+                                    let center_y = handle_rect.center().y;
+                                    ui.painter().hline(
+                                        handle_rect.x_range(),
+                                        center_y,
+                                        egui::Stroke::new(1.0, accent),
+                                    );
+                                    ui.ctx()
+                                        .set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                }
+
+                                ui.add_space(GAP);
+                            });
+                        }
+
+                        // Add script button (matches add frame button pattern)
+                        ui.add_space(4.0);
+                        let add_fill =
+                            opacity.fill(ui.visuals().widgets.inactive.bg_fill, 0.5);
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("+").strong(),
+                                )
+                                .fill(add_fill)
+                                .min_size(egui::vec2(ui.available_width(), 22.0)),
+                            )
+                            .clicked()
+                        {
+                            let mut scripts: Vec<Script> = bridge
+                                .scene()
+                                .map(|s| s.prelude.clone())
+                                .unwrap_or_default();
+                            scripts.push(Script::new(
+                                String::new(),
+                                default_lang.to_string(),
+                            ));
+                            bridge.send(ClientMessage::SchedulerControl(
+                                SchedulerMessage::SetScenePrelude(scripts),
+                            ));
+                        }
+                    });
+            });
+        });
+
+        // Column resize drag handle
+        let (drag_rect, drag_resp) = ui.allocate_exact_size(
+            egui::vec2(DRAG_HANDLE_WIDTH, available_height),
+            egui::Sense::drag(),
+        );
+        if drag_resp.dragged() {
+            self.prelude_col_width = (self.prelude_col_width + drag_resp.drag_delta().x)
+                .clamp(MIN_COL_WIDTH, MAX_COL_WIDTH);
+        }
+        if drag_resp.hovered() || drag_resp.dragged() {
+            let center_x = drag_rect.center().x;
+            ui.painter().vline(
+                center_x,
+                drag_rect.y_range(),
+                egui::Stroke::new(1.0, accent),
+            );
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
     }
 }

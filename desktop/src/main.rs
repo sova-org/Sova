@@ -152,7 +152,9 @@ fn main() -> eframe::Result {
             let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
             let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar);
             let chat_panel = chat_panel::ChatPanel::new();
-            let scene_panel = scene_panel::ScenePanel::new();
+            let mut scene_panel = scene_panel::ScenePanel::new();
+            scene_panel.prelude_collapsed = s.scene.prelude_collapsed;
+            scene_panel.prelude_col_width = s.scene.prelude_col_width;
 
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
 
@@ -427,6 +429,10 @@ impl SovaApp {
                 shared: self.visuals.shared,
             },
             doc: self.doc_panel.settings.clone(),
+            scene: settings::SceneSettings {
+                prelude_collapsed: self.scene_panel.prelude_collapsed,
+                prelude_col_width: self.scene_panel.prelude_col_width,
+            },
             recent_scenes: self.recent_scenes.clone(),
             dismissed_tips: self.dismissed_tips.clone(),
         };

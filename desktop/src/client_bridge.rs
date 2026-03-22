@@ -459,6 +459,11 @@ impl ClientBridge {
                         scene.mode = mode;
                     }
                 }
+                ServerMessage::ScenePrelude(scripts) => {
+                    if let Some(scene) = &mut self.scene {
+                        scene.prelude = scripts;
+                    }
+                }
                 ServerMessage::FramePosition(p) => {
                     let now = Instant::now();
                     self.position_start.resize(p.len(), now);

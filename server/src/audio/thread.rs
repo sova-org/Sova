@@ -61,6 +61,13 @@ pub fn spawn_audio_thread(
                             if let Err(e) = devices.assign_slot(1, "Doux") {
                                 eprintln!("Failed to assign Doux to Slot 1: {}", e);
                             }
+                            let msg = ServerMessage::DeviceList(devices.device_list());
+                            if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                                client_registry.broadcast(BroadcastItem::Raw {
+                                    bytes: Arc::new(bytes),
+                                    droppable: false,
+                                });
+                            }
                             if let Ok(mut state) = state_cache.lock() {
                                 *state = mgr.state();
                             }
@@ -126,6 +133,13 @@ pub fn spawn_audio_thread(
                                     }
                                     if let Err(e) = devices.assign_slot(1, "Doux") {
                                         eprintln!("Failed to assign Doux to Slot 1: {}", e);
+                                    }
+                                    let msg = ServerMessage::DeviceList(devices.device_list());
+                                    if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                                        client_registry.broadcast(BroadcastItem::Raw {
+                                            bytes: Arc::new(bytes),
+                                            droppable: false,
+                                        });
                                     }
                                     let new_state = new_mgr.state();
                                     if let Ok(mut state) = state_cache.lock() {

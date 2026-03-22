@@ -889,8 +889,8 @@ impl CagireVM {
                     let n = pop_int(stack)?;
                     let k = pop_int(stack)?;
                     if k < 0 || n < 0 { return Err("euclid: k and n must be >= 0".into()); }
-                    for idx in euclidean_rhythm(k as usize, n as usize, 0) {
-                        stack.push(Value::Int(idx));
+                    for val in euclidean_rhythm(k as usize, n as usize, 0) {
+                        stack.push(Value::Float(val));
                     }
                 }
 
@@ -899,8 +899,8 @@ impl CagireVM {
                     let n = pop_int(stack)?;
                     let k = pop_int(stack)?;
                     if k < 0 || n < 0 || r < 0 { return Err("euclidrot: k, n, and r must be >= 0".into()); }
-                    for idx in euclidean_rhythm(k as usize, n as usize, r as usize) {
-                        stack.push(Value::Int(idx));
+                    for val in euclidean_rhythm(k as usize, n as usize, r as usize) {
+                        stack.push(Value::Float(val));
                     }
                 }
 
@@ -1504,16 +1504,25 @@ fn euclidean_hit(k: usize, n: usize, pos: usize) -> bool {
     ((pos + 1) * k) / n != (pos * k) / n
 }
 
-fn euclidean_rhythm(k: usize, n: usize, rotation: usize) -> Vec<i64> {
+fn euclidean_rhythm(k: usize, n: usize, rotation: usize) -> Vec<f64> {
     if k == 0 || n == 0 { return Vec::new(); }
-    if k >= n { return (0..n as i64).collect(); }
-    let mut result = Vec::with_capacity(k);
-    for pos in 0..n {
-        let rotated = (pos + rotation) % n;
-        if euclidean_hit(k, n, rotated) {
-            result.push(pos as i64);
-        }
+    let n_f = n as f64;
+    if k >= n {
+        let mut r: Vec<f64> = (0..n).map(|i| ((i + rotation) % n) as f64 / n_f).collect();
+        r.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        return r;
     }
+    let mut result = Vec::with_capacity(k);
+    let mut prev: i64 = -1;
+    for i in 0..n {
+        let bucket = (i * k / n) as i64;
+        if bucket != prev {
+            let pos = (i + rotation) % n;
+            result.push(pos as f64 / n_f);
+        }
+        prev = bucket;
+    }
+    result.sort_by(|a, b| a.partial_cmp(b).unwrap());
     result
 }
 

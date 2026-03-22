@@ -55,23 +55,28 @@ The distinction: `gen` is for building data. `times` is for doing things.
 
 ## Euclidean Patterns
 
-`euclid` distributes k hits evenly across n positions and pushes the hit indices:
+`euclid` distributes k hits evenly across n positions and pushes normalized floats (0.0–1.0):
 
 ```forth
-3 8 euclid      ;; 0 3 5
-4 8 euclid      ;; 0 2 4 6
-5 8 euclid      ;; 0 1 3 5 6
+3 8 euclid      ;; 0.0 0.375 0.75
+4 8 euclid      ;; 0.0 0.25 0.5 0.75
+5 8 euclid      ;; 0.0 0.25 0.5 0.625 0.875
 ```
 
 `euclidrot` adds a rotation parameter that shifts the pattern:
 
 ```forth
-3 8 0 euclidrot   ;; 0 3 5 (no rotation)
-3 8 1 euclidrot   ;; 1 4 6
-3 8 2 euclidrot   ;; 1 4 6
+3 8 0 euclidrot   ;; 0.0 0.375 0.75 (no rotation)
+3 8 1 euclidrot   ;; 0.125 0.5 0.875
 ```
 
-These give you raw indices as data on the stack. This is different from `bjork` and `pbjork` (covered in the Randomness article), which execute a quotation on matching triggers. `euclid` gives you numbers to work with; `bjork` triggers actions.
+These are designed for use with `at` to place events within a frame:
+
+```forth
+3 8 euclid at kick snd .    ;; euclidean kick pattern
+```
+
+This is different from `bjork` and `pbjork` (covered in the Randomness article), which execute a quotation on matching triggers. `euclid` gives you normalized positions; `bjork` triggers actions.
 
 ## Transforming Sequences
 

@@ -30,3 +30,17 @@ shape(3, 0.5, 0.01).out()
 `gradient(speed)` — UV gradient.
 
 `solid(r, g, b, a)` — flat color.
+
+`rings(freq, speed)` — concentric rings radiating from center. `freq` controls
+the number of rings, `speed` controls outward expansion.
+
+```
+rings(8, 0.1).out()
+```
+
+`checker(cols, rows)` — checkerboard pattern. `cols` and `rows` set the grid
+density.
+
+```
+checker(4, 4).out()
+```

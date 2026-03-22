@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene}, schedule::{SchedulerMessage, playback::PlaybackState}, vm::{language::LanguageDefinition, variable::VariableValue}
+    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene, script::Script}, schedule::{SchedulerMessage, playback::PlaybackState}, vm::{language::LanguageDefinition, variable::VariableValue}
 };
 
 use crate::server::Snapshot;
@@ -71,6 +71,7 @@ pub enum ServerMessage {
         start_stop_sync: bool,
         num_peers: u32,
     },
+    ScenePrelude(Vec<Script>),
     HydraCode(String, String),
     ScriptEdit {
         sender: String,
@@ -232,6 +233,7 @@ mod tests {
                 num_peers: 3,
             },
             ServerMessage::HydraCode("alice".into(), "osc().out()".into()),
+            ServerMessage::ScenePrelude(vec![Script::default()]),
         ];
 
         for msg in &variants {

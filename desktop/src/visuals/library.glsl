@@ -122,6 +122,17 @@ vec4 solid(vec2 _st, float r, float g, float b, float a) {
   return vec4(r, g, b, a);
 }
 
+vec4 rings(vec2 _st, float freq, float speed) {
+  float d = length(_st - 0.5);
+  float v = sin((d * freq - iTime * speed) * 6.2832) * 0.5 + 0.5;
+  return vec4(vec3(v), 1.0);
+}
+
+vec4 checker(vec2 _st, float cols, float rows) {
+  float v = mod(floor(_st.x * cols) + floor(_st.y * rows), 2.0);
+  return vec4(vec3(v), 1.0);
+}
+
 vec2 rotate(vec2 _st, float angle, float speed) {
   vec2 xy = _st - vec2(0.5);
   float ang = angle + speed * iTime;
@@ -282,6 +293,26 @@ vec2 repeatY(vec2 _st, float reps, float offset) {
   vec2 st = _st * vec2(1.0, reps);
   st.x += step(1.0, mod(st.y, 2.0)) * offset;
   return fract(st);
+}
+
+vec2 polar(vec2 _st) {
+  vec2 p = _st - 0.5;
+  float r = length(p) * 2.0;
+  float a = atan(p.y, p.x) / 6.2832 + 0.5;
+  return vec2(a, r);
+}
+
+vec2 cart(vec2 _st) {
+  float a = (_st.x - 0.5) * 6.2832;
+  float r = _st.y * 0.5;
+  return vec2(cos(a), sin(a)) * r + 0.5;
+}
+
+vec2 fold(vec2 _st, float amount) {
+  vec2 p = (_st - 0.5) * (1.0 + amount);
+  p = abs(p);
+  p = fract(p);
+  return p;
 }
 
 vec4 shift(vec4 _c0, float r, float g, float b, float a) {

@@ -51,8 +51,8 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: ".,", aliases: &[], category: "Generator", stack: "(start end step -- start start+step ...)", desc: "Arithmetic sequence with custom step", example: "0 1 0.25 .,", compile: Simple, varargs: false },
     Word { name: "gen", aliases: &[], category: "Generator", stack: "(quot n -- results...)", desc: "Execute quotation n times, push all results", example: "( 1 6 rand ) 4 gen", compile: Simple, varargs: true },
     Word { name: "geom..", aliases: &[], category: "Generator", stack: "(start ratio count -- ...)", desc: "Geometric sequence", example: "1 2 4 geom..", compile: Simple, varargs: false },
-    Word { name: "euclid", aliases: &[], category: "Generator", stack: "(k n -- i1 i2 ... ik)", desc: "Euclidean rhythm indices", example: "4 8 euclid", compile: Simple, varargs: false },
-    Word { name: "euclidrot", aliases: &[], category: "Generator", stack: "(k n r -- i1 i2 ... ik)", desc: "Euclidean rhythm indices with rotation", example: "3 8 2 euclidrot", compile: Simple, varargs: false },
+    Word { name: "euclid", aliases: &[], category: "Generator", stack: "(k n -- f1 f2 ... fk)", desc: "Euclidean rhythm as normalized positions (0.0–1.0)", example: "3 8 euclid at", compile: Simple, varargs: false },
+    Word { name: "euclidrot", aliases: &[], category: "Generator", stack: "(k n r -- f1 f2 ... fk)", desc: "Euclidean rhythm as normalized positions with rotation", example: "3 8 2 euclidrot at", compile: Simple, varargs: false },
     // Debug
     Word { name: "print", aliases: &[], category: "Debug", stack: "(v --)", desc: "Print top of stack to log", example: "42 print", compile: Simple, varargs: false },
 ];

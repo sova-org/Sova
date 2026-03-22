@@ -4,6 +4,7 @@ use eframe::egui;
 use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
+use sova_core::schedule::SchedulerMessage;
 use crate::scene_panel::new_frame;
 use sova_core::schedule::ActionTiming;
 use sova_server::{ClientMessage, TextOp};
@@ -598,5 +599,329 @@ impl InlineFrameState {
                 self.last_eval = None;
             }
         }
+    }
+}
+
+pub struct InlineScriptState {
+    pub editor: CodeEditor,
+    pub content: String,
+    pub lang: String,
+    pub dirty: bool,
+    pub lang_popup_open: bool,
+    pub lang_filter: String,
+    pub lang_popup_selection: usize,
+    pub height: f32,
+    pub editor_has_focus: bool,
+    pub last_eval: Option<Instant>,
+}
+
+impl InlineScriptState {
+    pub fn new(script: &Script) -> Self {
+        Self {
+            editor: CodeEditor::new(),
+            content: script.content().to_owned(),
+            lang: script.lang().to_owned(),
+            dirty: false,
+            lang_popup_open: false,
+            lang_filter: String::new(),
+            lang_popup_selection: 0,
+            height: crate::scene_panel::CELL_HEIGHT,
+            editor_has_focus: false,
+            last_eval: None,
+        }
+    }
+
+    pub fn sync_from_script(&mut self, script: &Script) {
+        if self.dirty {
+            return;
+        }
+        let remote_content = script.content();
+        let remote_lang = script.lang();
+        if remote_content != self.content || remote_lang != self.lang {
+            self.content = remote_content.to_owned();
+            self.lang = remote_lang.to_owned();
+        }
+    }
+
+    pub fn to_script(&self) -> Script {
+        Script::new(self.content.clone(), self.lang.clone())
+    }
+
+    pub fn show_header(
+        &mut self,
+        ui: &mut egui::Ui,
+        idx: usize,
+        prelude_len: usize,
+        opacity: &crate::scene_panel::SceneOpacity,
+        bridge: &ClientBridge,
+    ) {
+        // Cmd/Ctrl+L shortcut for language popup
+        let any_focus = ui.memory(|m| m.focused().is_some());
+        if any_focus {
+            let is_mac = ui.ctx().os().is_mac();
+            let shortcut_pressed = ui.input(|i| {
+                i.key_pressed(egui::Key::L)
+                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+            });
+            if shortcut_pressed {
+                self.lang_popup_open = !self.lang_popup_open;
+                self.lang_filter.clear();
+                self.lang_popup_selection = 0;
+            }
+        }
+
+        // Language selector
+        let btn_fill = ui.visuals().widgets.inactive.bg_fill;
+        let lang_btn = ui.add(
+            egui::Button::new(
+                egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
+                    .small(),
+            )
+            .fill(btn_fill),
+        );
+        if lang_btn.clicked() {
+            self.lang_popup_open = !self.lang_popup_open;
+            self.lang_filter.clear();
+            self.lang_popup_selection = 0;
+        }
+
+        self.show_lang_popup(ui, &lang_btn, opacity, bridge);
+
+        // Right-aligned: delete button + dirty indicator
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Delete button (only if more than one script, or always allow)
+            if prelude_len > 0 {
+                let del_btn = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::icons::CLOSE).small().color(COLOR_MUTED),
+                    )
+                    .fill(egui::Color32::TRANSPARENT),
+                );
+                if del_btn.clicked() {
+                    let mut scripts: Vec<Script> = bridge
+                        .scene()
+                        .map(|s| s.prelude.clone())
+                        .unwrap_or_default();
+                    if idx < scripts.len() {
+                        scripts.remove(idx);
+                        bridge.send(ClientMessage::SchedulerControl(
+                            SchedulerMessage::SetScenePrelude(scripts),
+                        ));
+                    }
+                }
+            }
+
+            // Dirty indicator
+            if self.dirty {
+                let discard_fill = COLOR_ERROR.linear_multiply(0.3);
+                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                    .small()
+                    .color(COLOR_ERROR);
+                if ui
+                    .add(egui::Button::new(discard_text).fill(discard_fill))
+                    .on_hover_text(t!("step.discard"))
+                    .clicked()
+                {
+                    if let Some(script) = bridge
+                        .scene()
+                        .and_then(|s| s.prelude.get(idx))
+                    {
+                        self.content = script.content().to_owned();
+                        self.lang = script.lang().to_owned();
+                        self.dirty = false;
+                    }
+                }
+            }
+        });
+    }
+
+    fn show_lang_popup(
+        &mut self,
+        ui: &mut egui::Ui,
+        lang_btn: &egui::Response,
+        opacity: &crate::scene_panel::SceneOpacity,
+        bridge: &ClientBridge,
+    ) {
+        if !self.lang_popup_open {
+            return;
+        }
+
+        let popup_id = ui.id().with("lang_popup");
+        let languages = bridge.languages();
+        let filter_lower = self.lang_filter.to_lowercase();
+        let filtered: Vec<_> = languages
+            .iter()
+            .filter(|l| l.name.to_lowercase().contains(&filter_lower))
+            .collect();
+
+        let mut close = false;
+        let area_resp = egui::Area::new(popup_id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(lang_btn.rect.left_bottom())
+            .show(ui.ctx(), |ui| {
+                let popup_frame = {
+                    let mut f = egui::Frame::popup(ui.style());
+                    f.fill = opacity.fill(f.fill, 1.0);
+                    f
+                };
+                popup_frame.show(ui, |ui| {
+                    opacity.override_widget_visuals(ui);
+                    ui.set_min_width(160.0);
+                    let filter_id = popup_id.with("filter");
+                    let filter_resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.lang_filter)
+                            .id(filter_id)
+                            .desired_width(150.0)
+                            .hint_text("Filter..."),
+                    );
+                    filter_resp.request_focus();
+
+                    let key_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
+                    let key_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
+                    let key_enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let key_escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+
+                    if key_escape {
+                        close = true;
+                    }
+
+                    if !filtered.is_empty() {
+                        if key_up {
+                            self.lang_popup_selection =
+                                self.lang_popup_selection.saturating_sub(1);
+                        }
+                        if key_down {
+                            self.lang_popup_selection =
+                                (self.lang_popup_selection + 1).min(filtered.len() - 1);
+                        }
+                        self.lang_popup_selection =
+                            self.lang_popup_selection.min(filtered.len().saturating_sub(1));
+
+                        if key_enter {
+                            let selected = &filtered[self.lang_popup_selection];
+                            if self.lang != selected.name {
+                                self.lang = selected.name.clone();
+                                self.dirty = true;
+                            }
+                            close = true;
+                        }
+                    }
+
+                    ui.separator();
+
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for (i, lang) in filtered.iter().enumerate() {
+                                let selected = i == self.lang_popup_selection;
+                                let resp = ui.selectable_label(selected, &lang.name);
+                                if resp.clicked() {
+                                    if self.lang != lang.name {
+                                        self.lang = lang.name.clone();
+                                        self.dirty = true;
+                                    }
+                                    close = true;
+                                }
+                            }
+                        });
+                });
+            });
+
+        if close
+            || (ui.input(|i| i.pointer.any_pressed())
+                && !area_resp
+                    .response
+                    .rect
+                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default()))
+                && !lang_btn
+                    .rect
+                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())))
+        {
+            self.lang_popup_open = false;
+        }
+    }
+
+    pub fn show_body(
+        &mut self,
+        ui: &mut egui::Ui,
+        idx: usize,
+        ctx: &EditorContext,
+        bridge: &ClientBridge,
+    ) {
+        let editor_id = ui.id().with("prelude_editor_body");
+        let editor_id_focus = editor_id.with("editor");
+
+        egui::ScrollArea::vertical()
+            .id_salt(("prelude_editor_scroll", idx))
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                let output = self.editor.show(
+                    ui,
+                    editor_id,
+                    &mut self.content,
+                    ctx,
+                );
+                if output.response.changed() {
+                    self.dirty = true;
+                }
+            });
+
+        self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));
+        if self.editor_has_focus {
+            let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+            if escape && !self.editor.is_completion_open() {
+                ui.memory_mut(|m| m.surrender_focus(editor_id_focus));
+                self.editor_has_focus = false;
+            }
+        }
+        if self.editor_has_focus {
+            let is_mac = ui.ctx().os().is_mac();
+            let eval = ui.input(|i| {
+                i.key_pressed(egui::Key::Enter)
+                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+            });
+            if eval {
+                self.evaluate(idx, bridge);
+            }
+        }
+
+        // Eval flash
+        if let Some(eval_time) = self.last_eval {
+            let elapsed = eval_time.elapsed().as_secs_f32();
+            if elapsed < 0.3 {
+                let t = elapsed / 0.3;
+                let alpha = ((1.0 - t) * 30.0) as u8;
+                let is_error = bridge
+                    .scene()
+                    .and_then(|s| s.prelude.get(idx))
+                    .is_some_and(|s| matches!(s.compilation_state(), &CompilationState::Error(_)));
+                let flash = if is_error {
+                    egui::Color32::from_rgba_unmultiplied(255, 60, 60, alpha)
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha)
+                };
+                ui.painter().rect_filled(ui.max_rect(), 0.0, flash);
+                ui.ctx().request_repaint();
+            } else {
+                self.last_eval = None;
+            }
+        }
+    }
+
+    fn evaluate(&mut self, idx: usize, bridge: &ClientBridge) {
+        let mut scripts: Vec<Script> = bridge
+            .scene()
+            .map(|s| s.prelude.clone())
+            .unwrap_or_default();
+        if idx < scripts.len() {
+            scripts[idx] = self.to_script();
+        } else {
+            scripts.push(self.to_script());
+        }
+        bridge.send(ClientMessage::SchedulerControl(
+            SchedulerMessage::SetScenePrelude(scripts),
+        ));
+        self.dirty = false;
+        self.last_eval = Some(Instant::now());
     }
 }

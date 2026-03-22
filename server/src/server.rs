@@ -688,6 +688,7 @@ fn notification_to_server_message(
     match notif {
         SovaNotification::UpdatedScene(p) => Ok(ServerMessage::SceneValue(p)),
         SovaNotification::UpdatedSceneMode(m) => Ok(ServerMessage::SceneMode(m)),
+        SovaNotification::UpdatedScenePrelude(scripts) => Ok(ServerMessage::ScenePrelude(scripts)),
         SovaNotification::UpdatedLines(lines) => Ok(ServerMessage::LineValues(lines)),
         SovaNotification::UpdatedLineConfigurations(lines) => {
             Ok(ServerMessage::LineConfigurations(lines))
