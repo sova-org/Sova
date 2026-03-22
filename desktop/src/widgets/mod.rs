@@ -4,9 +4,8 @@ mod code_editor;
 mod command_palette;
 mod confirm_dialog;
 pub mod hint;
-mod scene_grid;
+pub mod inline_scene_view;
 mod spectrum;
-mod step_editor;
 pub mod syntax_highlight;
 pub mod tip_popup;
 mod vu_meter;
@@ -14,18 +13,20 @@ mod waveform;
 
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
-pub use code_editor::{CodeEditor, EditorSettings, PeerCursor};
+pub use code_editor::{CodeEditor, EditorContext, EditorSettings, PeerCursor};
 pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
-pub use scene_grid::{
-    HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid,
-    SceneGridResponse,
-};
 pub use spectrum::Spectrum;
-pub use step_editor::StepEditorManager;
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
+
+pub fn smooth(buffer: &mut Vec<f32>, source: &[f32], factor: f32) {
+    buffer.resize(source.len(), 0.0);
+    for (b, &s) in buffer.iter_mut().zip(source) {
+        *b = *b * factor + s * (1.0 - factor);
+    }
+}
 
 pub const COLOR_OK: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(100, 200, 100);
 pub const COLOR_ERROR: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(200, 100, 100);
@@ -112,6 +113,34 @@ pub fn show_detached_viewport(
             });
         },
     );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn paint_highlighted_text(
+    ui: &eframe::egui::Ui,
+    pos: eframe::egui::Pos2,
+    text: &str,
+    match_indices: &[usize],
+    font: eframe::egui::FontId,
+    normal_color: eframe::egui::Color32,
+    highlight_color: eframe::egui::Color32,
+) {
+    let painter = ui.painter();
+    let chars: Vec<char> = text.chars().collect();
+    let mut x = pos.x;
+
+    for (i, &ch) in chars.iter().enumerate() {
+        let color = if match_indices.contains(&i) {
+            highlight_color
+        } else {
+            normal_color
+        };
+        let s = String::from(ch);
+        let galley = painter.layout_no_wrap(s, font.clone(), color);
+        let char_width = galley.rect.width();
+        painter.galley(eframe::egui::pos2(x, pos.y), galley, color);
+        x += char_width;
+    }
 }
 
 pub fn fuzzy_score(needle: &str, haystack: &str) -> Option<(i32, Vec<usize>)> {

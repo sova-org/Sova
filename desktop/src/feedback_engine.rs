@@ -9,7 +9,7 @@ use sova_core::{
     device_map::DeviceMap,
     schedule::SchedulerMessage,
 };
-use sova_server::{AudioEngineState, AudioRestartConfig, ClientRegistry};
+use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 
 pub struct FeedbackEngine {
@@ -18,6 +18,7 @@ pub struct FeedbackEngine {
     _world_handle: std::thread::JoinHandle<()>,
     devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
+    audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     _notification_drainer: std::thread::JoinHandle<()>,
 }
 
@@ -46,7 +47,7 @@ impl FeedbackEngine {
         let dummy_registry = ClientRegistry::new();
         let audio_thread = spawn_audio_thread(
             audio_config,
-            audio_engine_state,
+            Arc::clone(&audio_engine_state),
             devices.clone(),
             clock_server,
             dummy_registry,
@@ -62,6 +63,7 @@ impl FeedbackEngine {
             _world_handle: world_handle,
             devices,
             audio_thread: Some(audio_thread),
+            audio_engine_state,
             _notification_drainer: notification_drainer,
         })
     }
@@ -74,11 +76,36 @@ impl FeedbackEngine {
         let _ = self.sched_iface.send(msg);
     }
 
+    pub fn audio_state(&self) -> AudioEngineState {
+        self.audio_engine_state
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn restart_audio(&self, config: AudioRestartConfig) {
+        if let Some(at) = &self.audio_thread {
+            let (tx, _rx) = crossbeam_channel::bounded(1);
+            let _ = at.restart_tx.send(AudioRestartRequest {
+                config,
+                response_tx: tx,
+            });
+        }
+    }
+
     pub fn scope_data(&self) -> Vec<f32> {
         self.audio_thread
             .as_ref()
             .and_then(|at| at.scope.lock().ok())
             .and_then(|guard| guard.as_ref().map(|scope| scope.read_samples()))
+            .unwrap_or_default()
+    }
+
+    pub fn peak_data(&self) -> Vec<f32> {
+        self.audio_thread
+            .as_ref()
+            .and_then(|at| at.peaks.lock().ok())
+            .and_then(|guard| guard.as_ref().map(|p| p.read_and_reset()))
             .unwrap_or_default()
     }
 }
@@ -90,7 +117,5 @@ impl Drop for FeedbackEngine {
             let _ = at.thread_handle.join();
         }
         let _ = self.sched_iface.send(SchedulerMessage::Shutdown);
-        // Scheduler and world threads will terminate after receiving Shutdown.
-        // The notification drainer will exit when the channel closes.
     }
 }

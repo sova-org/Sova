@@ -148,9 +148,7 @@ impl SpectrumPanel {
 
         let smoothing = self.settings.smoothing;
         let raw = analyzer.analyze(scope_data);
-        for (i, &r) in raw.iter().enumerate() {
-            self.bands[i] = self.bands[i] * smoothing + r * (1.0 - smoothing);
-        }
+        widgets::smooth(&mut self.bands, &raw, smoothing);
 
         let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
         for (i, &b) in self.bands.iter().enumerate() {

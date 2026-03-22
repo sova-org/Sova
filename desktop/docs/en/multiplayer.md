@@ -1,8 +1,7 @@
 # Multiplayer
 
-Sova sessions are multiplayer. Multiple musicians connect to a shared server, edit
-the same scene, and stay synchronized through Ableton Link. The server owns all
-state; clients send edits and receive updates.
+Sova is designed from the ground up to allow people to pair and jam together over the network. Sova is built following a client / server architecture, and all sessions are multiplayer by default, even when you play alone. Multiple users can join a Sova server and they can all edit the same scene, same data, etc. If you decide not to share the scene, you will stay synchronized to other folks through the network anyways thanks to the Ableton Link protocol that we use internally for timing!
+
 
 ## Hosting a session
 

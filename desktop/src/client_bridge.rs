@@ -56,6 +56,9 @@ pub struct ClockState {
     pub phase: f64,
     pub quantum: f64,
     pub playing: bool,
+    pub num_peers: u32,
+    pub start_stop_sync: bool,
+    pub link_enabled: bool,
 }
 
 impl Default for ClockState {
@@ -66,6 +69,9 @@ impl Default for ClockState {
             phase: 0.0,
             quantum: 4.0,
             playing: false,
+            num_peers: 0,
+            start_stop_sync: true,
+            link_enabled: true,
         }
     }
 }
@@ -88,6 +94,7 @@ pub struct ClientBridge {
     clock: ClockState,
     audio_state: AudioEngineState,
     scope_data: Vec<f32>,
+    peak_data: Vec<f32>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
     languages: Vec<LanguageDefinition>,
@@ -103,6 +110,12 @@ pub struct ClientBridge {
     // Visual flashes for multiplayer liveness
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
     pub mutation_flashes: HashMap<(usize, usize), Instant>,
+
+    // Latest compilation error for toast display
+    pub last_error: Option<(String, Instant)>,
+
+    // Incoming script edits from peers
+    pub pending_script_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
 
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
@@ -133,6 +146,7 @@ impl ClientBridge {
             clock: ClockState::default(),
             audio_state: AudioEngineState::default(),
             scope_data: Vec::new(),
+            peak_data: Vec::new(),
             peers: Vec::new(),
             confirmed_username: None,
             languages: Vec::new(),
@@ -144,6 +158,8 @@ impl ClientBridge {
             remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
+            last_error: None,
+            pending_script_edits: Vec::new(),
             feedback_engine: None,
             send_tx: None,
             event_rx: None,
@@ -303,6 +319,7 @@ impl ClientBridge {
         }
         self.event_rx = None;
         self.status = ConnectionStatus::Disconnected;
+        self.clear_state();
     }
 
     pub fn send(&self, msg: ClientMessage) {
@@ -328,6 +345,7 @@ impl ClientBridge {
                     is_playing,
                     languages,
                     audio_engine_state,
+                    link_enabled,
                 } => {
                     self.confirmed_username = Some(username);
                     self.scene = Some(scene);
@@ -347,6 +365,9 @@ impl ClientBridge {
                         phase: 0.0,
                         quantum: link_state.2,
                         playing: is_playing,
+                        num_peers: link_state.3,
+                        start_stop_sync: link_state.4,
+                        link_enabled,
                     };
                     self.audio_state = audio_engine_state;
                     self.status = ConnectionStatus::Connected;
@@ -456,6 +477,10 @@ impl ClientBridge {
                 }
                 ServerMessage::PlaybackStateChanged(state) => {
                     self.clock.playing = !matches!(state, PlaybackState::Stopped);
+                    if !self.clock.playing {
+                        self.positions.clear();
+                        self.position_start.clear();
+                    }
                 }
                 ServerMessage::DeviceList(devices) => {
                     self.devices = devices;
@@ -465,6 +490,9 @@ impl ClientBridge {
                 }
                 ServerMessage::ScopeData(data) => {
                     self.scope_data = data;
+                }
+                ServerMessage::PeakData(data) => {
+                    self.peak_data = data;
                 }
                 ServerMessage::PeersUpdated(new_peers) => {
                     let time = now_hhmm();
@@ -500,9 +528,14 @@ impl ClientBridge {
                     match &state {
                         CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
                             self.compilation_flashes.insert((li, fi), (true, Instant::now()));
+                            self.last_error = None;
                         }
-                        CompilationState::Error(_) => {
+                        CompilationState::Error(e) => {
                             self.compilation_flashes.insert((li, fi), (false, Instant::now()));
+                            self.last_error = Some((
+                                format!("L{}:F{} — {}", li, fi, e.info),
+                                Instant::now(),
+                            ));
                         }
                         _ => {}
                     }
@@ -562,12 +595,22 @@ impl ClientBridge {
                         self.remote_hydra = Some((sender, code));
                     }
                 }
+                ServerMessage::ScriptEdit { sender, li, fi, ops } => {
+                    if self.confirmed_username.as_deref() != Some(&sender) {
+                        self.pending_script_edits.push((li, fi, ops));
+                    }
+                }
                 ServerMessage::CoreRestarted => {
                     self.errors.clear();
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                     self.positions.clear();
                     self.position_start.clear();
+                }
+                ServerMessage::LinkState { enabled, start_stop_sync, num_peers } => {
+                    self.clock.link_enabled = enabled;
+                    self.clock.start_stop_sync = start_stop_sync;
+                    self.clock.num_peers = num_peers;
                 }
                 ServerMessage::Snapshot(snapshot) => {
                     self.scene = Some(snapshot.scene);
@@ -588,9 +631,14 @@ impl ClientBridge {
 
         if let Some(engine) = &self.feedback_engine {
             self.devices = engine.devices().device_list();
+            self.audio_state = engine.audio_state();
             let data = engine.scope_data();
             if !data.is_empty() {
                 self.scope_data = data;
+            }
+            let peaks = engine.peak_data();
+            if !peaks.is_empty() {
+                self.peak_data = peaks;
             }
         }
     }
@@ -603,6 +651,7 @@ impl ClientBridge {
         self.clock = ClockState::default();
         self.audio_state = AudioEngineState::default();
         self.scope_data.clear();
+        self.peak_data.clear();
         self.peers.clear();
         self.confirmed_username = None;
         self.languages.clear();
@@ -655,6 +704,10 @@ impl ClientBridge {
         &self.scope_data
     }
 
+    pub fn peak_data(&self) -> &[f32] {
+        &self.peak_data
+    }
+
     pub fn start_feedback(&mut self, audio_config: AudioRestartConfig) {
         match FeedbackEngine::start(audio_config) {
             Ok(engine) => self.feedback_engine = Some(engine),
@@ -664,6 +717,14 @@ impl ClientBridge {
 
     pub fn has_feedback(&self) -> bool {
         self.feedback_engine.is_some()
+    }
+
+    pub fn restart_audio(&self, config: AudioRestartConfig) {
+        if let Some(engine) = &self.feedback_engine {
+            engine.restart_audio(config);
+        } else {
+            self.send(ClientMessage::RestartAudioEngine(config));
+        }
     }
 
     pub fn peers(&self) -> &[String] {
@@ -798,7 +859,7 @@ impl ClientBridge {
 
     pub fn set_latency(&self, name: &str, latency: f64) {
         if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().set_latency(name.to_owned(), latency);
+            engine.devices().set_latency(name.to_owned(), latency);
         } else {
             self.send(ClientMessage::SetDeviceLatency(name.to_owned(), latency));
         }

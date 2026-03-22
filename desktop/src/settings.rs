@@ -40,6 +40,8 @@ pub struct DocSettings {
     pub pinned: bool,
     pub trigger: DocTrigger,
     pub width: f32,
+    pub mode: u8,
+    pub settings_tab: u8,
 }
 
 impl Default for DocSettings {
@@ -50,6 +52,8 @@ impl Default for DocSettings {
             pinned: false,
             trigger: DocTrigger::Click,
             width: 400.0,
+            mode: 0,
+            settings_tab: 0,
         }
     }
 }
@@ -102,6 +106,9 @@ pub struct AppearanceSettings {
     pub window_shadows: bool,
     pub locale: String,
     pub visuals_enabled: bool,
+    pub scene_opacity: f32,
+    pub ui_font_size: f32,
+    pub animation_time: f32,
 }
 
 impl Default for AppearanceSettings {
@@ -112,6 +119,9 @@ impl Default for AppearanceSettings {
             window_shadows: true,
             locale: "en".into(),
             visuals_enabled: false,
+            scene_opacity: 0.5,
+            ui_font_size: 13.0,
+            animation_time: 0.15,
         }
     }
 }
@@ -123,26 +133,12 @@ pub struct VisualsSettings {
     pub shared: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
-    pub logs_collapsed: bool,
-    pub log_panel_height: f32,
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
     pub scope_bar: ScopeBarSettings,
-}
-
-impl Default for WindowSettings {
-    fn default() -> Self {
-        Self {
-            logs_collapsed: true,
-            log_panel_height: 160.0,
-            chat_detached: false,
-            sample_browser_detached: false,
-            scope_bar: ScopeBarSettings::default(),
-        }
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -204,6 +200,7 @@ impl Default for ClientSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioSettings {
+    pub host: String,
     pub output_device: String,
     pub input_device: String,
     pub channels: u16,
@@ -216,6 +213,7 @@ pub struct AudioSettings {
 impl Default for AudioSettings {
     fn default() -> Self {
         Self {
+            host: String::new(),
             output_device: String::new(),
             input_device: String::new(),
             channels: 2,

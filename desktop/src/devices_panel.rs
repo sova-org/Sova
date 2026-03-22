@@ -46,18 +46,22 @@ impl DevicesPanel {
             .default_width(480.0)
             .vscroll(true)
             .show(ctx, |ui| {
-                if !bridge.is_connected() {
-                    ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
-                    return;
-                }
-
-                let devices = bridge.devices();
-                self.show_device_table(ui, devices, bridge);
-
-                ui.add_space(8.0);
-                self.show_creation_controls(ui, bridge);
+                self.show_inside(ui, bridge);
             });
         self.open = open;
+    }
+
+    pub fn show_inside(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        if !bridge.is_connected() {
+            ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
+            return;
+        }
+
+        let devices = bridge.devices();
+        self.show_device_table(ui, devices, bridge);
+
+        ui.add_space(8.0);
+        self.show_creation_controls(ui, bridge);
     }
 
     fn show_device_table(

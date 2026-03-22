@@ -4,57 +4,36 @@ Every frame has a duration. By default, sounds emit at the very start of that du
 
 ## The Basics
 
-`at` drains the entire stack and stores the values as timing offsets. Each value is a fraction of the frame duration: 0 = start, 0.5 = halfway, 1.0 = next frame boundary.
+`at` drains the entire stack as timing offsets, then re-executes its body once per offset. Each value is a fraction of the frame duration: 0 = start, 0.5 = halfway, 1.0 = next frame boundary.
+
+Close an `at` block with `.` (emit sound) or `done` (no emit):
 
 ```forth
-0.5 at kick snd .         ;; kick at the midpoint
+0 0.5 at kick snd .           ;; kick at start and midpoint
+0 0.25 0.5 0.75 at hat snd .  ;; four hats, evenly spaced
 ```
 
-Push multiple values before calling `at` to get multiple emits from a single `.`:
+Each iteration gets its own independent state — nondeterministic ops (rand, choose, coin) roll fresh values per delta:
 
 ```forth
-0 0.5 at kick snd .       ;; two kicks: one at start, one at midpoint
-0 0.25 0.5 0.75 at hat snd .   ;; four hats, evenly spaced
+0 0.5 at kick snd 1 4 rand n .   ;; different random sample each hit
 ```
 
-The deltas persist across multiple `.` calls until `clear` or a new `at`:
+## at With done
+
+Use `done` to run side-effects per delta without emitting sound:
 
 ```forth
-0 0.5 at
-kick snd .                ;; 2 kicks
-hat snd .                 ;; 2 hats (same timing)
-clear
-snare snd .               ;; 1 snare (deltas cleared)
+0 0.5 at !x done   ;; set variable at two time points, no emit
 ```
 
-## Cross-product: at Without arp
+## Polyphony Inside at
 
-Without `arp`, deltas multiply with polyphonic voices. If you have 3 notes and 2 deltas, you get 6 emits — every note at every delta:
+CycleLists inside `at` blocks work as usual — each delta iteration expands polyphonically:
 
 ```forth
-0 0.5 at
-c4 e4 g4 note sine snd .   ;; 6 emits: 3 notes x 2 deltas
+0 0.5 at [c4 e4 g4] note sine snd .   ;; chord at 0, chord at 0.5
 ```
-
-This is a chord played twice per frame.
-
-## 1:1 Pairing: at With arp
-
-`arp` changes the behavior. Instead of cross-product, deltas and arp values pair up 1:1. Each delta gets one note from the arpeggio:
-
-```forth
-0 0.33 0.66 at
-c4 e4 g4 arp note sine snd .   ;; c4 at 0, e4 at 0.33, g4 at 0.66
-```
-
-If the lists differ in length, the shorter one wraps around:
-
-```forth
-0 0.25 0.5 0.75 at
-c4 e4 arp note sine snd .       ;; c4, e4, c4, e4 at 4 time points
-```
-
-This is THE key distinction. Without `arp`: every note at every time. With `arp`: one note per time slot.
 
 ## Generating Deltas
 
@@ -69,7 +48,7 @@ Evenly spaced via `.,`:
 Euclidean distribution via `euclid`:
 
 ```forth
-3 8 euclid at hat snd .         ;; 3 hats at positions 0, 3, 5
+3 8 euclid at hat snd .         ;; 3 hats at euclidean positions
 ```
 
 Random timing via `gen`:
@@ -86,14 +65,12 @@ Geometric spacing via `geom..`:
 
 ## Gating at
 
-Wrap `at` expressions in quotations for conditional timing:
+Wrap the whole expression in quotations for conditional timing:
 
 ```forth
-( 0 0.25 0.5 0.75 at ) 2 every    ;; 16th-note hats every other bar
-hat snd .
+( 0 0.25 0.5 0.75 at hat snd . ) 2 every    ;; 16th-note hats every other bar
 
-( 0 0.5 at ) 0.5 chance           ;; 50% chance of double-hit
-kick snd .
+( 0 0.5 at kick snd . ) 0.5 chance           ;; 50% chance of double-hit
 ```
 
-When the quotation doesn't execute, no deltas are set — you get the default single emit at beat start.
+When the quotation doesn't execute, no deltas are set — you get no emit from that expression.

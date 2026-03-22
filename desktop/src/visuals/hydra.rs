@@ -499,12 +499,6 @@ fn register_patterns(engine: &mut Engine) {
     });
 }
 
-pub const DEFAULT_SCRIPT: &str = "\
-osc(60.0, 0.1).rotate(0.0, 0.1)
-    .add(voronoi(8.0, 0.3, 0.3), 0.5)
-    .colorama(0.05)
-    .out()";
-
 pub fn eval(code: &str) -> Result<EvalResult, String> {
     let state = Arc::new(Mutex::new(PatchState {
         buffers: [None, None, None, None],
@@ -560,6 +554,17 @@ pub fn eval(code: &str) -> Result<EvalResult, String> {
         let s = state.clone();
         engine.register_fn("render", move |idx: i64| {
             s.lock().unwrap().render_mode = RenderMode::Single(idx as usize);
+        });
+    }
+    // hush() → clear all buffers, output black
+    {
+        let s = state.clone();
+        engine.register_fn("hush", move || {
+            let mut st = s.lock().unwrap();
+            st.buffers = [None, None, None, None];
+            st.buffers[0] = Some(Node::source("solid", vec![
+                Arg::Lit(0.0), Arg::Lit(0.0), Arg::Lit(0.0), Arg::Lit(1.0),
+            ]));
         });
     }
 

@@ -284,10 +284,30 @@ impl CagireVM {
                 }
 
                 Op::NewCmd => {
-                    cmd.set_sound(pop_or_collect(stack)?);
+                    ensure(stack, 1)?;
+                    let values = drain_skip_quotations(stack);
+                    if values.is_empty() {
+                        return Err("expected sound name".into());
+                    }
+                    let val = if values.len() == 1 {
+                        values.into_iter().next().unwrap()
+                    } else {
+                        Value::CycleList(Arc::from(values))
+                    };
+                    cmd.set_sound(val);
                 }
                 Op::SetParam(param) => {
-                    cmd.set_param(param, pop_or_collect(stack)?);
+                    ensure(stack, 1)?;
+                    let values = drain_skip_quotations(stack);
+                    if values.is_empty() {
+                        return Err("expected parameter value".into());
+                    }
+                    let val = if values.len() == 1 {
+                        values.into_iter().next().unwrap()
+                    } else {
+                        Value::CycleList(Arc::from(values))
+                    };
+                    cmd.set_param(param, val);
                 }
 
                 Op::Emit => {
@@ -721,10 +741,35 @@ impl CagireVM {
                     cmd.set_deltas(deltas);
                 }
 
-                Op::Arp => {
+                Op::AtLoop(body_ops) => {
                     ensure(stack, 1)?;
-                    let values = std::mem::take(stack);
-                    stack.push(Value::ArpList(Arc::from(values)));
+                    let deltas = std::mem::take(stack);
+                    let n = deltas.len();
+
+                    for (i, delta_val) in deltas.iter().enumerate() {
+                        let frac = delta_val.as_float()?;
+                        let delta_secs = ctx.nudge_secs + frac * ctx.step_duration;
+
+                        let iter_ctx = StepContext {
+                            step: ctx.step,
+                            beat: ctx.beat,
+                            tempo: ctx.tempo,
+                            phase: ctx.phase,
+                            slot: ctx.slot,
+                            runs: ctx.runs * n + i,
+                            iter: ctx.iter,
+                            speed: ctx.speed,
+                            step_duration: ctx.step_duration,
+                            frame_index: ctx.frame_index,
+                            nudge_secs: ctx.nudge_secs,
+                            default_device: ctx.default_device,
+                        };
+
+                        cmd.set_delta_secs(delta_secs);
+                        self.execute_ops(body_ops, &iter_ctx, eval_ctx, stack, events, cmd)?;
+                        cmd.clear_params();
+                        cmd.clear_sound();
+                    }
                 }
 
                 Op::Adsr => {
@@ -881,20 +926,52 @@ impl CagireVM {
                     stack.push(Value::Str(format!("{min}?{max}:{period}{suffix}").into()));
                 }
                 Op::ModEnv => {
-                    ensure(stack, 1)?;
-                    let values = std::mem::take(stack);
-                    let mut floats = Vec::with_capacity(values.len());
-                    for v in &values { floats.push(v.as_float()?); }
-                    if floats.len() < 3 || (floats.len() - 1) % 2 != 0 {
-                        return Err("env expects: start target1 dur1 [target2 dur2 ...]".into());
-                    }
+                    let release = pop_float(stack)? * ctx.step_duration;
+                    let sustain = pop_float(stack)?;
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
                     use std::fmt::Write;
                     let mut s = String::new();
-                    let _ = write!(&mut s, "{}", floats[0]);
-                    for pair in floats[1..].chunks(2) {
-                        let _ = write!(&mut s, ">{}:{}", pair[0], pair[1] * ctx.step_duration);
-                    }
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:{sustain}:{release}");
                     stack.push(Value::Str(s.into()));
+                }
+                Op::ModEnvAd => {
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    use std::fmt::Write;
+                    let mut s = String::new();
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:0");
+                    stack.push(Value::Str(s.into()));
+                }
+                Op::ModEnvAdr => {
+                    let release = pop_float(stack)? * ctx.step_duration;
+                    let decay = pop_float(stack)? * ctx.step_duration;
+                    let attack = pop_float(stack)? * ctx.step_duration;
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    use std::fmt::Write;
+                    let mut s = String::new();
+                    let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:{release}");
+                    stack.push(Value::Str(s.into()));
+                }
+                Op::Lpg => {
+                    let depth = pop_float(stack)?.clamp(0.0, 1.0);
+                    let max = pop_float(stack)?;
+                    let min = pop_float(stack)?;
+                    let effective_max = min + (max - min) * depth;
+                    let sd = ctx.step_duration;
+                    let a = cmd.get_param_float("attack").unwrap_or(0.0) * sd;
+                    let d = cmd.get_param_float("decay").unwrap_or(1.0) * sd;
+                    let s = cmd.get_param_float("sustain").unwrap_or(0.0);
+                    let r = cmd.get_param_float("release").unwrap_or(0.0) * sd;
+                    use std::fmt::Write;
+                    let mut mod_str = String::new();
+                    let _ = write!(&mut mod_str, "{min}^{effective_max}:{a}:{d}:{s}:{r}");
+                    cmd.set_param("lpf", Value::Str(mod_str.into()));
                 }
 
                 Op::GetMidiCC => {
@@ -1077,161 +1154,154 @@ impl CagireVM {
         ctx: &StepContext,
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
     ) -> Result<(), String> {
-        let has_arp = has_arp_list(cmd);
-        let poly_count = if has_arp { compute_arp_count(cmd) } else { compute_poly_count(cmd) };
-
-        let deltas: Vec<f64> = if cmd.deltas().is_empty() {
-            if has_arp {
-                (0..poly_count).map(|i| i as f64 / poly_count as f64).collect()
-            } else {
-                vec![0.0]
+        if let Some(dsecs) = cmd.take_delta_secs() {
+            // AtLoop path: single delta, vary poly_idx
+            let poly_count = compute_poly_count(cmd);
+            for poly_idx in 0..poly_count {
+                self.emit_single(cmd, ctx, events, poly_idx, dsecs)?;
             }
         } else {
-            cmd.deltas().iter().filter_map(|v| v.as_float().ok()).collect()
-        };
-
-        let emit_count = if has_arp && cmd.deltas().is_empty() {
-            poly_count
-        } else if has_arp {
-            poly_count.max(deltas.len())
-        } else {
-            poly_count
-        };
-
-        for poly_idx in 0..emit_count {
-            let arp_delta;
-            let delta_slice = if has_arp {
-                arp_delta = [if !deltas.is_empty() {
-                    deltas[poly_idx % deltas.len()]
-                } else {
-                    0.0
-                }];
-                &arp_delta[..]
+            // Normal path: iterate deltas x poly
+            let poly_count = compute_poly_count(cmd);
+            let deltas: Vec<f64> = if cmd.deltas().is_empty() {
+                vec![0.0]
             } else {
-                &deltas[..]
+                cmd.deltas().iter().filter_map(|v| v.as_float().ok()).collect()
             };
 
-            for &delta_frac in delta_slice {
-                let delta_secs = ctx.nudge_secs + delta_frac * ctx.step_duration;
-                let time = offset_micros(ctx, delta_secs);
+            for poly_idx in 0..poly_count {
+                for &delta_frac in &deltas {
+                    let delta_secs = ctx.nudge_secs + delta_frac * ctx.step_duration;
+                    self.emit_single(cmd, ctx, events, poly_idx, delta_secs)?;
+                }
+            }
+        }
 
-                let (sound_opt, params) = match cmd.snapshot() {
-                    Some(s) => s,
-                    None => return Err("nothing to emit".into()),
-                };
+        Ok(())
+    }
 
-                let resolved_sound = sound_opt.map(|sv| resolve_cycling(sv, poly_idx));
+    fn emit_single(
+        &mut self,
+        cmd: &CmdRegister,
+        ctx: &StepContext,
+        events: &mut Vec<(ConcreteEvent, SyncTime)>,
+        poly_idx: usize,
+        delta_secs: f64,
+    ) -> Result<(), String> {
+        let time = offset_micros(ctx, delta_secs);
 
-                let has_sound = resolved_sound.as_ref().is_some_and(|v| {
-                    matches!(v.as_ref(), Value::Str(s) if !s.is_empty())
-                });
+        let (sound_opt, params) = match cmd.snapshot() {
+            Some(s) => s,
+            None => return Err("nothing to emit".into()),
+        };
 
-                let find_param = |name: &str| -> Option<&Value> {
-                    params.iter().rev().find(|(k, _)| *k == name)
-                        .or_else(|| cmd.global_params().iter().rev().find(|(k, _)| *k == name))
-                        .map(|(_, v)| v)
-                };
-                let get_int = |name: &str| -> Option<i64> {
-                    find_param(name)
-                        .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
-                };
-                let get_float = |name: &str| -> Option<f64> {
-                    find_param(name)
-                        .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok())
-                };
+        let resolved_sound = sound_opt.map(|sv| resolve_cycling(sv, poly_idx));
 
-                let dev = get_int("device").unwrap_or(ctx.default_device as i64).max(0) as usize;
+        let has_sound = resolved_sound.as_ref().is_some_and(|v| {
+            matches!(v.as_ref(), Value::Str(s) if !s.is_empty())
+        });
 
-                if has_sound {
-                    let sound_str = match &resolved_sound {
-                        Some(v) => match v.as_ref() {
-                            Value::Str(s) => s.to_string(),
-                            other => other.to_param_string(),
-                        },
-                        None => String::new(),
-                    };
+        let find_param = |name: &str| -> Option<&Value> {
+            params.iter().rev().find(|(k, _)| *k == name)
+                .or_else(|| cmd.global_params().iter().rev().find(|(k, _)| *k == name))
+                .map(|(_, v)| v)
+        };
+        let get_int = |name: &str| -> Option<i64> {
+            find_param(name)
+                .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
+        };
+        let get_float = |name: &str| -> Option<f64> {
+            find_param(name)
+                .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok())
+        };
 
-                    if sound_str.starts_with('/') {
-                        // OSC event: params become alternating key/value args
-                        let mut osc_args = Vec::with_capacity(params.len() * 2);
-                        for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                            if *k == "device" { continue; }
-                            let resolved = resolve_cycling(v, poly_idx);
-                            osc_args.push(VariableValue::Str(k.to_string()));
-                            let param_str = resolved.to_param_string();
-                            if let Ok(f) = param_str.parse::<f64>() {
-                                osc_args.push(VariableValue::Float(f));
-                            } else {
-                                osc_args.push(VariableValue::Str(param_str));
-                            }
-                        }
-                        let message = OSCMessage::new(sound_str, osc_args);
-                        events.push((ConcreteEvent::Osc { message, device_id: dev }, time));
+        let dev = get_int("device").unwrap_or(ctx.default_device as i64).max(0) as usize;
+
+        if has_sound {
+            let sound_str = match &resolved_sound {
+                Some(v) => match v.as_ref() {
+                    Value::Str(s) => s.to_string(),
+                    other => other.to_param_string(),
+                },
+                None => String::new(),
+            };
+
+            if sound_str.starts_with('/') {
+                let mut osc_args = Vec::with_capacity(params.len() * 2);
+                for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                    if *k == "device" { continue; }
+                    let resolved = resolve_cycling(v, poly_idx);
+                    osc_args.push(VariableValue::Str(k.to_string()));
+                    let param_str = resolved.to_param_string();
+                    if let Ok(f) = param_str.parse::<f64>() {
+                        osc_args.push(VariableValue::Float(f));
                     } else {
-                        // Dirt/audio event
-                        let mut args = HashMap::with_capacity(params.len() + 3);
-                        args.insert("sound".to_string(), VariableValue::Str(sound_str));
-
-                        for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                            if *k == "device" { continue; }
-                            let resolved = resolve_cycling(v, poly_idx);
-                            let param_str = resolved.to_param_string();
-                            if let Ok(f) = param_str.parse::<f64>() {
-                                if is_tempo_scaled_param(k) {
-                                    args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
-                                } else {
-                                    args.insert(k.to_string(), VariableValue::Float(f));
-                                }
-                            } else {
-                                args.insert(k.to_string(), VariableValue::Str(param_str));
-                            }
-                        }
-
-                        if !args.contains_key("dur") {
-                            args.insert("dur".to_string(), VariableValue::Float(ctx.step_duration));
-                        }
-                        if !args.contains_key("release") {
-                            args.insert("release".to_string(), VariableValue::Float(ctx.step_duration));
-                        }
-                        if !args.contains_key("delaytime") {
-                            args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
-                        }
-
-                        events.push((ConcreteEvent::Dirt { args, device_id: dev }, time));
-                    }
-                } else {
-                    // MIDI event
-                    let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
-
-                    if let (Some(cc), Some(val)) = (get_int("ccnum"), get_int("ccout")) {
-                        events.push((ConcreteEvent::MidiControl(
-                            cc.clamp(0, 127) as u64,
-                            val.clamp(0, 127) as u64,
-                            chan, dev,
-                        ), time));
-                    } else if let Some(bend) = get_float("bend") {
-                        let bend_clamped = bend.clamp(-1.0, 1.0);
-                        let bend_14bit = ((bend_clamped + 1.0) * 8191.5) as u16;
-                        events.push((ConcreteEvent::MidiPitchBend(bend_14bit, chan, dev), time));
-                    } else if let Some(pressure) = get_int("pressure") {
-                        events.push((ConcreteEvent::MidiChannelPressure(
-                            pressure.clamp(0, 127) as u64, chan, dev,
-                        ), time));
-                    } else if let Some(program) = get_int("program") {
-                        events.push((ConcreteEvent::MidiProgram(
-                            program.clamp(0, 127) as u64, chan, dev,
-                        ), time));
-                    } else {
-                        let note = get_int("note").unwrap_or(60).clamp(0, 127) as u64;
-                        let velocity = get_int("velocity")
-                            .or_else(|| get_int("vel"))
-                            .unwrap_or(100)
-                            .clamp(0, 127) as u64;
-                        let dur_frac = get_float("dur").unwrap_or(1.0);
-                        let dur_micros = (dur_frac * ctx.step_duration * 1_000_000.0) as SyncTime;
-                        events.push((ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev), time));
+                        osc_args.push(VariableValue::Str(param_str));
                     }
                 }
+                let message = OSCMessage::new(sound_str, osc_args);
+                events.push((ConcreteEvent::Osc { message, device_id: dev }, time));
+            } else {
+                let mut args = HashMap::with_capacity(params.len() + 3);
+                args.insert("sound".to_string(), VariableValue::Str(sound_str));
+
+                for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                    if *k == "device" { continue; }
+                    let resolved = resolve_cycling(v, poly_idx);
+                    let param_str = resolved.to_param_string();
+                    if let Ok(f) = param_str.parse::<f64>() {
+                        if is_tempo_scaled_param(k) {
+                            args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
+                        } else {
+                            args.insert(k.to_string(), VariableValue::Float(f));
+                        }
+                    } else {
+                        args.insert(k.to_string(), VariableValue::Str(param_str));
+                    }
+                }
+
+                if !args.contains_key("dur") {
+                    args.insert("dur".to_string(), VariableValue::Float(ctx.step_duration));
+                }
+                if !args.contains_key("release") {
+                    args.insert("release".to_string(), VariableValue::Float(ctx.step_duration));
+                }
+                if !args.contains_key("delaytime") {
+                    args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
+                }
+
+                events.push((ConcreteEvent::Dirt { args, device_id: dev }, time));
+            }
+        } else {
+            let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
+
+            if let (Some(cc), Some(val)) = (get_int("ccnum"), get_int("ccout")) {
+                events.push((ConcreteEvent::MidiControl(
+                    cc.clamp(0, 127) as u64,
+                    val.clamp(0, 127) as u64,
+                    chan, dev,
+                ), time));
+            } else if let Some(bend) = get_float("bend") {
+                let bend_clamped = bend.clamp(-1.0, 1.0);
+                let bend_14bit = ((bend_clamped + 1.0) * 8191.5) as u16;
+                events.push((ConcreteEvent::MidiPitchBend(bend_14bit, chan, dev), time));
+            } else if let Some(pressure) = get_int("pressure") {
+                events.push((ConcreteEvent::MidiChannelPressure(
+                    pressure.clamp(0, 127) as u64, chan, dev,
+                ), time));
+            } else if let Some(program) = get_int("program") {
+                events.push((ConcreteEvent::MidiProgram(
+                    program.clamp(0, 127) as u64, chan, dev,
+                ), time));
+            } else {
+                let note = get_int("note").unwrap_or(60).clamp(0, 127) as u64;
+                let velocity = get_int("velocity")
+                    .or_else(|| get_int("vel"))
+                    .unwrap_or(100)
+                    .clamp(0, 127) as u64;
+                let dur_frac = get_float("dur").unwrap_or(1.0);
+                let dur_micros = (dur_frac * ctx.step_duration * 1_000_000.0) as SyncTime;
+                events.push((ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev), time));
             }
         }
 
@@ -1281,12 +1351,6 @@ fn is_tempo_scaled_param(name: &str) -> bool {
         | "glide" | "chorusdelay" | "duration")
 }
 
-fn has_arp_list(cmd: &CmdRegister) -> bool {
-    matches!(cmd.sound(), Some(Value::ArpList(_)))
-        || cmd.global_params().iter().chain(cmd.params().iter())
-            .any(|(_, v)| matches!(v, Value::ArpList(_)))
-}
-
 fn compute_poly_count(cmd: &CmdRegister) -> usize {
     let sound_len = match cmd.sound() {
         Some(Value::CycleList(items)) => items.len(),
@@ -1298,20 +1362,9 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
     sound_len.max(param_max)
 }
 
-fn compute_arp_count(cmd: &CmdRegister) -> usize {
-    let sound_len = match cmd.sound() {
-        Some(Value::ArpList(items)) => items.len(),
-        _ => 0,
-    };
-    let param_max = cmd.params().iter()
-        .map(|(_, v)| match v { Value::ArpList(items) => items.len(), _ => 0 })
-        .max().unwrap_or(0);
-    sound_len.max(param_max).max(1)
-}
-
 fn resolve_cycling(val: &Value, emit_idx: usize) -> Cow<'_, Value> {
     match val {
-        Value::CycleList(items) | Value::ArpList(items) if !items.is_empty() => {
+        Value::CycleList(items) if !items.is_empty() => {
             Cow::Owned(items[emit_idx % items.len()].clone())
         }
         other => Cow::Borrowed(other),
@@ -1372,18 +1425,23 @@ fn drain_select_run(
     select_and_run(selected, stack, events, cmd, vm, ctx, eval_ctx)
 }
 
+fn drain_skip_quotations(stack: &mut Vec<Value>) -> Vec<Value> {
+    let values = std::mem::take(stack);
+    let mut result = Vec::new();
+    for v in values {
+        if matches!(v, Value::Quotation(..)) {
+            stack.push(v);
+        } else {
+            result.push(v);
+        }
+    }
+    result
+}
+
 fn pop(stack: &mut Vec<Value>) -> Result<Value, String> {
     stack.pop().ok_or_else(|| "stack underflow".to_string())
 }
 
-fn pop_or_collect(stack: &mut Vec<Value>) -> Result<Value, String> {
-    ensure(stack, 1)?;
-    Ok(if stack.len() == 1 {
-        stack.pop().unwrap()
-    } else {
-        Value::CycleList(Arc::from(std::mem::take(stack)))
-    })
-}
 
 fn pop_int(stack: &mut Vec<Value>) -> Result<i64, String> {
     pop(stack)?.as_int()
@@ -1779,5 +1837,148 @@ mod tests {
         let events = eval("10 1 ccval note .");
         assert_eq!(events.len(), 1);
         assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(0, _, _, _, _)));
+    }
+
+    // --- at + cycle tests (ported from standalone Cagire) ---
+
+    fn eval_with_runs(script: &str, runs: usize) -> Vec<(ConcreteEvent, SyncTime)> {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        eval_ctx.frame_triggers = runs;
+        vm.evaluate(script, &mut eval_ctx).unwrap()
+    }
+
+    fn get_midi_notes(events: &[(ConcreteEvent, SyncTime)]) -> Vec<u64> {
+        events.iter().filter_map(|(ev, _)| match ev {
+            ConcreteEvent::MidiNote(note, _, _, _, _) => Some(*note),
+            _ => None,
+        }).collect()
+    }
+
+    fn get_event_times(events: &[(ConcreteEvent, SyncTime)]) -> Vec<SyncTime> {
+        events.iter().map(|(_, t)| *t).collect()
+    }
+
+    fn get_dirt_param(ev: &ConcreteEvent, key: &str) -> Option<f64> {
+        match ev {
+            ConcreteEvent::Dirt { args, .. } => {
+                args.get(key).and_then(|v| match v {
+                    VariableValue::Float(f) => Some(*f),
+                    VariableValue::Integer(i) => Some(*i as f64),
+                    _ => None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn test_at_single_delta() {
+        let events = eval("0.5 at sine snd 440 freq .");
+        assert_eq!(events.len(), 1);
+        assert!(events[0].1 > 0, "0.5 delta should produce non-zero time offset");
+    }
+
+    #[test]
+    fn test_at_list_deltas() {
+        let events = eval("0 0.5 at sine snd 440 freq .");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1, 0, "first delta=0 should have time 0");
+        assert!(events[1].1 > 0, "second delta=0.5 should have non-zero time");
+    }
+
+    #[test]
+    fn test_at_loop_with_cycle_notes() {
+        let events = eval_with_runs(
+            "0 0.25 0.5 0.75 at [ c4 e4 g4 b4 ] cycle note .",
+            0,
+        );
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 64, 67, 71]);
+    }
+
+    #[test]
+    fn test_at_loop_cycle_wraps() {
+        let events = eval_with_runs(
+            "0 0.25 0.5 0.75 at [ c4 e4 ] cycle note .",
+            0,
+        );
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 64, 60, 64]);
+    }
+
+    #[test]
+    fn test_at_loop_rand_different_per_subdivision() {
+        let events = eval("0 0.5 at sine snd 1 1000 rand freq .");
+        assert_eq!(events.len(), 2);
+        let f0 = get_dirt_param(&events[0].0, "freq");
+        let f1 = get_dirt_param(&events[1].0, "freq");
+        assert!(f0.is_some() && f1.is_some());
+        assert_ne!(f0, f1, "rand should produce different values per at subdivision");
+    }
+
+    #[test]
+    fn test_at_loop_poly_cycling() {
+        let events = eval("0 0.5 at sine snd c4 e4 note .");
+        assert_eq!(events.len(), 4);
+        // Each at iteration emits 2 poly voices (c4=60, e4=64)
+        let notes: Vec<f64> = events.iter().filter_map(|(ev, _)| get_dirt_param(ev, "note")).collect();
+        assert_eq!(notes, vec![60.0, 64.0, 60.0, 64.0]);
+    }
+
+    #[test]
+    fn test_at_loop_cycle_advances_across_runs() {
+        for base_runs in 0..3 {
+            let events = eval_with_runs(
+                "0 0.5 at [ c4 e4 g4 ] cycle note .",
+                base_runs,
+            );
+            assert_eq!(events.len(), 2, "base_runs={base_runs}");
+            let notes = get_midi_notes(&events);
+            let expected_0 = [60, 64, 67][(base_runs * 2) % 3];
+            let expected_1 = [60, 64, 67][(base_runs * 2 + 1) % 3];
+            assert_eq!(notes[0], expected_0, "runs={base_runs}: iter 0");
+            assert_eq!(notes[1], expected_1, "runs={base_runs}: iter 1");
+        }
+    }
+
+    #[test]
+    fn test_at_loop_done_no_emit() {
+        let events = eval("0 0.5 at [ 1 2 ] cycle drop done");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn test_at_loop_done_sets_variables() {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let events = eval_vm(&mut vm, &mut tctx, "0 0.5 at [ 10 20 ] cycle !x done @x note .");
+        assert_eq!(events.len(), 1);
+        // Last iteration wins: cycle idx 1 -> 20
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes[0], 20);
+    }
+
+    #[test]
+    fn test_at_loop_timing_increases() {
+        let events = eval("0 0.25 0.5 0.75 at sine snd 440 freq .");
+        assert_eq!(events.len(), 4);
+        let times = get_event_times(&events);
+        assert_eq!(times[0], 0);
+        assert!(times[1] > times[0]);
+        assert!(times[2] > times[1]);
+        assert!(times[3] > times[2]);
+    }
+
+    #[test]
+    fn test_at_loop_midi_note_emit() {
+        let events = eval("0 0.25 0.5 at 60 note .");
+        assert_eq!(events.len(), 3);
+        for (ev, _) in &events {
+            assert!(matches!(ev, ConcreteEvent::MidiNote(60, _, _, _, _)));
+        }
     }
 }

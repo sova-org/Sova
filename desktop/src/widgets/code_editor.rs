@@ -5,11 +5,13 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use eframe::egui;
-use egui::text::{LayoutJob, LayoutSection};
+use egui::text::{CCursor, CCursorRange, LayoutJob, LayoutSection};
 use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use sova_core::vm::language::{LanguageElement, ReferenceEntry};
+
+use crate::scene_panel::SceneOpacity;
 
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme, SyntaxThemePref};
 
@@ -22,6 +24,7 @@ pub struct EditorSettings {
     pub show_whitespace: bool,
     pub highlight_current_line: bool,
     pub syntax_theme: SyntaxThemePref,
+    pub default_language: String,
 }
 
 impl Default for EditorSettings {
@@ -33,6 +36,7 @@ impl Default for EditorSettings {
             show_whitespace: false,
             highlight_current_line: true,
             syntax_theme: SyntaxThemePref::default(),
+            default_language: "boinx".to_string(),
         }
     }
 }
@@ -44,10 +48,34 @@ pub struct PeerCursor {
     pub color: Color32,
 }
 
+pub struct EditorContext<'a> {
+    pub settings: &'a EditorSettings,
+    pub syntax: Option<(&'a CompiledSyntax, &'a SyntaxTheme)>,
+    pub reference: Option<&'a BTreeMap<LanguageElement, ReferenceEntry>>,
+    pub peer_cursors: &'a [PeerCursor],
+    pub opacity: Option<&'a SceneOpacity>,
+}
+
+struct CompletionEntry {
+    label: String,
+    description: String,
+    category: Option<String>,
+    score: i32,
+    label_matches: Vec<usize>,
+}
+
+struct CompletionState {
+    entries: Vec<CompletionEntry>,
+    selected: usize,
+    prefix_start: usize,
+}
+
 pub struct CodeEditorOutput {
     pub response: egui::Response,
     pub cursor_line: Option<usize>,
     pub cursor_col: Option<usize>,
+    #[allow(dead_code)]
+    pub completion_open: bool,
 }
 
 pub struct CodeEditor {
@@ -56,6 +84,7 @@ pub struct CodeEditor {
     matches: Rc<Vec<Range<usize>>>,
     current_match: usize,
     cache_hash: u64,
+    completion: Option<CompletionState>,
 }
 
 impl CodeEditor {
@@ -66,7 +95,12 @@ impl CodeEditor {
             matches: Rc::new(Vec::new()),
             current_match: 0,
             cache_hash: 0,
+            completion: None,
         }
+    }
+
+    pub fn is_completion_open(&self) -> bool {
+        self.completion.is_some()
     }
 
     pub fn show(
@@ -74,13 +108,32 @@ impl CodeEditor {
         ui: &mut egui::Ui,
         id: Id,
         text: &mut String,
-        settings: &EditorSettings,
-        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
-        reference: Option<&BTreeMap<LanguageElement, ReferenceEntry>>,
-        peer_cursors: &[PeerCursor],
+        ctx: &EditorContext,
     ) -> CodeEditorOutput {
+        let settings = ctx.settings;
+        let syntax = ctx.syntax;
+        let reference = ctx.reference;
+        let peer_cursors = ctx.peer_cursors;
         let font_id = FontId::monospace(settings.font_size);
         let is_mac = ui.ctx().os().is_mac();
+
+        // Completion: consume keys before TextEdit sees them
+        let completion_open = self.completion.is_some();
+        let (ctrl_space, consumed_tab, consumed_prev, consumed_next, consumed_escape) =
+            ui.input_mut(|i| {
+                let cs = i.consume_key(egui::Modifiers::CTRL, egui::Key::Space);
+                if completion_open {
+                    (
+                        cs,
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+                        i.consume_key(egui::Modifiers::CTRL, egui::Key::P),
+                        i.consume_key(egui::Modifiers::CTRL, egui::Key::N),
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                    )
+                } else {
+                    (cs, false, false, false, false)
+                }
+            });
 
         // Cmd/Ctrl+F toggles search
         if ui.input(|i| {
@@ -100,6 +153,7 @@ impl CodeEditor {
         // Search bar
         let mut navigate = Navigate::None;
         if self.search_open {
+            self.completion = None;
             ui.horizontal(|ui| {
                 let search_id = id.with("search_field");
                 let r = ui.add_sized(
@@ -188,6 +242,7 @@ impl CodeEditor {
         let show_whitespace = settings.show_whitespace;
         let available_height = ui.available_height();
 
+        let text_edit_id = id.with("editor");
         let (response, edit_output) = if settings.line_numbers {
             let line_count = text.chars().filter(|c| *c == '\n').count() + 1;
             let digit_count = ((line_count as f32).log10().floor() as usize + 1).max(2);
@@ -201,7 +256,7 @@ impl CodeEditor {
 
                 let text_width = ui.available_width();
                 let edit_output = TextEdit::multiline(text)
-                    .id(id.with("editor"))
+                    .id(text_edit_id)
                     .font(font_id.clone())
                     .desired_width(text_width)
                     .min_size(egui::vec2(text_width, available_height))
@@ -224,7 +279,7 @@ impl CodeEditor {
             (edit_output.response.clone(), edit_output)
         } else {
             let edit_output = TextEdit::multiline(text)
-                .id(id.with("editor"))
+                .id(text_edit_id)
                 .font(font_id.clone())
                 .min_size(egui::vec2(ui.available_width(), available_height))
                 .lock_focus(true)
@@ -245,8 +300,81 @@ impl CodeEditor {
             paint_peer_cursors(ui, &edit_output, &font_id, peer_cursors);
         }
 
-        if let Some(ref_map) = reference {
+        // Only show hover tooltip when completion is closed
+        if self.completion.is_none() && let Some(ref_map) = reference {
             show_hover_tooltip(ui, &edit_output, text, ref_map, syntax);
+        }
+
+        // --- Completion logic ---
+        let cursor_char = edit_output
+            .cursor_range
+            .as_ref()
+            .map(|cr| cr.primary.index);
+
+        let (prefix_start, prefix_end_byte, prefix) = cursor_char
+            .map(|cc| {
+                let (start_char, start_byte, end_byte) = word_prefix_at_cursor(text, cc);
+                (start_char, end_byte, text[start_byte..end_byte].to_owned())
+            })
+            .unwrap_or((0, 0, String::new()));
+
+        // Handle consumed keys
+        if consumed_escape {
+            self.completion = None;
+        } else if let Some(state) = &mut self.completion {
+            if consumed_prev && state.selected > 0 {
+                state.selected -= 1;
+            }
+            if consumed_next && state.selected + 1 < state.entries.len() {
+                state.selected += 1;
+            }
+            if consumed_tab && !state.entries.is_empty() {
+                let label = state.entries[state.selected].label.clone();
+                let start_byte = char_to_byte(text, state.prefix_start);
+                text.replace_range(start_byte..prefix_end_byte, &label);
+                let new_cursor_char = state.prefix_start + label.chars().count();
+                let mut te_state = edit_output.state.clone();
+                te_state
+                    .cursor
+                    .set_char_range(Some(CCursorRange::one(CCursor::new(new_cursor_char))));
+                te_state.store(ui.ctx(), text_edit_id);
+                self.completion = None;
+            }
+        }
+
+        // Open or recompute completions
+        if self.completion.is_none() && !self.search_open {
+            let should_open = ctrl_space || (prefix.len() >= 2 && reference.is_some());
+            if should_open && let Some(ref_map) = reference {
+                let entries = compute_completions(&prefix, ref_map);
+                if !entries.is_empty() {
+                    self.completion = Some(CompletionState {
+                        entries,
+                        selected: 0,
+                        prefix_start,
+                    });
+                }
+            }
+        } else if let Some(state) = &mut self.completion {
+            if let Some(ref_map) = reference {
+                let entries = compute_completions(&prefix, ref_map);
+                if entries.is_empty() {
+                    self.completion = None;
+                } else {
+                    state.entries = entries;
+                    state.prefix_start = prefix_start;
+                    state.selected = state.selected.min(state.entries.len() - 1);
+                }
+            } else {
+                self.completion = None;
+            }
+        }
+
+        // Render completion popup
+        if let Some(state) = &self.completion
+            && let Some(cc) = cursor_char
+        {
+            paint_completion_popup(ui, &edit_output, id, &font_id, state, cc, ctx.opacity);
         }
 
         let cursor = edit_output
@@ -257,6 +385,7 @@ impl CodeEditor {
             response,
             cursor_line: cursor.map(|(l, _)| l),
             cursor_col: cursor.map(|(_, c)| c),
+            completion_open: self.completion.is_some(),
         }
     }
 
@@ -442,11 +571,7 @@ fn paint_line_numbers(
         egui::pos2(gutter_x, output.text_clip_rect.min.y),
         egui::vec2(gutter_width, output.text_clip_rect.height()),
     );
-    let bg = if ui.visuals().dark_mode {
-        Color32::from_rgba_unmultiplied(255, 255, 255, 6)
-    } else {
-        Color32::from_rgba_unmultiplied(0, 0, 0, 6)
-    };
+    let bg = ui.visuals().extreme_bg_color;
     painter.rect_filled(gutter_rect, 0.0, bg);
 
     let sep_x = gutter_x + gutter_width;
@@ -774,6 +899,222 @@ fn show_hover_tooltip(
             }
         }
     });
+}
+
+fn char_to_byte(text: &str, char_offset: usize) -> usize {
+    text.char_indices()
+        .nth(char_offset)
+        .map(|(i, _)| i)
+        .unwrap_or(text.len())
+}
+
+fn word_prefix_at_cursor(text: &str, cursor_char: usize) -> (usize, usize, usize) {
+    let cursor_byte = char_to_byte(text, cursor_char);
+    let bytes = text.as_bytes();
+    let mut start_byte = cursor_byte;
+    while start_byte > 0 && is_word_byte(bytes[start_byte - 1]) {
+        start_byte -= 1;
+    }
+    // Word bytes are ASCII, so byte count == char count
+    let prefix_len = cursor_byte - start_byte;
+    let start_char = cursor_char - prefix_len;
+    (start_char, start_byte, cursor_byte)
+}
+
+fn compute_completions(
+    prefix: &str,
+    reference: &BTreeMap<LanguageElement, ReferenceEntry>,
+) -> Vec<CompletionEntry> {
+    let mut entries = Vec::new();
+
+    for (elem, entry) in reference {
+        let label = match elem {
+            LanguageElement::Word(w) => w.clone(),
+            LanguageElement::Brackets(open, _) => open.clone(),
+        };
+
+        if prefix.is_empty() {
+            entries.push(CompletionEntry {
+                label,
+                description: entry.description.clone(),
+                category: entry.category.clone(),
+                score: 0,
+                label_matches: Vec::new(),
+            });
+            continue;
+        }
+
+        if let Some((score, indices)) = super::fuzzy_score(prefix, &label) {
+            entries.push(CompletionEntry {
+                label,
+                description: entry.description.clone(),
+                category: entry.category.clone(),
+                score,
+                label_matches: indices,
+            });
+            continue;
+        }
+
+        let alias_match = entry
+            .aliases
+            .iter()
+            .filter_map(|a| super::fuzzy_score(prefix, a))
+            .max_by_key(|(s, _)| *s);
+        if let Some((score, _)) = alias_match {
+            let label_matches = super::fuzzy_score(prefix, &label)
+                .map(|(_, indices)| indices)
+                .unwrap_or_default();
+            entries.push(CompletionEntry {
+                label,
+                description: entry.description.clone(),
+                category: entry.category.clone(),
+                score,
+                label_matches,
+            });
+        }
+    }
+
+    entries.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.label.cmp(&b.label)));
+    entries.truncate(15);
+    entries
+}
+
+fn paint_completion_popup(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    editor_id: Id,
+    font_id: &FontId,
+    state: &CompletionState,
+    cursor_char: usize,
+    opacity: Option<&SceneOpacity>,
+) {
+    let cursor_rect = output.galley.pos_from_cursor(CCursor::new(cursor_char));
+    let cursor_screen = egui::pos2(
+        output.galley_pos.x + cursor_rect.min.x,
+        output.galley_pos.y + cursor_rect.max.y,
+    );
+
+    let popup_max_height = 200.0;
+    let screen_rect = ui.ctx().content_rect();
+
+    // Flip above cursor if popup would overflow screen bottom
+    let popup_y = if cursor_screen.y + popup_max_height + 4.0 > screen_rect.max.y {
+        output.galley_pos.y + cursor_rect.min.y - popup_max_height - 4.0
+    } else {
+        cursor_screen.y + 2.0
+    };
+
+    let popup_pos = egui::pos2(cursor_screen.x, popup_y);
+    let popup_id = editor_id.with("completion_popup");
+
+    egui::Area::new(popup_id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(popup_pos)
+        .show(ui.ctx(), |ui| {
+            let popup_frame = {
+                let mut f = egui::Frame::popup(ui.style()).corner_radius(0.0);
+                if let Some(opacity) = opacity {
+                    f.fill = opacity.fill(f.fill, 1.0);
+                }
+                f
+            };
+            popup_frame.show(ui, |ui| {
+                if let Some(opacity) = opacity {
+                    opacity.override_widget_visuals(ui);
+                }
+                    ui.set_max_width(350.0);
+                    let row_height = font_id.size + 16.0;
+                    let accent = ui.visuals().selection.bg_fill;
+                    let text_color = ui.visuals().text_color();
+                    let weak_color = ui.visuals().weak_text_color();
+                    let small_font = FontId::proportional(font_id.size * 0.8);
+
+                    egui::ScrollArea::vertical()
+                        .max_height(popup_max_height)
+                        .show(ui, |ui| {
+                            for (i, entry) in state.entries.iter().enumerate() {
+                                let selected = i == state.selected;
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width().max(250.0), row_height),
+                                    egui::Sense::click(),
+                                );
+
+                                if selected {
+                                    ui.painter().rect_filled(rect, 0.0, accent);
+                                } else if resp.hovered() {
+                                    ui.painter().rect_filled(
+                                        rect,
+                                        0.0,
+                                        ui.visuals().widgets.hovered.bg_fill,
+                                    );
+                                }
+
+                                // Label with fuzzy highlights
+                                let label_pos = rect.min + egui::vec2(4.0, 2.0);
+                                if entry.label_matches.is_empty() {
+                                    ui.painter().text(
+                                        label_pos,
+                                        egui::Align2::LEFT_TOP,
+                                        &entry.label,
+                                        FontId::monospace(font_id.size),
+                                        if selected {
+                                            ui.visuals().selection.stroke.color
+                                        } else {
+                                            text_color
+                                        },
+                                    );
+                                } else {
+                                    let (normal, highlight) = if selected {
+                                        let sel = ui.visuals().selection.stroke.color;
+                                        (sel.gamma_multiply(0.7), sel)
+                                    } else {
+                                        (text_color, accent)
+                                    };
+                                    super::paint_highlighted_text(
+                                        ui,
+                                        label_pos,
+                                        &entry.label,
+                                        &entry.label_matches,
+                                        FontId::monospace(font_id.size),
+                                        normal,
+                                        highlight,
+                                    );
+                                }
+
+                                // Category right-aligned
+                                if let Some(cat) = &entry.category {
+                                    ui.painter().text(
+                                        egui::pos2(rect.max.x - 4.0, rect.min.y + 2.0),
+                                        egui::Align2::RIGHT_TOP,
+                                        cat,
+                                        small_font.clone(),
+                                        weak_color,
+                                    );
+                                }
+
+                                // Description below label
+                                ui.painter().text(
+                                    rect.min + egui::vec2(4.0, font_id.size + 2.0),
+                                    egui::Align2::LEFT_TOP,
+                                    truncate_str(&entry.description, 60),
+                                    small_font.clone(),
+                                    weak_color,
+                                );
+
+                                if selected {
+                                    resp.scroll_to_me(None);
+                                }
+                            }
+                        });
+                });
+        });
+}
+
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((i, _)) => &s[..i],
+        None => s,
+    }
 }
 
 fn syntax_layout_job(

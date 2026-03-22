@@ -32,8 +32,6 @@ enum LogTab {
 }
 
 pub struct LogPanel {
-    pub collapsed: bool,
-    height: f32,
     rx: mpsc::Receiver<LogEntry>,
     server_logs: VecDeque<LogMessage>,
     client_logs: VecDeque<LogMessage>,
@@ -43,10 +41,8 @@ pub struct LogPanel {
 }
 
 impl LogPanel {
-    pub fn new(rx: mpsc::Receiver<LogEntry>, height: f32) -> Self {
+    pub fn new(rx: mpsc::Receiver<LogEntry>) -> Self {
         Self {
-            collapsed: true,
-            height,
             rx,
             server_logs: VecDeque::new(),
             client_logs: VecDeque::new(),
@@ -54,10 +50,6 @@ impl LogPanel {
             severity_filter: [true; 5],
             search: String::new(),
         }
-    }
-
-    pub fn height(&self) -> f32 {
-        self.height
     }
 
     pub fn poll(&mut self) {
@@ -73,110 +65,86 @@ impl LogPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
-        let panel_height = if self.collapsed { 0.0 } else { self.height };
+    pub fn show_inside(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.active_tab, LogTab::Server, t!("log.server"));
+            ui.selectable_value(&mut self.active_tab, LogTab::Client, t!("log.client"));
 
-        let resp = egui::TopBottomPanel::bottom("logs")
-            .resizable(!self.collapsed)
-            .default_height(panel_height)
-            .max_height(400.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.active_tab, LogTab::Server, t!("log.server"));
-                    ui.selectable_value(&mut self.active_tab, LogTab::Client, t!("log.client"));
+            ui.separator();
 
-                    ui.separator();
+            for (i, sev) in SEVERITIES.iter().enumerate() {
+                let active = self.severity_filter[i];
+                let color = severity_color(sev);
+                let dimmed = color.linear_multiply(0.3);
+                let btn_color = if active { color } else { dimmed };
+                let btn = egui::Button::new(
+                    egui::RichText::new(SEVERITY_LABELS[i]).color(btn_color).strong(),
+                ).frame(false);
+                if ui.add(btn).clicked() {
+                    self.severity_filter[i] = !self.severity_filter[i];
+                }
+            }
 
-                    for (i, sev) in SEVERITIES.iter().enumerate() {
-                        let active = self.severity_filter[i];
-                        let color = severity_color(sev);
-                        let dimmed = color.linear_multiply(0.3);
-                        let btn_color = if active { color } else { dimmed };
-                        let btn = egui::Button::new(
-                            egui::RichText::new(SEVERITY_LABELS[i]).color(btn_color).strong(),
-                        ).frame(false);
-                        if ui.add(btn).clicked() {
-                            self.severity_filter[i] = !self.severity_filter[i];
-                        }
+            ui.separator();
+
+            let search_edit = egui::TextEdit::singleline(&mut self.search)
+                .hint_text(t!("log.search"))
+                .desired_width(120.0);
+            ui.add(search_edit);
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(crate::icons::TRASH)
+                    .on_hover_text(t!("log.clear"))
+                    .clicked()
+                {
+                    match self.active_tab {
+                        LogTab::Server => self.server_logs.clear(),
+                        LogTab::Client => self.client_logs.clear(),
+                    }
+                }
+            });
+        });
+
+        ui.separator();
+
+        let logs = match self.active_tab {
+            LogTab::Server => &self.server_logs,
+            LogTab::Client => &self.client_logs,
+        };
+
+        let search_lower = self.search.to_lowercase();
+
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                let stripe = egui::Color32::from_white_alpha(10);
+                let mut visible_idx = 0usize;
+                for log in logs.iter() {
+                    if !self.severity_filter[severity_index(&log.level)] {
+                        continue;
+                    }
+                    if !search_lower.is_empty()
+                        && !log.msg.to_lowercase().contains(&search_lower)
+                    {
+                        continue;
                     }
 
-                    ui.separator();
-
-                    let search_edit = egui::TextEdit::singleline(&mut self.search)
-                        .hint_text(t!("log.search"))
-                        .desired_width(120.0);
-                    ui.add(search_edit);
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let label = if self.collapsed {
-                            crate::icons::CHEVRON_UP
-                        } else {
-                            crate::icons::CHEVRON_DOWN
-                        };
-                        if ui.button(label).clicked() {
-                            self.collapsed = !self.collapsed;
-                        }
-
-                        if ui.button(crate::icons::TRASH)
-                            .on_hover_text(t!("log.clear"))
-                            .clicked()
-                        {
-                            match self.active_tab {
-                                LogTab::Server => self.server_logs.clear(),
-                                LogTab::Client => self.client_logs.clear(),
-                            }
-                        }
-                    });
-                });
-
-                if self.collapsed {
-                    return;
+                    let color = severity_color(&log.level);
+                    let resp = ui.colored_label(
+                        color,
+                        egui::RichText::new(log.to_string()).monospace(),
+                    );
+                    if visible_idx % 2 == 1 {
+                        let row = egui::Rect::from_x_y_ranges(
+                            ui.clip_rect().x_range(),
+                            resp.rect.y_range(),
+                        );
+                        ui.painter().rect_filled(row, 0.0, stripe);
+                    }
+                    visible_idx += 1;
                 }
-
-                ui.separator();
-
-                let logs = match self.active_tab {
-                    LogTab::Server => &self.server_logs,
-                    LogTab::Client => &self.client_logs,
-                };
-
-                let search_lower = self.search.to_lowercase();
-
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        let stripe = egui::Color32::from_white_alpha(10);
-                        let mut visible_idx = 0usize;
-                        for log in logs.iter() {
-                            if !self.severity_filter[severity_index(&log.level)] {
-                                continue;
-                            }
-                            if !search_lower.is_empty()
-                                && !log.msg.to_lowercase().contains(&search_lower)
-                            {
-                                continue;
-                            }
-
-                            let color = severity_color(&log.level);
-                            let resp = ui.colored_label(
-                                color,
-                                egui::RichText::new(log.to_string()).monospace(),
-                            );
-                            if visible_idx % 2 == 1 {
-                                let row = egui::Rect::from_x_y_ranges(
-                                    ui.clip_rect().x_range(),
-                                    resp.rect.y_range(),
-                                );
-                                ui.painter().rect_filled(row, 0.0, stripe);
-                            }
-                            visible_idx += 1;
-                        }
-                    });
             });
-
-        if !self.collapsed {
-            self.height = resp.response.rect.height();
-        }
     }
 }
 

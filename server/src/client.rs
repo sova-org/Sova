@@ -90,6 +90,12 @@ pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     Ok(buf)
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TextOp {
+    Insert { pos: usize, text: String },
+    Delete { pos: usize, len: usize },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
@@ -143,6 +149,13 @@ pub enum ClientMessage {
     SetMasterVolume(f32),
     Hush,
     Panic,
+    ScriptEdit {
+        li: usize,
+        fi: usize,
+        ops: Vec<TextOp>,
+    },
+    SetLinkEnabled(bool),
+    SetStartStopSync(bool),
 }
 
 impl ClientMessage {
@@ -611,6 +624,7 @@ mod tests {
             is_playing: true,
             languages: vec![lang_def("bob"), lang_def("bali"), lang_def("forth"), lang_def("boinx")],
             audio_engine_state: audio,
+            link_enabled: true,
         }
     }
 
@@ -836,6 +850,11 @@ mod tests {
             ServerMessage::Feedback(SchedulerMessage::SetTempo(140.0, ActionTiming::Immediate)),
             ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
             ServerMessage::Feedback(SchedulerMessage::SetScene(scene, ActionTiming::Immediate)),
+            ServerMessage::LinkState {
+                enabled: true,
+                start_stop_sync: true,
+                num_peers: 2,
+            },
         ];
 
         for msg in &variants {
@@ -919,6 +938,8 @@ mod tests {
             },
             ClientMessage::EnableFeedback,
             ClientMessage::RestartCore,
+            ClientMessage::SetLinkEnabled(true),
+            ClientMessage::SetStartStopSync(false),
         ];
 
         for msg in &variants {

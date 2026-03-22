@@ -54,8 +54,14 @@ impl SampleBrowserPanel {
         bridge: &ClientBridge,
         sample_paths: &[PathBuf],
         appearance: &AppearanceSettings,
+        is_hosting: bool,
     ) {
         if !self.open {
+            return;
+        }
+
+        if !is_hosting && bridge.is_connected() {
+            self.open = false;
             return;
         }
 
@@ -84,9 +90,9 @@ impl SampleBrowserPanel {
         }
 
         if self.detached {
-            self.show_detached(ctx, bridge, sample_paths, appearance);
+            self.show_detached(ctx, bridge, sample_paths, appearance, is_hosting);
         } else {
-            self.show_embedded(ctx, bridge, sample_paths);
+            self.show_embedded(ctx, bridge, sample_paths, is_hosting);
         }
     }
 
@@ -97,6 +103,7 @@ impl SampleBrowserPanel {
         bridge: &ClientBridge,
         sample_paths: &[PathBuf],
         show_popout: bool,
+        is_hosting: bool,
     ) {
         let Some(state) = &mut self.state else {
             ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_paths"));
@@ -341,7 +348,7 @@ impl SampleBrowserPanel {
             if let Some(entry) = found {
                 self.begin = 0.0;
                 self.trigger_preview(&entry, sample_paths, ctx);
-                if bridge.is_connected() {
+                if is_hosting && bridge.is_connected() {
                     bridge.send(ClientMessage::PreviewSample {
                         folder: entry.folder,
                         index: entry.index,
@@ -352,7 +359,7 @@ impl SampleBrowserPanel {
         }
 
         // Process waveform seek: replay current sample from clicked position
-        if seek_request && bridge.is_connected() {
+        if seek_request && is_hosting && bridge.is_connected() {
             let found = self.preview.as_ref().and_then(|preview| {
                 let parts: Vec<&str> = preview.key.splitn(2, ':').collect();
                 if parts.len() != 2 {
@@ -385,6 +392,7 @@ impl SampleBrowserPanel {
         ctx: &egui::Context,
         bridge: &ClientBridge,
         sample_paths: &[PathBuf],
+        is_hosting: bool,
     ) {
         let mut open = self.open;
         egui::Window::new(t!("sample_browser.title"))
@@ -393,7 +401,7 @@ impl SampleBrowserPanel {
             .collapsible(true)
             .default_size([300.0, 500.0])
             .show(ctx, |ui| {
-                self.browser_content(ui, ctx, bridge, sample_paths, true);
+                self.browser_content(ui, ctx, bridge, sample_paths, true, is_hosting);
             });
         self.open = open;
     }
@@ -404,6 +412,7 @@ impl SampleBrowserPanel {
         bridge: &ClientBridge,
         sample_paths: &[PathBuf],
         appearance: &AppearanceSettings,
+        is_hosting: bool,
     ) {
         let mut open = self.open;
         let mut detached = self.detached;
@@ -415,7 +424,7 @@ impl SampleBrowserPanel {
             &t!("sample_browser.detached_title"),
             [300.0, 500.0],
             appearance,
-            |ui| self.browser_content(ui, ctx, bridge, sample_paths, false),
+            |ui| self.browser_content(ui, ctx, bridge, sample_paths, false, is_hosting),
         );
         self.open = open;
         self.detached = detached;

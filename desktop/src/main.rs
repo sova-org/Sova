@@ -35,6 +35,10 @@ use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
+const DEMOS: &[(&str, &[u8])] = &[
+    ("Evening jam with th4", include_bytes!("../assets/demos/th4.sova")),
+];
+
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
     ctx.set_theme(egui::ThemePreference::Dark);
 
@@ -73,6 +77,14 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
 
         style.spacing.button_padding = egui::vec2(5.0, 4.0);
         style.spacing.indent_ends_with_horizontal_line = true;
+
+        let ui_size = a.ui_font_size;
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(ui_size));
+        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(ui_size));
+        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional((ui_size - 2.0).max(8.0)));
+        style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(ui_size + 7.0));
+
+        style.animation_time = a.animation_time;
     });
 }
 
@@ -129,7 +141,7 @@ fn main() -> eframe::Result {
                 s.server,
             );
             let client = client_panel::ClientPanel::new(s.client);
-            let logs = log_panel::LogPanel::new(log_rx, s.windows.log_panel_height);
+            let logs = log_panel::LogPanel::new(log_rx);
             let saved_master_volume = s.audio.master_volume;
             let audio = audio_panel::AudioPanel::new(s.audio);
             let devices = devices_panel::DevicesPanel::new();
@@ -169,7 +181,6 @@ fn main() -> eframe::Result {
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
-                step_editors: widgets::StepEditorManager::new(),
                 appearance: s.appearance,
                 bridge,
                 sample_browser_panel: sample_browser_panel::SampleBrowserPanel::new(),
@@ -183,7 +194,6 @@ fn main() -> eframe::Result {
                 muted: false,
             };
 
-            app.logs.collapsed = s.windows.logs_collapsed;
             app.chat_panel.detached = s.windows.chat_detached;
             app.sample_browser_panel.detached = s.windows.sample_browser_detached;
 
@@ -214,7 +224,6 @@ struct SovaApp {
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
-    step_editors: widgets::StepEditorManager,
     appearance: AppearanceSettings,
     bridge: client_bridge::ClientBridge,
     sample_browser_panel: sample_browser_panel::SampleBrowserPanel,
@@ -245,17 +254,17 @@ impl SovaApp {
         }
         ctx.input(|i| {
             if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Comma) {
-                self.options.open = !self.options.open;
+                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options);
             }
             if i.modifiers.command && i.modifiers.shift {
                 if i.key_pressed(egui::Key::S) {
-                    self.server.open = !self.server.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::A) {
-                    self.audio.open = !self.audio.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::I) {
-                    self.devices.open = !self.devices.open;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices);
                 }
                 if i.key_pressed(egui::Key::O) {
                     self.scope_panel.open = !self.scope_panel.open;
@@ -270,7 +279,7 @@ impl SovaApp {
                     self.scope_bar_panel.open = !self.scope_bar_panel.open;
                 }
                 if i.key_pressed(egui::Key::L) {
-                    self.logs.collapsed = !self.logs.collapsed;
+                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
                 }
                 if i.key_pressed(egui::Key::B) {
                     self.debug_open = !self.debug_open;
@@ -279,7 +288,11 @@ impl SovaApp {
                     self.chat_panel.open = !self.chat_panel.open;
                 }
                 if i.key_pressed(egui::Key::E) {
-                    self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                    let sample_browser_available =
+                        !self.bridge.is_connected() || self.server.is_running();
+                    if sample_browser_available {
+                        self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                    }
                 }
                 if i.key_pressed(egui::Key::H) {
                     self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
@@ -369,6 +382,19 @@ impl SovaApp {
         self.push_recent_scene(path.to_path_buf());
     }
 
+    fn load_scene_from_bytes(&mut self, bytes: &[u8], timing: ActionTiming) {
+        let Ok(snapshot) = serde_json::from_slice::<sova_server::Snapshot>(bytes) else {
+            return;
+        };
+        self.bridge
+            .send(ClientMessage::SetScene(snapshot.scene, timing));
+        self.bridge
+            .send(ClientMessage::SetTempo(snapshot.tempo, timing));
+        self.bridge.send(ClientMessage::SchedulerControl(
+            SchedulerMessage::SetQuantum(snapshot.quantum, timing),
+        ));
+    }
+
     fn push_recent_scene(&mut self, path: std::path::PathBuf) {
         self.recent_scenes.retain(|p| p != &path);
         self.recent_scenes.insert(0, path);
@@ -378,8 +404,6 @@ impl SovaApp {
     fn save_settings(&self) {
         let s = settings::AppSettings {
             windows: settings::WindowSettings {
-                logs_collapsed: self.logs.collapsed,
-                log_panel_height: self.logs.height(),
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
                 scope_bar: settings::ScopeBarSettings {
@@ -428,7 +452,6 @@ impl eframe::App for SovaApp {
         match self.confirm_exit.show(ctx) {
             widgets::ConfirmAction::Confirmed => {
                 self.save_settings();
-                self.step_editors.close_all();
                 self.bridge.disconnect();
                 self.server.stop();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -526,6 +549,16 @@ impl eframe::App for SovaApp {
                             }
                         });
                     });
+                    ui.add_enabled_ui(connected, |ui| {
+                        ui.menu_button(t!("menu.demos"), |ui| {
+                            for (name, bytes) in DEMOS {
+                                if ui.button(*name).clicked() {
+                                    self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
                     ui.separator();
                     if ui.button(t!("menu.exit")).clicked() {
                         ui.close();
@@ -546,19 +579,10 @@ impl eframe::App for SovaApp {
                     ("Ctrl+", "Shift+")
                 };
                 let r = ui.menu_button(t!("menu.server"), |ui| {
-                    let menu_checkbox = |ui: &mut egui::Ui,
-                                         checked: &mut bool,
-                                         label: std::borrow::Cow<'_, str>,
-                                         shortcut: &str| {
-                        let text = egui::RichText::new(shortcut).weak();
-                        ui.checkbox(checked, label).on_hover_text(text);
-                    };
-
                     if self.server.is_running() {
                         if ui.button(t!("menu.stop_server")).clicked() {
                             ui.close();
                             self.bridge.disconnect();
-                            self.step_editors.close_all();
                             self.server.stop();
                         }
                     } else if ui.button(t!("menu.start_server")).clicked() {
@@ -591,13 +615,6 @@ impl eframe::App for SovaApp {
                             self.rename_input = Some(current);
                         }
                     }
-                    ui.separator();
-                    menu_checkbox(
-                        ui,
-                        &mut self.devices.open,
-                        t!("devices.title"),
-                        &format!("{mod_sym}{shift_sym}I"),
-                    );
                 });
                 if r.response.hovered() {
                     widgets::hint::set(ctx, t!("hint.server_menu"));
@@ -609,7 +626,7 @@ impl eframe::App for SovaApp {
                         .clicked()
                     {
                         ui.close();
-                        self.bridge.send(self.audio.restart_message());
+                        self.bridge.restart_audio(self.audio.generate_audio_config());
                     }
                     if ui
                         .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))
@@ -632,13 +649,6 @@ impl eframe::App for SovaApp {
                         ui.checkbox(checked, label).on_hover_text(text);
                     };
 
-                    menu_checkbox(
-                        ui,
-                        &mut self.audio.open,
-                        t!("audio.title"),
-                        &format!("{mod_sym}{shift_sym}A"),
-                    );
-                    ui.separator();
                     menu_checkbox(
                         ui,
                         &mut self.scope_panel.open,
@@ -678,51 +688,22 @@ impl eframe::App for SovaApp {
 
                     menu_checkbox(
                         ui,
-                        &mut self.server.open,
-                        t!("server.title"),
-                        &format!("{mod_sym}{shift_sym}S"),
-                    );
-                    menu_checkbox(
-                        ui,
                         &mut self.chat_panel.open,
                         t!("chat.title"),
                         &format!("{mod_sym}{shift_sym}C"),
                     );
-                    menu_checkbox(
-                        ui,
-                        &mut self.sample_browser_panel.open,
-                        t!("sample_browser.title"),
-                        &format!("{mod_sym}{shift_sym}E"),
-                    );
-                    ui.menu_button(t!("doc.title"), |ui| {
-                        let mut expanded = !self.doc_panel.settings.collapsed;
-                        if ui.checkbox(&mut expanded, t!("doc.title")).changed() {
-                            self.doc_panel.settings.collapsed = !expanded;
-                            if expanded {
-                                self.doc_panel.settings.pinned = true;
-                            }
-                        }
-                        if ui.button(t!("doc.swap_side")).clicked() {
-                            self.doc_panel.settings.side = match self.doc_panel.settings.side {
-                                DocSide::Left => DocSide::Right,
-                                DocSide::Right => DocSide::Left,
-                            };
-                        }
-                        ui.separator();
-                        ui.label(t!("doc.trigger"));
-                        let mut trigger = self.doc_panel.settings.trigger;
-                        ui.radio_value(
-                            &mut trigger,
-                            settings::DocTrigger::Click,
-                            t!("doc.trigger_click"),
-                        );
-                        ui.radio_value(
-                            &mut trigger,
-                            settings::DocTrigger::Hover,
-                            t!("doc.trigger_hover"),
-                        );
-                        self.doc_panel.settings.trigger = trigger;
-                    });
+                    {
+                        let sample_browser_available =
+                            !self.bridge.is_connected() || self.server.is_running();
+                        ui.add_enabled_ui(sample_browser_available, |ui| {
+                            menu_checkbox(
+                                ui,
+                                &mut self.sample_browser_panel.open,
+                                t!("sample_browser.title"),
+                                &format!("{mod_sym}{shift_sym}E"),
+                            );
+                        });
+                    }
                     menu_checkbox(
                         ui,
                         &mut self.visuals.open,
@@ -730,18 +711,6 @@ impl eframe::App for SovaApp {
                         &format!("{mod_sym}{shift_sym}V"),
                     );
                     ui.separator();
-                    let mut logs_expanded = !self.logs.collapsed;
-                    let changed = ui.checkbox(&mut logs_expanded, t!("cmd.logs")).changed();
-                    if changed {
-                        self.logs.collapsed = !logs_expanded;
-                    }
-                    ui.separator();
-                    menu_checkbox(
-                        ui,
-                        &mut self.options.open,
-                        t!("options.title"),
-                        &format!("{mod_sym},"),
-                    );
                     menu_checkbox(
                         ui,
                         &mut self.debug_open,
@@ -814,6 +783,27 @@ impl eframe::App for SovaApp {
             self.bridge.send(ClientMessage::SetMasterVolume(0.0));
         }
 
+        // Compilation error toast (above bottom bar, fades after 5s)
+        let error_fade = 5.0_f32;
+        if let Some((ref msg, instant)) = self.bridge.last_error {
+            let elapsed = instant.elapsed().as_secs_f32();
+            if elapsed < error_fade {
+                let alpha = ((1.0 - elapsed / error_fade) * 255.0) as u8;
+                let error_bg = egui::Color32::from_rgba_unmultiplied(40, 10, 10, alpha);
+                let text_color = egui::Color32::from_rgba_unmultiplied(255, 100, 100, alpha);
+                egui::TopBottomPanel::bottom("error_toast")
+                    .frame(
+                        egui::Frame::NONE
+                            .fill(error_bg)
+                            .inner_margin(egui::Margin::symmetric(8, 4)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.label(egui::RichText::new(msg).color(text_color).small());
+                    });
+                ctx.request_repaint();
+            }
+        }
+
         let bar = egui::TopBottomPanel::bottom("bottom_bar")
             .show(ctx, |ui| {
                 widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge))
@@ -824,29 +814,52 @@ impl eframe::App for SovaApp {
         }
         if bar.disconnect {
             self.bridge.disconnect();
-            self.step_editors.close_all();
         }
 
-        self.logs.show(ctx);
-
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
-        if self.scope_bar_panel.open && self.bridge.audio_state().running {
+        if self.scope_bar_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             self.scope_bar_panel
                 .show_bottom_panel(ctx, self.bridge.scope_data());
         }
 
-        // Doc panel as side panel (must be before VU meter and CentralPanel)
-        self.doc_panel
-            .show_side_panel(ctx, &self.bridge, &self.editor_settings);
+        // Sidebar (docs + settings + logs, must be before VU meter and CentralPanel)
+        let settings_ctx = doc_panel::SettingsContext {
+            server: &mut self.server,
+            audio: &mut self.audio,
+            options: &mut self.options,
+            devices: &mut self.devices,
+            logs: &mut self.logs,
+            editor_settings: &mut self.editor_settings,
+            appearance: &mut self.appearance,
+            dismissed_tips: &mut self.dismissed_tips,
+        };
+        let (sidebar_server_action, sidebar_appearance_changed) = self.doc_panel.show_side_panel(
+            ctx,
+            &self.bridge,
+            settings_ctx,
+        );
+        match sidebar_server_action {
+            ServerAction::Start => {
+                self.server.start(self.audio.generate_audio_config());
+            }
+            ServerAction::Stop => {
+                self.bridge.disconnect();
+                self.server.stop();
+            }
+            ServerAction::None => {}
+        }
+        if sidebar_appearance_changed {
+            apply_appearance(ctx, &self.appearance);
+        }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)
-        if self.vu_meter_panel.open && self.bridge.audio_state().running {
+        if self.vu_meter_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             let vu_side = match self.doc_panel.settings.side {
                 DocSide::Left => egui::containers::panel::Side::Right,
                 DocSide::Right => egui::containers::panel::Side::Left,
             };
             self.vu_meter_panel
-                .show_side_panel(ctx, self.bridge.scope_data(), vu_side);
+                .show_side_panel(ctx, self.bridge.peak_data(), vu_side);
         }
 
         // Render visuals shader as background layer
@@ -866,48 +879,40 @@ impl eframe::App for SovaApp {
         };
 
         if self.bridge.is_connected() {
-            let mut panels = scene_panel::PanelVisibility {
-                server: self.server.open,
-                audio: self.audio.open,
+            let sidebar_open = self.doc_panel.is_expanded()
+                && self.doc_panel.mode() == doc_panel::SidebarMode::Settings;
+            let panels = scene_panel::PanelVisibility {
+                sidebar: sidebar_open,
                 devices: self.devices.open,
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
                 vu_meter: self.vu_meter_panel.open,
                 scope_bar: self.scope_bar_panel.open,
-                logs: !self.logs.collapsed,
-                options: self.options.open,
+                logs: self.doc_panel.is_logs_open(),
                 debug: self.debug_open,
             };
-            let open_step = egui::CentralPanel::default()
+            egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, &self.editor_settings)
-                })
-                .inner;
-            self.server.open = panels.server;
-            self.audio.open = panels.audio;
+                    let pending_edits: Vec<_> = self.bridge.pending_script_edits.drain(..).collect();
+                    self.scene_panel.show(ui, &self.bridge, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits);
+                });
+            if panels.sidebar != sidebar_open {
+                if panels.sidebar {
+                    self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
+                } else {
+                    self.doc_panel.settings.collapsed = true;
+                }
+            }
             self.devices.open = panels.devices;
             self.scope_panel.open = panels.scope;
             self.spectrum_panel.open = panels.spectrum;
             self.vu_meter_panel.open = panels.vu_meter;
             self.scope_bar_panel.open = panels.scope_bar;
-            self.logs.collapsed = !panels.logs;
-            self.options.open = panels.options;
-            self.debug_open = panels.debug;
-            if let Some((li, fi)) = open_step
-                && let Some(frame) = self
-                    .bridge
-                    .scene()
-                    .and_then(|s| s.lines.get(li))
-                    .and_then(|l| l.frames.get(fi))
-            {
-                self.step_editors.open(li, fi, frame);
-                self.bridge
-                    .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
+            if panels.logs != self.doc_panel.is_logs_open() {
+                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
             }
-
-            self.step_editors
-                .show(ctx, &self.bridge, &self.editor_settings);
+            self.debug_open = panels.debug;
         } else {
             let action = egui::CentralPanel::default()
                 .frame(central_frame)
@@ -920,7 +925,7 @@ impl eframe::App for SovaApp {
                 self.server.start(self.audio.generate_audio_config());
             }
             if action.open_server_config {
-                self.server.open = true;
+                self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
             }
             if action.start_feedback && !self.bridge.has_feedback() {
                 self.bridge.start_feedback(self.audio.generate_audio_config());
@@ -928,42 +933,21 @@ impl eframe::App for SovaApp {
         }
 
         // Floating windows
-        let server_action = self.server.show(ctx);
-        match server_action {
-            ServerAction::Start => {
-                self.server.start(self.audio.generate_audio_config());
-            }
-            ServerAction::Stop => {
-                self.bridge.disconnect();
-                self.step_editors.close_all();
-                self.server.stop();
-            }
-            ServerAction::None => {}
-        }
-
         self.chat_panel
             .show(ctx, &mut self.bridge, &self.appearance);
         self.chat_overlay.poll(self.bridge.chat_messages());
         self.chat_overlay.show(ctx);
-        self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
         let sample_paths = self.audio.sample_paths();
+        let is_hosting = self.server.is_running();
         self.sample_browser_panel
-            .show(ctx, &self.bridge, sample_paths, &self.appearance);
+            .show(ctx, &self.bridge, sample_paths, &self.appearance, is_hosting);
 
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data, &self.appearance);
         self.spectrum_panel.show(ctx, scope_data, &self.appearance);
 
-        if self.options.show(
-            ctx,
-            &mut self.editor_settings,
-            &mut self.appearance,
-            &mut self.dismissed_tips,
-        ) {
-            apply_appearance(ctx, &self.appearance);
-        }
         self.visuals.show_editor(ctx, &self.editor_settings);
 
         if self.visuals.take_pending_broadcast() {
@@ -981,16 +965,14 @@ impl eframe::App for SovaApp {
         widgets::about_dialog(ctx, &mut self.about_open);
 
         self.command_palette.update_states(&widgets::PanelStates {
-            server: self.server.open,
-            audio: self.audio.open,
+            sidebar: self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings,
             devices: self.devices.open,
             scope: self.scope_panel.open,
             spectrum: self.spectrum_panel.open,
             vu_meter: self.vu_meter_panel.open,
             scope_bar: self.scope_bar_panel.open,
             chat: self.chat_panel.open,
-            logs: !self.logs.collapsed,
-            options: self.options.open,
+            logs: self.doc_panel.is_logs_open(),
             debug: self.debug_open,
             keybindings: self.keybindings_open,
             about: self.about_open,
@@ -1004,12 +986,8 @@ impl eframe::App for SovaApp {
         }
 
         // Contextual tips (first match wins)
-        let tip_id = if self.step_editors.has_open() {
-            Some("step_editor")
-        } else if self.server.open {
-            Some("server")
-        } else if self.audio.open {
-            Some("audio")
+        let tip_id = if self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings {
+            Some("settings")
         } else if self.devices.open {
             Some("devices")
         } else if self.scope_panel.open {
@@ -1041,20 +1019,26 @@ impl SovaApp {
     fn execute_command(&mut self, cmd: widgets::CommandId) {
         use widgets::CommandId::*;
         match cmd {
-            Server => self.server.open = !self.server.open,
-            Audio => self.audio.open = !self.audio.open,
-            Devices => self.devices.open = !self.devices.open,
+            Server => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
+            Audio => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
+            Devices => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices),
             Scope => self.scope_panel.open = !self.scope_panel.open,
             Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
             VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,
             ScopeBar => self.scope_bar_panel.open = !self.scope_bar_panel.open,
             Chat => self.chat_panel.open = !self.chat_panel.open,
-            Logs => self.logs.collapsed = !self.logs.collapsed,
-            Options => self.options.open = !self.options.open,
+            Logs => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs),
+            Options => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options),
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,
-            SampleBrowser => self.sample_browser_panel.open = !self.sample_browser_panel.open,
+            SampleBrowser => {
+                let sample_browser_available =
+                    !self.bridge.is_connected() || self.server.is_running();
+                if sample_browser_available {
+                    self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                }
+            }
             Documentation => {
                 self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
                 if !self.doc_panel.settings.collapsed {
@@ -1195,43 +1179,47 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
             };
 
             let right = |ui: &mut egui::Ui| {
-                ui.heading(t!("kb.scene_grid"));
-                egui::Grid::new("kb_scene")
+                ui.heading(t!("kb.scene_nav"));
+                egui::Grid::new("kb_scene_nav")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
                         row(ui, t!("kb.navigate"), "Arrow keys".into());
-                        row(ui, t!("kb.edit_step"), "Enter".into());
-                        row(ui, t!("kb.edit_duration"), "D".into());
-                        row(ui, t!("kb.edit_repetitions"), "R".into());
-                        row(ui, t!("kb.rename_frame"), "N".into());
-                        row(ui, t!("kb.edit_speed"), "S".into());
-                        row(ui, t!("kb.toggle_looping"), "L".into());
-                        row(ui, t!("kb.toggle_trailing"), "T".into());
-                        row(ui, t!("kb.cancel"), "Escape".into());
-                        row(ui, t!("kb.delete_step"), "Delete".into());
+                        row(ui, t!("kb.navigate_vim"), "h / j / k / l".into());
+                        row(ui, t!("kb.enter_edit"), "Enter / i".into());
+                        row(ui, t!("kb.exit_edit"), "Escape".into());
+                        row(ui, t!("kb.extend_selection"), "Shift+Up/Down".into());
+                        row(ui, t!("kb.duplicate_after"), format!("{m}+D"));
+                        row(ui, t!("kb.duplicate_before"), format!("{m}+Shift+D"));
+                        row(ui, t!("kb.insert_after"), "Shift+I".into());
+                        row(ui, t!("kb.insert_before"), format!("{m}+Shift+I"));
+                        row(ui, t!("kb.delete_frame"), "Delete".into());
+                        row(ui, t!("kb.move_frame_down"), "Shift+J".into());
+                        row(ui, t!("kb.move_frame_up"), "Shift+K".into());
+                        row(ui, t!("kb.toggle_enabled"), "e".into());
+                        row(ui, t!("kb.toggle_looping"), ".".into());
+                        row(ui, t!("kb.toggle_trailing"), ",".into());
+                        row(ui, t!("kb.move_line_left"), "Alt+H".into());
+                        row(ui, t!("kb.move_line_right"), "Alt+L".into());
                         row(ui, t!("kb.select_all"), format!("{m}+A"));
                         row(ui, t!("kb.copy"), format!("{m}+C"));
                         row(ui, t!("kb.cut"), format!("{m}+X"));
                         row(ui, t!("kb.paste"), format!("{m}+V"));
-                        row(ui, t!("kb.duplicate"), format!("{m}+D"));
-                        row(ui, t!("kb.duplicate_line"), format!("{m}+Shift+D"));
-                        row(ui, t!("kb.extend_selection"), "Shift+Up/Down".into());
-                        row(ui, t!("kb.move_frame"), "Alt+Up/Down".into());
-                        row(ui, t!("kb.move_line"), "Alt+Left/Right".into());
                         row(ui, t!("kb.delete_line"), format!("{m}+Delete"));
                     });
 
                 ui.add_space(8.0);
-                ui.heading(t!("kb.code_editor"));
-                egui::Grid::new("kb_editor")
+                ui.heading(t!("kb.scene_edit"));
+                egui::Grid::new("kb_scene_edit")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, t!("kb.search"), format!("{m}+F"));
+                        row(ui, t!("kb.exit_edit"), "Escape".into());
                         row(ui, t!("kb.evaluate"), format!("{m}+Enter"));
+                        row(ui, t!("kb.lang_selector"), format!("{m}+L"));
+                        row(ui, t!("kb.search"), format!("{m}+F"));
                     });
             };
 

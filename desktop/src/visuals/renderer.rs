@@ -6,6 +6,16 @@ use glow::{HasContext, PixelUnpackData};
 use super::hydra::RenderMode;
 use super::shader;
 
+#[derive(Clone, Copy)]
+pub struct RenderUniforms {
+    pub time: f32,
+    pub resolution: [f32; 2],
+    pub mouse: [f32; 2],
+    pub beat: f32,
+    pub tempo: f32,
+    pub phase: f32,
+}
+
 const NUM_BUFFERS: usize = 4;
 
 #[derive(Clone, Copy)]
@@ -289,12 +299,7 @@ pub fn render_multipass(
     gl: &glow::Context,
     snap: &RenderSnapshot,
     ping: &AtomicBool,
-    time: f32,
-    resolution: [f32; 2],
-    mouse: [f32; 2],
-    beat: f32,
-    tempo: f32,
-    phase: f32,
+    u: RenderUniforms,
 ) {
     let write = ping.load(Ordering::Relaxed) as usize;
     let read = 1 - write;
@@ -309,8 +314,8 @@ pub fn render_multipass(
         // Hydra handles blending in the shader (layer, blend, etc.), not via GL state.
         gl.disable(glow::BLEND);
 
-        let res_w = resolution[0] as i32;
-        let res_h = resolution[1] as i32;
+        let res_w = u.resolution[0] as i32;
+        let res_h = u.resolution[1] as i32;
 
         for (i, prog) in snap.programs.iter().enumerate() {
             let Some(p) = prog else { continue };
@@ -320,22 +325,22 @@ pub fn render_multipass(
             gl.use_program(Some(p.program));
 
             if let Some(ref loc) = p.loc_time {
-                gl.uniform_1_f32(Some(loc), time);
+                gl.uniform_1_f32(Some(loc), u.time);
             }
             if let Some(ref loc) = p.loc_beat {
-                gl.uniform_1_f32(Some(loc), beat);
+                gl.uniform_1_f32(Some(loc), u.beat);
             }
             if let Some(ref loc) = p.loc_tempo {
-                gl.uniform_1_f32(Some(loc), tempo);
+                gl.uniform_1_f32(Some(loc), u.tempo);
             }
             if let Some(ref loc) = p.loc_phase {
-                gl.uniform_1_f32(Some(loc), phase);
+                gl.uniform_1_f32(Some(loc), u.phase);
             }
             if let Some(ref loc) = p.loc_resolution {
-                gl.uniform_2_f32(Some(loc), resolution[0], resolution[1]);
+                gl.uniform_2_f32(Some(loc), u.resolution[0], u.resolution[1]);
             }
             if let Some(ref loc) = p.loc_mouse {
-                gl.uniform_2_f32(Some(loc), mouse[0], mouse[1]);
+                gl.uniform_2_f32(Some(loc), u.mouse[0], u.mouse[1]);
             }
 
             for (j, loc) in p.loc_buffers.iter().enumerate() {
@@ -376,7 +381,7 @@ pub fn render_multipass(
         gl.use_program(Some(d.program));
 
         if let Some(ref loc) = d.loc_resolution {
-            gl.uniform_2_f32(Some(loc), resolution[0], resolution[1]);
+            gl.uniform_2_f32(Some(loc), u.resolution[0], u.resolution[1]);
         }
 
         match snap.render_mode {

@@ -4,8 +4,8 @@ use eframe::egui;
 use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
-use sova_server::audio::doux_audio::AudioDeviceInfo;
-use sova_server::{AudioRestartConfig, ClientMessage};
+use sova_server::audio::doux_audio::{self, AudioDeviceInfo, AudioHostInfo};
+use sova_server::AudioRestartConfig;
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -18,29 +18,33 @@ const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
 ];
 
 pub struct AudioPanel {
-    pub open: bool,
+    host: String,
     output_device: String,
     input_device: String,
     channels: u16,
     buffer_size: Option<u32>,
     max_voices: usize,
     sample_paths: Vec<PathBuf>,
+    available_hosts: Vec<AudioHostInfo>,
     output_devices: Vec<AudioDeviceInfo>,
     input_devices: Vec<AudioDeviceInfo>,
+    host_controls_buffer: bool,
 }
 
 impl AudioPanel {
     pub fn new(settings: AudioSettings) -> Self {
         let mut panel = Self {
-            open: false,
+            host: settings.host,
             output_device: settings.output_device,
             input_device: settings.input_device,
             channels: settings.channels,
             buffer_size: settings.buffer_size,
             max_voices: settings.max_voices,
             sample_paths: settings.sample_paths,
+            available_hosts: Vec::new(),
             output_devices: Vec::new(),
             input_devices: Vec::new(),
+            host_controls_buffer: false,
         };
         panel.refresh_devices();
         panel
@@ -52,6 +56,7 @@ impl AudioPanel {
 
     pub fn settings(&self) -> AudioSettings {
         AudioSettings {
+            host: self.host.clone(),
             output_device: self.output_device.clone(),
             input_device: self.input_device.clone(),
             channels: self.channels,
@@ -62,13 +67,31 @@ impl AudioPanel {
         }
     }
 
-    fn refresh_devices(&mut self) {
-        self.output_devices = sova_server::audio::doux_audio::list_output_devices();
-        self.input_devices = sova_server::audio::doux_audio::list_input_devices();
+    pub fn refresh_devices(&mut self) {
+        self.available_hosts = doux_audio::list_hosts();
+        let selection = if self.host.is_empty() {
+            doux_audio::HostSelection::Auto
+        } else {
+            doux_audio::HostSelection::Named(self.host.to_lowercase())
+        };
+        if let Ok(host) = doux_audio::get_host(selection) {
+            self.output_devices = doux_audio::list_output_devices_for(&host);
+            self.input_devices = doux_audio::list_input_devices_for(&host);
+            self.host_controls_buffer = doux_audio::host_controls_buffer_size(&host);
+        } else {
+            self.output_devices.clear();
+            self.input_devices.clear();
+            self.host_controls_buffer = false;
+        }
     }
 
     pub fn generate_audio_config(&self) -> AudioRestartConfig {
         AudioRestartConfig {
+            host: if self.host.is_empty() {
+                None
+            } else {
+                Some(self.host.clone())
+            },
             device: if self.output_device.is_empty() {
                 None
             } else {
@@ -86,101 +109,143 @@ impl AudioPanel {
         }
     }
 
-    pub fn restart_message(&self) -> ClientMessage {
-        ClientMessage::RestartAudioEngine(self.generate_audio_config())
+    pub fn show_restart_button(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        if !bridge.is_connected() {
+            return;
+        }
+        let r = ui.button(t!("audio.restart"));
+        if r.hovered() {
+            crate::widgets::hint::set(ui.ctx(), t!("audio.hint.restart"));
+        }
+        if r.clicked() {
+            bridge.restart_audio(self.generate_audio_config());
+        }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
-        let mut open = self.open;
-        egui::Window::new(t!("audio.title"))
-            .open(&mut open)
-            .resizable(true)
-            .collapsible(true)
-            .default_width(320.0)
-            .show(ctx, |ui| {
-                self.show_config(ui);
-                ui.separator();
-
-                if !bridge.is_connected() {
-                    ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
-                } else {
-                    ui.horizontal(|ui| {
-                        let r = ui.button(t!("audio.restart"));
-                        if r.hovered() {
-                            crate::widgets::hint::set(ctx, t!("audio.hint.restart"));
-                        }
-                        if r.clicked() {
-                            bridge.send(self.restart_message());
-                        }
-                    });
-
-                    let state = bridge.audio_state();
-                    if state.running || state.error.is_some() {
-                        ui.separator();
-                        self.show_status(ui, state);
-                    }
-                }
-            });
-        self.open = open;
+    pub fn show_status_section(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        if !bridge.is_connected() {
+            return;
+        }
+        let state = bridge.audio_state();
+        if state.running || state.error.is_some() {
+            self.show_status(ui, state);
+        }
     }
 
-    fn show_config(&mut self, ui: &mut egui::Ui) {
+    pub fn show_config(&mut self, ui: &mut egui::Ui) {
         egui::Grid::new("audio_config")
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 use crate::widgets::hint;
 
-                let r = ui.label(t!("audio.output"));
-                hint::on_hover(ui.ctx(), &r, t!("audio.hint.output"));
-                let r = egui::ComboBox::from_id_salt("audio_output_device")
-                    .selected_text(if self.output_device.is_empty() {
-                        t!("audio.system_default")
-                    } else {
-                        self.output_device.clone().into()
-                    })
-                    .width(180.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.output_device,
-                            String::new(),
-                            t!("audio.system_default"),
-                        );
-                        for dev in &self.output_devices {
-                            ui.selectable_value(
-                                &mut self.output_device,
-                                dev.name.clone(),
-                                &dev.name,
-                            );
+                // Host selector — only shown when multiple hosts are available
+                if self.available_hosts.len() > 1 {
+                    let r = ui.label(t!("audio.host"));
+                    hint::on_hover(ui.ctx(), &r, t!("audio.hint.host"));
+                    ui.horizontal(|ui| {
+                        let prev_host = self.host.clone();
+                        let selected_text = if self.host.is_empty() {
+                            t!("audio.system_default")
+                        } else {
+                            self.host.clone().into()
+                        };
+                        let r = egui::ComboBox::from_id_salt("audio_host")
+                            .selected_text(selected_text)
+                            .width(160.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.host,
+                                    String::new(),
+                                    t!("audio.system_default"),
+                                );
+                                for h in &self.available_hosts {
+                                    if h.available {
+                                        ui.selectable_value(
+                                            &mut self.host,
+                                            h.name.clone(),
+                                            &h.name,
+                                        );
+                                    }
+                                }
+                            });
+                        hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.host"));
+                        let refresh = ui.small_button("\u{21bb}");
+                        hint::on_hover(ui.ctx(), &refresh, t!("hint.refresh_devices"));
+                        if refresh.clicked() {
+                            self.refresh_devices();
+                        }
+                        if self.host != prev_host {
+                            self.output_device.clear();
+                            self.input_device.clear();
+                            self.refresh_devices();
                         }
                     });
-                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.output"));
+                    ui.end_row();
+                }
+
+                let r = ui.label(t!("audio.output"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.output"));
+                ui.horizontal(|ui| {
+                    let r = egui::ComboBox::from_id_salt("audio_output_device")
+                        .selected_text(if self.output_device.is_empty() {
+                            t!("audio.system_default")
+                        } else {
+                            self.output_device.clone().into()
+                        })
+                        .width(160.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.output_device,
+                                String::new(),
+                                t!("audio.system_default"),
+                            );
+                            for dev in &self.output_devices {
+                                ui.selectable_value(
+                                    &mut self.output_device,
+                                    dev.name.clone(),
+                                    &dev.name,
+                                );
+                            }
+                        });
+                    hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.output"));
+                    // Refresh button here only when host selector is hidden
+                    if self.available_hosts.len() <= 1 {
+                        let refresh = ui.small_button("\u{21bb}");
+                        hint::on_hover(ui.ctx(), &refresh, t!("hint.refresh_devices"));
+                        if refresh.clicked() {
+                            self.refresh_devices();
+                        }
+                    }
+                });
                 ui.end_row();
 
                 let r = ui.label(t!("audio.input"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.input"));
-                let r = egui::ComboBox::from_id_salt("audio_input_device")
-                    .selected_text(if self.input_device.is_empty() {
-                        t!("audio.system_default")
-                    } else {
-                        self.input_device.clone().into()
-                    })
-                    .width(180.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.input_device,
-                            String::new(),
-                            t!("audio.system_default"),
-                        );
-                        for dev in &self.input_devices {
+                ui.horizontal(|ui| {
+                    let r = egui::ComboBox::from_id_salt("audio_input_device")
+                        .selected_text(if self.input_device.is_empty() {
+                            t!("audio.system_default")
+                        } else {
+                            self.input_device.clone().into()
+                        })
+                        .width(160.0)
+                        .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut self.input_device,
-                                dev.name.clone(),
-                                &dev.name,
+                                String::new(),
+                                t!("audio.system_default"),
                             );
-                        }
-                    });
-                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.input"));
+                            for dev in &self.input_devices {
+                                ui.selectable_value(
+                                    &mut self.input_device,
+                                    dev.name.clone(),
+                                    &dev.name,
+                                );
+                            }
+                        });
+                    hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.input"));
+                });
                 ui.end_row();
 
                 let r = ui.label(t!("audio.channels"));
@@ -197,22 +262,26 @@ impl AudioPanel {
 
                 let r = ui.label(t!("audio.buffer"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.buffer"));
-                let buf_label = match self.buffer_size {
-                    None => t!("audio.default").to_string(),
-                    Some(s) => s.to_string(),
-                };
-                let r = egui::ComboBox::from_id_salt("audio_buffer_size")
-                    .selected_text(buf_label)
-                    .show_ui(ui, |ui| {
-                        for &opt in BUFFER_SIZE_OPTIONS {
-                            let label = match opt {
-                                None => t!("audio.default").to_string(),
-                                Some(s) => s.to_string(),
-                            };
-                            ui.selectable_value(&mut self.buffer_size, opt, label);
-                        }
-                    });
-                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.buffer"));
+                if self.host_controls_buffer {
+                    ui.add_enabled(false, egui::Label::new(t!("audio.host_managed")));
+                } else {
+                    let buf_label = match self.buffer_size {
+                        None => t!("audio.default").to_string(),
+                        Some(s) => s.to_string(),
+                    };
+                    let r = egui::ComboBox::from_id_salt("audio_buffer_size")
+                        .selected_text(buf_label)
+                        .show_ui(ui, |ui| {
+                            for &opt in BUFFER_SIZE_OPTIONS {
+                                let label = match opt {
+                                    None => t!("audio.default").to_string(),
+                                    Some(s) => s.to_string(),
+                                };
+                                ui.selectable_value(&mut self.buffer_size, opt, label);
+                            }
+                        });
+                    hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.buffer"));
+                }
                 ui.end_row();
             });
 
@@ -236,10 +305,10 @@ impl AudioPanel {
         if r.hovered() {
             crate::widgets::hint::set(ui.ctx(), t!("audio.hint.add_folder"));
         }
-        if r.clicked() {
-            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                self.sample_paths.push(folder);
-            }
+        if r.clicked()
+            && let Some(folder) = rfd::FileDialog::new().pick_folder()
+        {
+            self.sample_paths.push(folder);
         }
     }
 

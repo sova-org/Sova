@@ -158,8 +158,7 @@ fn commands() -> Vec<Command> {
 
 /// Panel open/closed states, passed each frame before showing the palette.
 pub struct PanelStates {
-    pub server: bool,
-    pub audio: bool,
+    pub sidebar: bool,
     pub devices: bool,
     pub scope: bool,
     pub spectrum: bool,
@@ -167,7 +166,6 @@ pub struct PanelStates {
     pub scope_bar: bool,
     pub chat: bool,
     pub logs: bool,
-    pub options: bool,
     pub debug: bool,
     pub keybindings: bool,
     pub about: bool,
@@ -227,8 +225,7 @@ impl CommandPalette {
     pub fn update_states(&mut self, states: &PanelStates) {
         for cmd in &mut self.commands {
             cmd.active = match cmd.id {
-                CommandId::Server => states.server,
-                CommandId::Audio => states.audio,
+                CommandId::Server | CommandId::Audio | CommandId::Options => states.sidebar,
                 CommandId::Devices => states.devices,
                 CommandId::Scope => states.scope,
                 CommandId::Spectrum => states.spectrum,
@@ -236,7 +233,6 @@ impl CommandPalette {
                 CommandId::ScopeBar => states.scope_bar,
                 CommandId::Chat => states.chat,
                 CommandId::Logs => states.logs,
-                CommandId::Options => states.options,
                 CommandId::Debug => states.debug,
                 CommandId::Keybindings => states.keybindings,
                 CommandId::About => states.about,
@@ -373,7 +369,7 @@ impl CommandPalette {
                                     label_normal,
                                 );
                             } else {
-                                paint_highlighted_text(
+                                super::paint_highlighted_text(
                                     ui,
                                     label_pos,
                                     &cmd.label,
@@ -462,29 +458,3 @@ impl CommandPalette {
     }
 }
 
-fn paint_highlighted_text(
-    ui: &egui::Ui,
-    pos: egui::Pos2,
-    text: &str,
-    match_indices: &[usize],
-    font: egui::FontId,
-    normal_color: egui::Color32,
-    highlight_color: egui::Color32,
-) {
-    let painter = ui.painter();
-    let chars: Vec<char> = text.chars().collect();
-    let mut x = pos.x;
-
-    for (i, &ch) in chars.iter().enumerate() {
-        let color = if match_indices.contains(&i) {
-            highlight_color
-        } else {
-            normal_color
-        };
-        let s = String::from(ch);
-        let galley = painter.layout_no_wrap(s, font.clone(), color);
-        let char_width = galley.rect.width();
-        painter.galley(egui::pos2(x, pos.y), galley, color);
-        x += char_width;
-    }
-}

@@ -65,10 +65,7 @@ impl ScopePanel {
         let a = self.settings.smoothing;
 
         let data: &[f32] = if a > 0.0 {
-            self.smoothed.resize(scope_data.len(), 0.0);
-            for (i, &s) in scope_data.iter().enumerate() {
-                self.smoothed[i] = self.smoothed[i] * a + s * (1.0 - a);
-            }
+            widgets::smooth(&mut self.smoothed, scope_data, a);
             &self.smoothed
         } else {
             scope_data

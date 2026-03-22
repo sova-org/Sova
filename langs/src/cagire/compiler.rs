@@ -148,6 +148,13 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<Vec<Op>, String> {
                         ops.push(Op::Branch(else_ops.len()));
                         ops.extend(else_ops);
                     }
+                } else if word == "at" {
+                    if let Some((body_ops, consumed)) = compile_at(&tokens[i + 1..], dict)? {
+                        i += consumed;
+                        ops.push(Op::AtLoop(Arc::from(body_ops)));
+                    } else if !compile_word(word, &mut ops, dict) {
+                        return Err(format!("unknown word: {word}"));
+                    }
                 } else if word == "case" {
                     let (case_ops, consumed) = compile_case(&tokens[i + 1..], dict)?;
                     i += consumed;
@@ -350,6 +357,34 @@ fn compile_case(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, usi
     }
 
     Ok((ops, endcase_pos + 1))
+}
+
+fn compile_at(tokens: &[Token], dict: &mut Dictionary) -> Result<Option<(Vec<Op>, usize)>, String> {
+    let mut depth = 1;
+
+    enum AtCloser { Dot, Done }
+    let mut found: Option<(usize, AtCloser)> = None;
+
+    for (i, tok) in tokens.iter().enumerate() {
+        if let Token::Word(w) = tok {
+            match w.as_str() {
+                "at" => depth += 1,
+                "." if depth == 1 => { found = Some((i, AtCloser::Dot)); break; }
+                "done" if depth == 1 => { found = Some((i, AtCloser::Done)); break; }
+                "." | "done" => depth -= 1,
+                _ => {}
+            }
+        }
+    }
+
+    let Some((pos, closer)) = found else {
+        return Ok(None);
+    };
+    let mut body_ops = compile(&tokens[..pos], dict)?;
+    if matches!(closer, AtCloser::Dot) {
+        body_ops.push(Op::Emit);
+    }
+    Ok(Some((body_ops, pos + 1)))
 }
 
 #[cfg(test)]

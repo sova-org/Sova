@@ -8,6 +8,10 @@ use sova_core::{
 
 use crate::server::Snapshot;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerMessage {
     Hello {
@@ -19,6 +23,8 @@ pub enum ServerMessage {
         is_playing: bool,
         languages: Vec<LanguageDefinition>,
         audio_engine_state: AudioEngineState,
+        #[serde(default = "default_true")]
+        link_enabled: bool,
     },
     PeersUpdated(Vec<String>),
     PeerStartedEditing(String, usize, usize),
@@ -50,6 +56,7 @@ pub enum ServerMessage {
     },
     AudioEngineState(AudioEngineState),
     ScopeData(Vec<f32>),
+    PeakData(Vec<f32>),
     Error(SovaError),
     FeedbackEnabled {
         scene: Scene,
@@ -59,7 +66,18 @@ pub enum ServerMessage {
     },
     Feedback(SchedulerMessage),
     CoreRestarted,
+    LinkState {
+        enabled: bool,
+        start_stop_sync: bool,
+        num_peers: u32,
+    },
     HydraCode(String, String),
+    ScriptEdit {
+        sender: String,
+        li: usize,
+        fi: usize,
+        ops: Vec<crate::TextOp>,
+    },
 }
 
 #[cfg(test)]
@@ -125,6 +143,7 @@ mod tests {
                 is_playing: true,
                 languages: vec![LanguageDefinition::default()],
                 audio_engine_state: audio.clone(),
+                link_enabled: true,
             },
             ServerMessage::PeersUpdated(vec!["a".into(), "b".into()]),
             ServerMessage::PeerStartedEditing("user".into(), 0, 1),
@@ -190,6 +209,7 @@ mod tests {
             },
             ServerMessage::AudioEngineState(audio),
             ServerMessage::ScopeData(vec![0.1, -0.5, 0.9]),
+            ServerMessage::PeakData(vec![0.8, 0.6]),
             ServerMessage::Error(SovaError {
                 line: 0,
                 frame: 1,
@@ -206,6 +226,11 @@ mod tests {
             ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
             ServerMessage::Feedback(SchedulerMessage::SetScene(scene.clone(), ActionTiming::Immediate)),
             ServerMessage::CoreRestarted,
+            ServerMessage::LinkState {
+                enabled: true,
+                start_stop_sync: false,
+                num_peers: 3,
+            },
             ServerMessage::HydraCode("alice".into(), "osc().out()".into()),
         ];
 
