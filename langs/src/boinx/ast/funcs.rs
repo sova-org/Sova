@@ -3,7 +3,7 @@ use std::{cell::LazyCell, collections::{BTreeMap, HashMap}};
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, error::SovaError, util::music::rhythm::{bitrhythm, euclid}, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
+    clock::TimeSpan, error::SovaError, util::music::rhythm::{bitrhythm, euclid}, vm::{EvaluationContext, control_asm::{DEFAULT_CHAN, DEFAULT_DEVICE}, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -464,12 +464,12 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             let channel = if args.len() >= 3 {
                 VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8
             } else {
-                1
+                DEFAULT_CHAN as i8
             };
             let device_id = if args.len() >= 2 {
                 VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
             } else {
-                1
+                DEFAULT_DEVICE as usize
             };
             let cc = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8;
 

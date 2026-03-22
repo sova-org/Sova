@@ -130,7 +130,7 @@ impl BoinxLine {
                 .map(|(i, _)| VariableValue::from(i))
                 .collect()
         } else {
-            vec![1.into()]
+            vec![String::new().into()]
         };
         (devices, channels)
     }
