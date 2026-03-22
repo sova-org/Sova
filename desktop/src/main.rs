@@ -36,7 +36,7 @@ use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
 const DEMOS: &[(&str, &[u8])] = &[
-    ("Evening jam with th4", include_bytes!("../assets/demos/th4.sova")),
+    //("Evening jam with th4", include_bytes!("../assets/demos/th4.sova")),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
