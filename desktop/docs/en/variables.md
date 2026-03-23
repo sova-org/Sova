@@ -1,78 +1,36 @@
-# Variables
-
-Variables store values that persist between events or between frames. Use them
-to coordinate scripts, accumulate state, and build evolving patterns.
+Variables are used to store values that persist beyond a single event. They are similar to variables encountered in regular programming languages. They are used to share data between scripts, accumulate state and can be used to build patterns that evolve over time. Every variable lives in a scope that determines who can see it and how long it survives. Variables in Sova are key to having fun sessions with other musicians. You can share a lot of information, no matter the language you use. Some variables are shared globally in live in the virtual machine, meaning that you can tweak a variable in `Cagire` and your friend can use it while playing with `Boinx`.
 
 ## Scopes
 
-Four scopes. The scope determines who sees the variable and how long it lives.
+There are four variable scopes, here sorted from from the narrowest to the widest:
 
-**Instance** — local scratch space. Resets every time the script runs. Use it
-for intermediate calculations that don't need to survive beyond a single
-execution.
+- **Instance**: created fresh each time a script executes. It does not survives to the next execution. Use it for intermediate calculations that don't need to outlive a single run.
 
-**Frame** — survives repetitions within the same frame. Resets when the line
-advances to the next frame. Well suited to counters that accumulate across
-repetitions: each run reads the previous value, modifies it, and stores it back.
+- **Frame**: each frame has its own store. Values survive across repetitions within that frame: each repetition reads what the previous one wrote. When the line advances to the next frame, that frame's own store takes over. A counter that increments on every repetition is the typical use.
 
-**Line** — shared across all frames in a line. One frame writes a value, another
-reads it. Useful for passing context along a sequence: set a root note in frame
-A, transpose from it in frames B and C.
+- **Line**: shared across all frames in a line. One frame writes a value, another reads it later in the sequence. Set a root note in one frame, transpose from it in the next. Line variables persist as long as the line exists in the [scene](the-scene).
 
-**Global** — visible to every script in the session, across all lines and
-frames. Use sparingly. Best reserved for session-wide state like a key center or
-a shared counter that multiple lines need to read.
+- **Global**: visible to every script in the session, across all lines and frames. In a [multiplayer](multiplayer) session, global variables are shared between all connected musicians. It should be best reserved for session-wide state: a root note, a shared counter, a mode flag, etc.
 
-## Storing and fetching
+## Reading and writing
 
-Each language has its own syntax for reading and writing variables. The
-underlying mechanism is the same: store a value under a name, fetch it later.
-Unknown variables return zero. See the language tabs for syntax details.
-
-Scope is part of the variable name. A prefix indicates whether you're addressing
-a frame, line, or global variable. Without a prefix, the variable is instance-
-scoped.
-
-## Accumulators
-
-The most common pattern: fetch a value, modify it, store it back. This turns a
-variable into a counter, a phase accumulator, or any evolving quantity. Combined
-with frame-scoped variables and repetitions, a single line of logic can generate
-an entire sequence that shifts on every repetition.
-
-## Naming sounds
-
-Store a sound name in a line-scoped variable and reference it from multiple
-frames. Change the value in one place and every frame in the line picks up the
-new sound. This avoids duplicating sound names across frames and makes live
-adjustments faster.
+Each language has its own syntax for variables, but the mechanism is identical: store a value under a name in a given scope, fetch it later. Scope is encoded in the variable name through a prefix. The exact conventions differ per language: see the language tabs for syntax. Reading an undefined variable returns zero. No error, no null, no exception. Safe to read before any script has written. Variables are dynamically typed. The first assignment determines the type. Subsequent writes coerce the new value to match. Write a float into an integer variable and it truncates to an integer.
 
 ## Environment values
 
-Read-only values injected by the runtime. Scripts can read them but not write
-them.
+These variables are very special. They are read-only values injected by the runtime. Scripts can read them but not write them. At the VM level, six environment functions exist:
 
-The VM provides six environment functions:
+| Function | Returns |
+|----------|---------|
+| `GetTempo` | Current session tempo (BPM) |
+| `RandomInt` | Unrestricted random integer |
+| `RandomFloat` | Random float in [0, 1) |
+| `RandomUInt(n)` | Random integer in [0, n) |
+| `RandomDecInBounds(min, max)` | Random decimal in [min, max] |
+| `FrameLen(line, frame)` | Duration of a specific frame in beats |
 
-- `GetTempo` — current session tempo as integer
-- `RandomInt` — unrestricted random integer
-- `RandomFloat` — random float in [0, 1)
-- `RandomUInt(n)` — random integer in [0, n)
-- `RandomDecInBounds(min, max)` — random decimal in [min, max]
-- `FrameLen(line, frame)` — duration of a specific frame in beats
+These names are internal to the VM. Each language wraps them in its own syntax and adds its own context values — tempo, loop index, random helpers, step position, and more. See the language tabs for the full list and how to access them.
 
-These are the only values available at the VM level.
+## Visibility between frames
 
-Languages extend this set with their own context values. Bob adds tempo, a
-random 0-127 value, loop index, and element. BaLi adds loop index and tempo.
-Cagire adds step position, beat, pattern index, slot, run count, iteration,
-step duration, fill, and phase. See the language tabs for the exact names and
-how to access them.
-
-## Visibility timing
-
-Within a frame, you read back what you just wrote. Changes become visible to
-other frames only after the current frame finishes executing. If two frames run
-in the same scheduling pass, each sees the other's previous values, not the
-current ones. This prevents ordering surprises: the result doesn't depend on
-which frame the scheduler happens to run first.
+Within a script, you read back what you just wrote. But the scheduler guarantees isolation between concurrent frames: if two frames run in the same scheduling pass, each sees the other's previous values, not the current ones. The result does not depend on which frame the scheduler runs first. This prevents ordering surprises when multiple lines share global state.
