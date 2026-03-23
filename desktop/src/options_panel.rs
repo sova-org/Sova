@@ -175,6 +175,11 @@ impl OptionsPanel {
                     t!("options.highlight_current_line"),
                 );
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.highlight_current_line"));
+                let r = ui.checkbox(
+                    &mut editor_settings.code_completion,
+                    t!("options.code_completion"),
+                );
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.code_completion"));
 
                 ui.add_space(4.0);
 

@@ -23,6 +23,7 @@ pub struct EditorSettings {
     pub word_wrap: bool,
     pub show_whitespace: bool,
     pub highlight_current_line: bool,
+    pub code_completion: bool,
     pub syntax_theme: SyntaxThemePref,
     pub default_language: String,
 }
@@ -35,6 +36,7 @@ impl Default for EditorSettings {
             word_wrap: false,
             show_whitespace: false,
             highlight_current_line: true,
+            code_completion: true,
             syntax_theme: SyntaxThemePref::default(),
             default_language: "boinx".to_string(),
         }
@@ -344,7 +346,8 @@ impl CodeEditor {
 
         // Open or recompute completions
         if self.completion.is_none() && !self.search_open {
-            let should_open = ctrl_space || (prefix.len() >= 2 && reference.is_some());
+            let should_open =
+                ctrl_space || (ctx.settings.code_completion && prefix.len() >= 2 && reference.is_some());
             if should_open && let Some(ref_map) = reference {
                 let entries = compute_completions(&prefix, ref_map);
                 if !entries.is_empty() {
