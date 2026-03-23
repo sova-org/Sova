@@ -4,7 +4,7 @@ Sova can send MIDI and OSC, with more protocols to come. Notes, control changes,
 
 ## Slots
 
-There are sixteen device slots by default, numbered from 1 to 16. Each slot holds one device. This device can be a MIDI port, an OSC endpoint or the audio engine itself. A device can only occupy one slot at a time; assigning it elsewhere clears the previous assignment. Events that do not specify a device go to slot 1. Each language has its own syntax for targeting a slot; see [Events](events). There is a special slot, invisible to you: `Slot 0` is the `Log` device used for debugging. It is always present, cannot be reassigned.
+There are sixteen device slots by default, numbered from 1 to 16. Each slot holds one device. This device can be a MIDI port, an OSC endpoint or the audio engine itself. A device can only occupy one slot at a time; assigning it elsewhere clears the previous assignment. Events that do not specify a device go to slot 1. Each language has its own syntax for targeting a slot; see the language tabs. There is a special slot, invisible to you: `Slot 0` is the `Log` device used for debugging. It is always present, cannot be reassigned.
 
 ## MIDI output
 
@@ -16,7 +16,7 @@ Virtual MIDI ports are software ports created by Sova that can appear as inputs 
 
 ## OSC output
 
-You can create an OSC endpoint by specifying a name, IP address, and port number. Messages are sent as UDP packets to that address, in a _fire and forget_ manner. This is how Sova talks to SuperCollider, Max, Pure Data, and similar environments. See [Events](events) for the message format.
+You can create an OSC endpoint by specifying a name, IP address, and port number. Messages are sent as UDP packets to that address, in a _fire and forget_ manner. This is how Sova talks to SuperCollider, Max, Pure Data, and similar environments. See the language tabs for the message format.
 
 ## Audio engine
 

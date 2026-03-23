@@ -37,7 +37,6 @@ const GENERAL_ARTICLES_EN: &[(&str, &str, &str)] = &[
     ("the-scene", "The Scene", include_str!("../docs/en/the-scene.md")),
     ("timing", "Timing", include_str!("../docs/en/timing.md")),
     ("languages", "Languages", include_str!("../docs/en/languages.md")),
-    ("events", "Events", include_str!("../docs/en/events.md")),
     ("devices", "Devices", include_str!("../docs/en/devices.md")),
     ("variables", "Variables", include_str!("../docs/en/variables.md")),
     ("audio-engine", "Audio Engine", include_str!("../docs/en/audio-engine.md")),

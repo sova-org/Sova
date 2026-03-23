@@ -1,33 +1,34 @@
-# Languages
+No single programming language captures every way of thinking about music. A stack language rewards quick exploration. An imperative language gives precise sequential control. A functional language makes patterns composable. A notation language makes rhythm visible. Sova is built around this observation. Rather than choosing one language, Sova provides shared infrastructure — a virtual machine, a scheduler, a [variable](variables) system, [device](devices) routing — and lets multiple languages coexist on top of it. Each language follows its own paradigm and exposes its own abstractions. All of them access the same underlying machinery. See [About Sova](about) for the design philosophy behind this approach.
 
-Sova is a *polyglot* environment. Multiple languages coexist within the same
-virtual machine, sharing the scheduler and I/O layer. Each language follows its
-own paradigm and exposes different abstractions for the musician to work with.
-This diversity fosters experimentation: pick the language that best fits the
-musical idea at hand.
+## Two execution models
 
-Two compilation models coexist. Bob and BaLi compile to bytecode executed by the VM — their scripts can be paused and resumed mid-execution. Boinx and Cagire are interpreted — they evaluate the source directly and emit events immediately.
+Languages integrate with Sova through one of two paths. Both run inside the same VM context (the same [variables](variables), [devices](devices), clock, and [timing](timing)) but they differ in how source code becomes events.
 
-Four languages ship with Sova. Each frame chooses one. They can be mixed freely
-across frames in the same line — a Bob melody followed by a Cagire drone, then
-a Boinx rhythmic transition.
+- **Compiled languages**: transform source code into bytecode, a sequence of low-level instructions. The bytecode is stored in the frame. At execution time, the VM's instruction executor steps through it. Compilation happens once; the bytecode runs repeatedly without re-reading the source. Bob and BaLi are compiled.
 
-## Cagire
+- **Interpreted languages**: skip the bytecode step. They evaluate the source directly using their own logic, but still run inside the same VM context and produce events through the same interface. Cagire and Boinx are interpreted.
 
-Stack-based, inspired by Forth. You push values onto a stack and apply words
-that consume and produce stack values. `.` emits the current sound command.
+From the scheduler's perspective, both models are interchangeable. The distinction matters when implementing a new language. It does not affect what you can express in one.
+
+## The shipped languages
+
+Four languages ship with Sova. They are not a final set but should rather be considered as demonstrations. Each language explores a different perspective in the design space of musical programming languages. Together they cover four distinct paradigms: concatenative, imperative, functional, and declarative.
+
+### Cagire
+
+A concatenative language, inspired by Forth. You push values onto a stack; words consume and produce values on the stack. `.` is a special operator used to emit a command. Cagire includes a lot of words related to music theory, synthesis, etc. Its terseness makes it fast to type for improvisation. Cagire is a good language to use when you are looking to familiarize yourself with the audio engine.
 
 ```forth
-c4 min7 note 0.4 verb sine snd .
+c4 min7 note
+0.5 decay
+sine snd
+2 vib 0.25 vibmod
+.
 ```
 
-Cagire has built-in music theory — notes, intervals, chords, scales — plus
-randomness, cycling, variables, and user-defined words. See the **Cagire** tab.
+### Bob
 
-## Bob
-
-Imperative, Polish notation. Operators come before operands. Events are
-key-value maps emitted with `>>`. Time advances with `WAIT`.
+An imperative language with Polish notation: operators precede their operands. Events are key-value maps emitted with `>>`. Time advances explicitly when using the `WAIT` function. Bob has variables, conditionals, loops, functions, and rhythm generators. Its explicit control flow gives precise command over event sequencing.
 
 ```
 RANGE 0 3 :
@@ -36,41 +37,22 @@ RANGE 0 3 :
 END
 ```
 
-Bob has variables (global, frame, line), conditionals, loops, functions, and
-Euclidean/binary rhythm generators. See the **Bob** tab.
+### BaLi
 
-## BaLi
+BaLi is a declarative language that looks a bit like Lisp and is expression-based. Everything in BaLi looks like an S-expression. Loops, notes, and transformations compose by nesting. Musical patterns are built by composing smaller patterns; the syntax itself encourages algorithmic and generative thinking.
 
-Lisp-like, expression-based. Everything is an S-expression wrapped in
-parentheses. Loops, notes, and effects compose by nesting. Fractions like `1//4`
-express durations directly.
+### Boinx
 
-```
-(loop 4
-  (note (+ 60 (* $i 3)) 90)
-  1//4)
-```
-
-BaLi's functional style makes it natural for algorithmic composition and
-generative patterns. See the **BaLi** tab.
-
-## Boinx
-
-Declarative pattern notation. You describe *what* plays *where* in time using
-brackets and operators. Sequences `[...]` spread items evenly across the frame.
-Simultaneous events use `(...)`. Key-value event data goes in `<...>`.
+Boinx is a functional language that facilitates musical pattern notation. Sequences `[...]` spread items evenly across the frame. Simultaneous events use `(...)`. Event data goes into hashmaps: `<...>`. Many different operators (`|`, `°`, `~`, `!`, `#`) control how data flows into pattern slots
 
 ```
 <s: 'kick'> | [. _ . _]
 ```
 
-Boinx operators (`|`, `°`, `~`, `!`, `#`) control how event data flows into
-pattern slots. The visual layout of the code mirrors the rhythmic structure.
-See the **Boinx** tab.
-
 ## Mixing languages
 
-A single line can hold frames in different languages. Frame 1 might be a Cagire
-drone, frame 2 a Bob melody, frame 3 a Boinx drum fill. The sequencer plays
-them in order regardless of language. To switch a frame's language, open the
-editor and pick from the dropdown at the top.
+A single line can hold frames in different languages. Frame 1 might use `Cagire` for a drone, frame 2 `Bob` for a melody, frame 3 `Boinx` for a drum fill. The sequencer plays them in order regardless of language. To change a frame's language, open the editor and press Cmd+L (`Ctrl+L`) or click the language name at the top of the editor window.
+
+## What comes next
+
+Sova is designed so that new languages can be added without modifying the core. A language implementation plugs into the existing infrastructure and immediately gets syntax highlighting, variable access, device routing, and a documentation tab, all through the same interface the shipped languages use. The four shipped languages cover broad paradigms. Future languages can be more specialized: a language designed for a specific instrument, a language that thinks in terms of textures rather than notes, a language built around a performer's personal vocabulary. The only constraint is that the language produces events the scheduler can dispatch. The runtime is stable infrastructure. The languages are where experimentation happens. We hope that Sova will become a runtime in which people can experiment and surprise us.

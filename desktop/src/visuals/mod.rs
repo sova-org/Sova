@@ -1,20 +1,15 @@
-mod glsl;
-mod hydra;
-mod renderer;
-mod shader;
 mod syntax;
-mod text;
 pub use syntax::syntax as hydra_syntax;
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use eframe::egui;
+use hydra_rust::renderer::{self, RenderUniforms, ShaderRenderer};
 
 use crate::settings::VisualsSettings;
 use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use crate::widgets::{CodeEditor, EditorContext, EditorSettings, COLOR_ERROR, COLOR_MUTED, COLOR_OK};
-use renderer::ShaderRenderer;
 
 pub struct VisualsEngine {
     renderer: Option<ShaderRenderer>,
@@ -264,13 +259,13 @@ impl VisualsEngine {
         };
         if self.code.is_empty() {
             renderer.compile_buffers(
-                &[Some(shader::DEFAULT_SHADER.to_owned()), None, None, None],
+                &[Some(hydra_rust::shader::DEFAULT_SHADER.to_owned()), None, None, None],
                 Default::default(),
             );
             self.error = None;
             return;
         }
-        match hydra::eval(&self.code) {
+        match hydra_rust::eval(&self.code) {
             Ok(result) => {
                 if let Some(ref td) = result.text_data {
                     renderer.upload_text(td);
@@ -310,7 +305,7 @@ impl VisualsEngine {
 
         let snap = renderer.snapshot();
         let ping = renderer.ping().clone();
-        let uniforms = renderer::RenderUniforms {
+        let uniforms = RenderUniforms {
             time,
             resolution: [res_w as f32, res_h as f32],
             mouse,

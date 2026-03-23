@@ -30,8 +30,7 @@ egui_commonmark = { version = "0.22", default-features = false }
 rust-i18n = "3"
 regex = "1"
 glow = "0.16"
-rhai = { version = "1", features = ["no_module", "no_time"] }
-ab_glyph = "0.2"
+hydra-rust = { path = "../../hydra-rust" }
 
 [build-dependencies]
 winresource = "0.1"
