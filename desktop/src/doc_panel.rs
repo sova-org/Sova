@@ -33,8 +33,7 @@ pub struct SettingsContext<'a> {
 
 const GENERAL_ARTICLES_EN: &[(&str, &str, &str)] = &[
     ("about", "About Sova", include_str!("../docs/en/about.md")),
-    ("getting-started", "Getting Started", include_str!("../docs/en/getting-started.md")),
-    ("the-scene", "The Scene", include_str!("../docs/en/the-scene.md")),
+("the-scene", "The Scene", include_str!("../docs/en/the-scene.md")),
     ("timing", "Timing", include_str!("../docs/en/timing.md")),
     ("languages", "Languages", include_str!("../docs/en/languages.md")),
     ("devices", "Devices", include_str!("../docs/en/devices.md")),

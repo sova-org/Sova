@@ -3,7 +3,7 @@ expressed in beats. Change the tempo and every pattern scales proportionally.
 This article covers what beats are, how they are shaped into durations, and how
 the clock keeps everything tight.
 
-## I. The beat
+## The beat
 
 ### Beats, not seconds
 
@@ -27,7 +27,7 @@ The quantum defines how many beats form one cycle. Default is 4 (standard 4/4).
 Range: 1 to 16. The phase is the current position within that cycle: at quantum
 4, phase cycles through 0, 1, 2, 3. Phase 0 is the downbeat. Quantum matters for synchronization. In `AtQuantum` mode, lines wait for the next downbeat before starting. Deferred actions default to the next phase reset. See [The Scene](the-scene) for execution modes.
 
-## II. Duration
+## Duration
 
 ### Frame duration
 
@@ -46,7 +46,7 @@ occupying 4 beats total on the timeline. Default: 1 (no repetition). The total t
 
 Each line carries a speed factor. Default: 1.0. At 2.0, all frame durations on that line halve (double time). At 0.5, they double (half time). The actual time per frame execution is the frame's duration divided by the line's speed factor. Different speed factors across lines produce polymetric structures. One line at 1.0, another at 1.5, a third at 0.75. Each cycles through its frames at its own rate against the shared tempo. See [The Scene](the-scene) for line properties.
 
-## III. The clock in practice
+## The clock in practice
 
 ### The transport bar
 
