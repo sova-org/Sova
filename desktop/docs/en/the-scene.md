@@ -1,51 +1,56 @@
-# The Scene
+The scene is where the action takes place: it is a visual representation of what is currently playing, a live representation of the step sequencer and machine state. Think of the scene as a bird-eye view of all the scripts currently active and executed by the server. The scene also allows you to see other musicians working if you are playing in multiplayer. It is the working space / the jam session or whatever you imagine it to be! Learning how to manipulate the scene view is probably the most important thing that you need to know, the rest can be learned while playing. The scene is edited it in real time, while playing. Sova is a step sequencer where each step is defined by code. Step duration is not fixed: a step can last a sixteenth note or a full measure (see [Timing](timing)).
 
-The scene is your performance session. It holds every track, script, and timing
-configuration. You edit it in real time.
-
-Sova is a step sequencer where each step is defined by code. Step duration is
-not fixed — a step can last a sixteenth note or a full measure (see [Timing](timing)).
-Scripts can be modified during playback.
+You will soon figure out that there are multiple ways to approach the scene. It can be used to structure a song, to structure space for improvisation, to give a space to all the musicians currently playing, etc. It is voluntarily left as a open space robust and flexible enough to let people organize the code however they want it to be!
 
 ## Structure
 
-A scene contains **lines** and **frames**. Lines are columns on the grid. They
-run in parallel, each producing its own stream of events. Inside a line, frames
-play in sequence. When a frame's duration elapses, the next one starts.
+A scene contains **lines** and **frames**. Lines are columns on the grid. Think about it as a _line of execution_. Lines run in parallel. Each produces its own stream of events. Inside a line, frames are stacked vertically and play in sequence. When a frame's duration elapses, the next one starts. Add a frame with the "+" button at the bottom of a line, and add a line with the button to the right of the last column. Column widths and frame heights are adjustable by dragging the borders between them. There are multiple metaphors you can use to understand what a **line** is. It can be described as a _track_, as an _execution line_, etc.
+
+## Prelude
+
+The prelude is a list of scripts that execute **once** when playback starts. It appears as a collapsible column on the left side of the scene view. Use it to initialize [variables](variables), configure things or set up any state that other frames depend on. Prelude scripts are not part of any line and do not loop or repeat. Each has its own language selector and code editor. They run in order, top to bottom. Add a new script with the button in the prelude header. Here are a few things that you might be interested in doing using prelude scripts:
+
+- writing functions or code snippets to re-use in other frames.
+- define a root note or global variables that you are going to re-use in other scripts.
+- share information with other people playing with you.
 
 ## Frames
 
-Each frame holds a script and a set of properties:
+Each frame holds a **script**. Think of a **frame** as a _script container_ that also comes with a set of properties:
 
-- **Duration** — how long the frame lasts, in beats (see [Timing](timing)). Default is
-  1 beat. Fractional values work: 0.25 for a sixteenth note, 4 for a full bar
-  at 4/4.
-- **Repetitions** — how many times the script runs within that duration. A frame
-  with duration 4 and 4 repetitions runs its script once per beat. With 8
-  repetitions, the script fires every eighth note. The total time the frame
-  occupies remains 4 beats either way.
-- **Enabled** — toggles the frame on or off. Disabled frames are skipped during
-  playback. The code is preserved.
-- **Name** — optional label shown in the frame header.
-- **Script** — the code, along with the language it uses (Bob, Boinx, Cagire,
-  or BaLi).
+- **Duration**: how long one execution of the frame lasts, in beats (see [Timing](timing)). Default is 1 beat. Fractional values work: 0.25 for a sixteenth note, 4 for a full bar at 4/4.
+- **Repetitions**: how many times the frame plays before the line advances. Each repetition gets the full duration window. A frame with duration 1 and 4 repetitions runs its script four times, one beat each, occupying 4 beats total. Default is 1.
+- **Enabled**: toggles the frame on or off. Disabled frames are skipped during playback but their code is preserved.
+- **Name**: optional label shown in the frame header.
+- **Script**: the code, along with the language it uses (Bob, Boinx, Cagire, or BaLi). See [Languages](languages).
 
-Frame properties (duration, repetitions, name, language, enabled) are edited
-directly in the frame header. Each frame also contains an inline code editor.
+Frame properties are edited directly in the frame header. Each frame also contains an inline code editor. Just by looking at the scene, you can see all the code that is currently running on the server. You can also visualize all the properties of all frames at all times. We try to minimize hidden state in the graphical interface.
+
+## Lines
+
+Lines have their own controls, accessible in the line header:
+
+- **Loop**: the line restarts after reaching the end of its playback range. Otherwise, it plays through once and stops.
+- **Trailing**: when the line loops, previous script executions keep running alongside the new iteration. Otherwise, they are stopped when the line restarts. Trailing lets sounds ring out naturally across loop boundaries.
+- **Speed**: multiplier on the line's tempo. 2.0 for double time, 0.5 for half. One line at normal speed, another at half — polymetric structures emerge. See [Timing](timing) for details.
+- **Start frame / End frame**: restricts playback to a range within the line. Useful for looping a section while building the next one.
+
+## Execution modes
+
+The execution mode controls how lines synchronize when the scene starts or restarts. Change it from the transport bar:
+
+- **Free**: lines start immediately and loop at their own pace. Each line is independent.
+- **AtQuantum**: lines wait for the next quantum boundary (bar line) before starting, so parts land on the downbeat.
+- **LongestLine**: all lines wait for the longest one to finish its cycle before restarting. The scene loops as a single unit.
 
 ## Modal interaction
 
-The scene view uses two modes:
+The scene view can switch between two modes depending on how you interact with it with your keyboard:
 
-**Navigation mode** (default) — arrow keys and vim keys move between frames and
-lines. Single-key shortcuts operate on frames. No typing goes to any editor.
+- **Navigation mode** (default): arrow keys and vim keys move between frames and lines, single-key shortcuts operate on frames, and no typing goes to any editor.
+- **Edit mode**: entered by pressing Enter or `i` on a frame. The code editor receives focus and all typing goes to the editor. Clicking inside a code editor also enters Edit mode. Press Escape to return to Navigation mode.
 
-**Edit mode** — entered by pressing Enter or i on a frame. The code editor
-receives focus. All typing goes to the editor. Press Escape to return to
-Navigation mode.
-
-Clicking inside a code editor also enters Edit mode. Pressing Escape always
-returns to Navigation mode.
+All shortcuts below use `Cmd` on macOS and `Ctrl` on other platforms.
 
 ### Navigation mode shortcuts
 
@@ -56,7 +61,7 @@ returns to Navigation mode.
 | Shift+Up/Down | Extend selection vertically |
 | Enter / i | Enter Edit mode |
 | Escape | Clear cursor and selection |
-| Cmd+D | Duplicate frame after |
+| Cmd+D | Duplicate selected frame(s) after |
 | Cmd+Shift+D | Duplicate frame before |
 | Shift+I | Insert empty frame after |
 | Cmd+Shift+I | Insert empty frame before |
@@ -82,51 +87,20 @@ returns to Navigation mode.
 | Cmd+Enter | Evaluate script |
 | Cmd+L | Open language selector |
 | Cmd+F | Search in editor |
+| Ctrl+Space | Open code completion |
 
-## Lines
+Evaluating a script (`Cmd+Enter`) sends the code to the server for compilation and scheduling. The frame flashes white on success or red on error.
 
-Lines have their own controls, visible in the line header:
+## Context menus
 
-- **Loop** — the line restarts from the top after its last frame. Otherwise, it
-  plays once and stops.
-- **Trailing** — events from previous frames keep ringing while the next frame
-  starts. Otherwise, they are cut.
-- **Speed** — multiplier on the line's tempo. 2.0 for double time, 0.5 for half.
-  One line at normal speed, another at half — polymetric structures emerge.
-- **Start frame / End frame** — restricts playback to a range within the line.
-  Narrow the range to loop a section while you build the next one.
+Right-click a frame to open its context menu: cut, copy, paste after, insert frame before, insert frame after, duplicate, move up, move down, toggle enabled, remove frame. Insert before and insert after only appear for single selections. Right-click a line header for line operations: insert line before, insert line after, duplicate line, move left, move right, toggle looping, toggle trailing, clear frame range, remove line.
 
-## Execution modes
+There are a lot of actions that you can perform on the scene view and it is a bit difficult to fit them all in the interface. We have tried our best to make it very shallow, meaning that there is no menu diving. However, always try to right click on things, you might get surprises!
 
-The execution mode controls how lines synchronize when the scene starts or
-restarts. Change it from the transport bar.
+## Visual feedback
 
-**Free** — lines start immediately and loop at their own pace. Each line is
-independent.
-
-**AtQuantum** — lines wait for the next quantum boundary (bar line) before
-starting. Parts land on the downbeat.
-
-**LongestLine** — all lines wait for the longest one to finish its cycle before
-restarting. The scene loops as a single unit.
+The currently playing frame shows a colored accent strip on its left edge. A progress fill sweeps across the frame header and body, tracking playback position within the frame's duration. Disabled frames remain visible but visually muted. Their code stays readable, they are simply skipped during playback. In a [multiplayer](multiplayer) session, colored borders indicate where other musicians' cursors are. Colors are derived from usernames and stay consistent across sessions.
 
 ## Saving and loading
 
-Save and load scenes through the scene menu. The file captures lines, frames,
-scripts, [Variables](variables), and configuration. Connecting to a server loads its
-current scene automatically.
-
-## Workflow tips
-
-- **Name your frames** — use the name field in the frame header. Unnamed frames
-  are hard to tell apart during a performance.
-- **Duplicate before modifying** — Cmd+D copies the frame. The original stays
-  intact as a fallback.
-- **Reorder on the fly** — Shift+J/K moves frames mid-performance without
-  stopping playback.
-- **Disable instead of deleting** — press e to toggle a frame off. The code
-  stays visible but is skipped.
-- **Isolate with ranges** — set start/end frame on a line to loop a section
-  while you build the next one.
-- **One role per line** — drums, bass, melody, effects. Easier to mute, isolate,
-  or rearrange.
+Save and load scenes through the File menu (Cmd+S / Cmd+O). A scene file captures lines, frames, scripts, prelude, [variables](variables), and configuration. "Load at end" defers the load to the next downbeat, avoiding a mid-bar interruption. Recent files are listed in the File menu for quick access. Connecting to a server loads its current scene automatically.
