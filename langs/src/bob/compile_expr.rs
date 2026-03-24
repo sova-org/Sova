@@ -135,7 +135,7 @@ pub(crate) fn compile_expr(
         ))],
 
         BobExpr::Value(v) => vec![Instruction::Control(ControlASM::Mov(
-            bob_value_to_variable(v),
+            resolve_variable(v, ctx),
             dest.clone(),
         ))],
 
@@ -147,7 +147,7 @@ pub(crate) fn compile_expr(
         }
 
         BobExpr::Assign(target, value_expr) => {
-            let target_var = bob_value_to_variable(target);
+            let target_var = resolve_variable(target, ctx);
             let mut instrs = compile_expr(value_expr, &target_var, ctx);
             if &target_var != dest {
                 instrs.push(Instruction::Control(ControlASM::Mov(
@@ -649,16 +649,20 @@ pub(crate) fn compile_expr(
 
         BobExpr::Lambda { args, body } => {
             let mut func_code: Vec<Instruction> = Vec::new();
+            let mut arg_remapping = HashMap::new();
             for arg in args.iter().rev() {
-                func_code.push(Instruction::Control(ControlASM::Pop(Variable::Global(
-                    arg.clone(),
-                ))));
+                let instance_name = format!("_fn_anon_{arg}");
+                func_code.push(Instruction::Control(ControlASM::Pop(
+                    Variable::Instance(instance_name.clone()),
+                )));
+                arg_remapping.insert(arg.clone(), instance_name);
             }
             let mut func_ctx = CompileContext {
                 functions: ctx.functions.clone(),
                 default_dev: ctx.default_dev,
                 temp_counter: ctx.temp_counter,
                 label_counter: ctx.label_counter,
+                arg_remapping,
             };
             func_code.extend(compile_expr(body, &Variable::StackBack, &mut func_ctx));
             func_code.push(Instruction::Control(ControlASM::Return));
@@ -671,16 +675,20 @@ pub(crate) fn compile_expr(
 
         BobExpr::FunctionDef { name, args, body } => {
             let mut func_code: Vec<Instruction> = Vec::new();
+            let mut arg_remapping = HashMap::new();
             for arg in args.iter().rev() {
-                func_code.push(Instruction::Control(ControlASM::Pop(Variable::Global(
-                    arg.clone(),
-                ))));
+                let instance_name = format!("_fn_{name}_{arg}");
+                func_code.push(Instruction::Control(ControlASM::Pop(
+                    Variable::Instance(instance_name.clone()),
+                )));
+                arg_remapping.insert(arg.clone(), instance_name);
             }
             let mut func_ctx = CompileContext {
                 functions: ctx.functions.clone(),
                 default_dev: ctx.default_dev,
                 temp_counter: ctx.temp_counter,
                 label_counter: ctx.label_counter,
+                arg_remapping,
             };
             func_code.extend(compile_expr(body, &Variable::StackBack, &mut func_ctx));
             func_code.push(Instruction::Control(ControlASM::Return));
@@ -1107,6 +1115,7 @@ fn compile_fork_branch(body: &BobExpr, ctx: &mut CompileContext) -> Vec<Instruct
         default_dev: ctx.default_dev,
         temp_counter: ctx.temp_counter,
         label_counter: ctx.label_counter,
+        arg_remapping: ctx.arg_remapping.clone(),
     };
 
     let result_var = Variable::Instance("_bob_branch_result".to_string());
@@ -1460,12 +1469,16 @@ fn compile_function_call(
         .map(|f| f.arg_names.clone())
         .unwrap_or_default();
 
-    for arg_name in &arg_var_names {
-        instrs.push(Instruction::Control(ControlASM::Push(Variable::Global(
-            arg_name.clone(),
-        ))));
+    // Save current arg instance vars (for recursion safety)
+    let instance_vars: Vec<Variable> = arg_var_names
+        .iter()
+        .map(|a| Variable::Instance(format!("_fn_{name}_{a}")))
+        .collect();
+    for var in &instance_vars {
+        instrs.push(Instruction::Control(ControlASM::Push(var.clone())));
     }
 
+    // Compile and push each argument
     let mut arg_temps: Vec<Variable> = Vec::new();
     for arg in args {
         let temp = ctx.temp("_bob_t");
@@ -1493,7 +1506,7 @@ fn compile_function_call(
     };
     instrs.push(Instruction::Control(ControlASM::CallFunction(func_var)));
 
-    let need_restore = !arg_var_names.is_empty();
+    let need_restore = !instance_vars.is_empty();
     let result_var = if need_restore && matches!(dest, Variable::StackBack) {
         ctx.temp("_bob_ret")
     } else {
@@ -1501,10 +1514,9 @@ fn compile_function_call(
     };
     instrs.push(Instruction::Control(ControlASM::Pop(result_var.clone())));
 
-    for arg_name in arg_var_names.iter().rev() {
-        instrs.push(Instruction::Control(ControlASM::Pop(Variable::Global(
-            arg_name.clone(),
-        ))));
+    // Restore saved arg instance vars (reverse order)
+    for var in instance_vars.iter().rev() {
+        instrs.push(Instruction::Control(ControlASM::Pop(var.clone())));
     }
 
     if need_restore && matches!(dest, Variable::StackBack) {
@@ -1548,46 +1560,51 @@ fn compile_call(
         let cond_var = ctx.temp("_bob_cycle_cond");
         let zero = Variable::Constant(VariableValue::Integer(0));
         let one = Variable::Constant(VariableValue::Integer(1));
-        // Get length
-        instrs.push(Instruction::Control(ControlASM::Len(
+        let empty_label = ctx.new_label();
+        let end_label = ctx.new_label();
+
+        let mut labeled: Vec<LabeledInstr> = Vec::new();
+        // Prepend any existing instructions (argument compilation)
+        for instr in instrs {
+            labeled.push(LabeledInstr::Instr(instr));
+        }
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
             temps[0].clone(),
             len_var.clone(),
+        ))));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(
+            ControlASM::GreaterThan(len_var.clone(), zero.clone(), cond_var.clone()),
         )));
-        // Check if len > 0
-        instrs.push(Instruction::Control(ControlASM::GreaterThan(
-            len_var.clone(),
-            zero.clone(),
-            cond_var.clone(),
-        )));
-        // Jump over cycle body (4 instructions: Mod, Index, Add, RelJump) to fallback if empty
-        instrs.push(Instruction::Control(ControlASM::RelJumpIfNot(cond_var, 5)));
+        labeled.push(LabeledInstr::JumpIfNot(cond_var, empty_label.clone()));
         // idx = counter % len
-        instrs.push(Instruction::Control(ControlASM::Mod(
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mod(
             counter_var.clone(),
             len_var,
             idx_var.clone(),
-        )));
+        ))));
         // dest = vec[idx]
-        instrs.push(Instruction::Control(ControlASM::Index(
-            temps[0].clone(),
-            idx_var,
-            dest.clone(),
+        labeled.push(LabeledInstr::Instr(Instruction::Control(
+            ControlASM::Index(temps[0].clone(), idx_var, dest.clone()),
         )));
         // counter = counter + 1
-        instrs.push(Instruction::Control(ControlASM::Add(
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Add(
             counter_var.clone(),
             one,
             counter_var,
-        )));
-        // Jump over the fallback
-        instrs.push(Instruction::Control(ControlASM::RelJump(2)));
-        // Fallback: return 0
-        instrs.push(Instruction::Control(ControlASM::Mov(zero, dest.clone())));
-        return instrs;
+        ))));
+        labeled.push(LabeledInstr::Jump(end_label.clone()));
+        // Empty list fallback: return 0
+        labeled.push(LabeledInstr::Mark(empty_label));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+            zero,
+            dest.clone(),
+        ))));
+        labeled.push(LabeledInstr::Mark(end_label));
+        return resolve_labels(labeled);
     }
 
     if let Some(op) = find_operator(name, temps.len()) {
-        instrs.extend((op.compile)(&temps, dest));
+        instrs.extend((op.compile)(&temps, dest, ctx));
     } else {
         instrs.push(Instruction::Control(ControlASM::Mov(
             Variable::Constant(VariableValue::Integer(0)),
@@ -1620,4 +1637,15 @@ pub(crate) fn bob_value_to_variable(value: &BobValue) -> Variable {
         BobValue::EnvTempo => Variable::Environment(EnvironmentFunc::GetTempo),
         BobValue::EnvRandom => Variable::Environment(EnvironmentFunc::RandomUInt(128)),
     }
+}
+
+/// Like bob_value_to_variable, but checks the context's arg_remapping first.
+/// Inside function bodies, global references to arg names resolve to Instance variables.
+fn resolve_variable(value: &BobValue, ctx: &CompileContext) -> Variable {
+    if let BobValue::GlobalVar(name) = value {
+        if let Some(instance_name) = ctx.arg_remapping.get(name) {
+            return Variable::Instance(instance_name.clone());
+        }
+    }
+    bob_value_to_variable(value)
 }

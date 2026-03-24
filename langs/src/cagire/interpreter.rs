@@ -1,14 +1,18 @@
+use std::sync::{Arc, Mutex};
+
 use sova_core::clock::{NEVER, SyncTime};
 use sova_core::error::SovaError;
 use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::interpreter::Interpreter;
 
+use super::compiler::Dictionary;
 use super::vm::CagireVM;
 
 pub struct CagireInterpreter {
     source: String,
     vm: CagireVM,
+    shared_dict: Arc<Mutex<Dictionary>>,
     events: std::vec::IntoIter<(ConcreteEvent, SyncTime)>,
     pending: Option<ConcreteEvent>,
     executed: bool,
@@ -17,10 +21,11 @@ pub struct CagireInterpreter {
 }
 
 impl CagireInterpreter {
-    pub fn new(source: &str) -> Self {
+    pub fn new(source: &str, dict: Dictionary, shared_dict: Arc<Mutex<Dictionary>>) -> Self {
         Self {
             source: source.to_string(),
-            vm: CagireVM::new(),
+            vm: CagireVM::with_dict(dict),
+            shared_dict,
             events: Vec::new().into_iter(),
             pending: None,
             executed: false,
@@ -35,7 +40,14 @@ impl Interpreter for CagireInterpreter {
         if !self.executed {
             self.executed = true;
             match self.vm.evaluate(&self.source, ctx) {
-                Ok(evts) => self.events = evts.into_iter(),
+                Ok(evts) => {
+                    // Merge new word definitions back into the shared dictionary
+                    let mut shared = self.shared_dict.lock().unwrap();
+                    for (name, body) in &self.vm.dict {
+                        shared.insert(name.clone(), body.clone());
+                    }
+                    self.events = evts.into_iter();
+                }
                 Err(e) => {
                     self.terminated = true;
                     ctx.errors.throw(

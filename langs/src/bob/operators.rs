@@ -3,6 +3,7 @@
 //! This module defines all built-in operators with their arities and compilation functions.
 //! Operators are looked up by name and arity using `find_operator()`.
 
+use crate::bob::context::{CompileContext, LabeledInstr, resolve_labels};
 use sova_core::vm::control_asm::ControlASM;
 use sova_core::vm::variable::{Variable, VariableValue};
 use sova_core::vm::{EnvironmentFunc, Instruction};
@@ -11,7 +12,7 @@ use sova_core::vm::{EnvironmentFunc, Instruction};
 // Operator Registry
 // ============================================================================
 
-pub(crate) type SimpleOpFn = fn(&[Variable], &Variable) -> Vec<Instruction>;
+pub(crate) type SimpleOpFn = fn(&[Variable], &Variable, &mut CompileContext) -> Vec<Instruction>;
 
 pub(crate) struct OpDef {
     pub name: &'static str,
@@ -173,7 +174,7 @@ pub(crate) const OPERATORS: &[OpDef] = &[
     OpDef {
         name: "RRAND",
         arity: 2,
-        compile: op_rrand,
+        compile: op_rand,
     },
     OpDef {
         name: "DRUNK",
@@ -234,7 +235,7 @@ pub(crate) fn find_operator(name: &str, arity: usize) -> Option<&'static OpDef> 
 
 macro_rules! unary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 dest.clone(),
@@ -245,7 +246,7 @@ macro_rules! unary_op {
 
 macro_rules! binary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 args[1].clone(),
@@ -257,7 +258,7 @@ macro_rules! binary_op {
 
 macro_rules! ternary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 args[1].clone(),
@@ -273,30 +274,33 @@ macro_rules! ternary_op {
 // ============================================================================
 
 unary_op!(op_not, Not);
-unary_op!(op_bnot, Not);
 unary_op!(op_mlen, Len);
 unary_op!(op_len, Len);
-fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+
+fn op_bnot(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+    vec![Instruction::Control(ControlASM::BitXor(
+        args[0].clone(),
+        Variable::Constant(VariableValue::Integer(-1)),
+        dest.clone(),
+    ))]
+}
+
+fn op_pick(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec<Instruction> {
     let vec = args[0].clone();
-    let len_var = Variable::Instance("_bob_pick_len".to_string());
-    let idx_var = Variable::Instance("_bob_pick_idx".to_string());
+    let len_var = ctx.temp("_bob_pick_len");
+    let idx_var = ctx.temp("_bob_pick_idx");
 
     vec![
-        // Get vector length
         Instruction::Control(ControlASM::Len(vec.clone(), len_var.clone())),
-        // Get random float 0-1
         Instruction::Control(ControlASM::Mov(
             Variable::Environment(EnvironmentFunc::RandomFloat),
             idx_var.clone(),
         )),
-        // Multiply by length to get 0-len range
         Instruction::Control(ControlASM::Mul(
             idx_var.clone(),
             len_var.clone(),
             idx_var.clone(),
         )),
-        // Get element at index (VecGet handles empty vec by returning 0)
-        // No need to cast to integer, VecGet will do it
         Instruction::Control(ControlASM::Index(vec, idx_var, dest.clone())),
     ]
 }
@@ -327,14 +331,14 @@ binary_op!(op_get, Index);
 
 ternary_op!(op_clamp, Clamp);
 
-fn op_toss(_args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_toss(_args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::Mov(
         Variable::Environment(EnvironmentFunc::RandomUInt(2)),
         dest.clone(),
     ))]
 }
 
-fn op_neg(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_neg(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::Sub(
         Variable::Constant(VariableValue::Integer(0)),
         args[0].clone(),
@@ -342,35 +346,48 @@ fn op_neg(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
     ))]
 }
 
-fn op_abs(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_abs(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec<Instruction> {
     let zero = Variable::Constant(VariableValue::Integer(0));
-    let cond = Variable::Instance("_bob_abs_cond".to_string());
-    vec![
-        Instruction::Control(ControlASM::LowerThan(
+    let cond = ctx.temp("_bob_abs_cond");
+    let negate_label = ctx.new_label();
+    let end_label = ctx.new_label();
+
+    let labeled = vec![
+        LabeledInstr::Instr(Instruction::Control(ControlASM::LowerThan(
             args[0].clone(),
             zero.clone(),
             cond.clone(),
-        )),
-        Instruction::Control(ControlASM::RelJumpIfNot(cond, 3)),
-        Instruction::Control(ControlASM::Sub(zero, args[0].clone(), dest.clone())),
-        Instruction::Control(ControlASM::RelJump(2)),
-        Instruction::Control(ControlASM::Mov(args[0].clone(), dest.clone())),
-    ]
+        ))),
+        LabeledInstr::JumpIf(cond, negate_label.clone()),
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+            args[0].clone(),
+            dest.clone(),
+        ))),
+        LabeledInstr::Jump(end_label.clone()),
+        LabeledInstr::Mark(negate_label),
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Sub(
+            zero,
+            args[0].clone(),
+            dest.clone(),
+        ))),
+        LabeledInstr::Mark(end_label),
+    ];
+    resolve_labels(labeled)
 }
 
-fn op_rand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
-    // args[0] = low, args[1] = high
-    let rand_var = Variable::Instance("_bob_rand".to_string());
-    let range = Variable::Instance("_bob_range".to_string());
+/// Random integer in [low, high] (inclusive).
+/// Used by both RAND and RRAND (they are identical).
+fn op_rand(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec<Instruction> {
+    let rand_var = ctx.temp("_bob_rand");
+    let range = ctx.temp("_bob_range");
     let one = Variable::Constant(VariableValue::Integer(1));
     vec![
-        // range = high - low
+        // range = high - low + 1
         Instruction::Control(ControlASM::Sub(
             args[1].clone(),
             args[0].clone(),
             range.clone(),
         )),
-        // range = range + 1 (to include both endpoints)
         Instruction::Control(ControlASM::Add(range.clone(), one, range.clone())),
         // rand_var = random float [0, 1)
         Instruction::Control(ControlASM::Mov(
@@ -383,18 +400,17 @@ fn op_rand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             range.clone(),
             rand_var.clone(),
         )),
-        // dest = 0 (sets type to integer)
+        // dest = Integer(0) then dest = rand_var cast to integer (truncation via Mov)
         Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
-        // dest = rand_var (coerces to integer via Redefine's type preservation)
-        Instruction::Control(ControlASM::Redefine(rand_var.clone(), dest.clone())),
-        // dest = dest mod range (safety, ensures within bounds)
+        Instruction::Control(ControlASM::Mov(rand_var, dest.clone())),
+        // dest = dest % range (ensure within bounds)
         Instruction::Control(ControlASM::Mod(dest.clone(), range, dest.clone())),
         // dest = dest + low
         Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
     ]
 }
 
-fn op_mmerge(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_mmerge(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::BitOr(
         args[1].clone(),
         args[0].clone(),
@@ -402,86 +418,84 @@ fn op_mmerge(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
     ))]
 }
 
-fn op_rrand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
-    let rand_var = Variable::Instance("_bob_rand".to_string());
-    let range = Variable::Instance("_bob_range".to_string());
-    let one = Variable::Constant(VariableValue::Integer(1));
-    vec![
-        Instruction::Control(ControlASM::Sub(
-            args[1].clone(),
-            args[0].clone(),
-            range.clone(),
-        )),
-        Instruction::Control(ControlASM::Add(range.clone(), one, range.clone())),
-        Instruction::Control(ControlASM::Mov(
-            Variable::Environment(EnvironmentFunc::RandomFloat),
-            rand_var.clone(),
-        )),
-        Instruction::Control(ControlASM::Mul(
-            rand_var.clone(),
-            range.clone(),
-            rand_var.clone(),
-        )),
-        Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
-        Instruction::Control(ControlASM::Mov(rand_var.clone(), dest.clone())),
-        Instruction::Control(ControlASM::Mod(dest.clone(), range, dest.clone())),
-        Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
-    ]
-}
-
-fn op_drunk(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
-    let rand_var = Variable::Instance("_bob_rand".to_string());
-    let range = Variable::Instance("_bob_range".to_string());
+/// Brownian walk: dest = current + random(-step, +step)
+fn op_drunk(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec<Instruction> {
+    let rand_var = ctx.temp("_bob_drunk_rand");
+    let range = ctx.temp("_bob_drunk_range");
     let two = Variable::Constant(VariableValue::Integer(2));
     let one = Variable::Constant(VariableValue::Integer(1));
     vec![
+        // range = 2 * step + 1
         Instruction::Control(ControlASM::Mul(two, args[1].clone(), range.clone())),
         Instruction::Control(ControlASM::Add(range.clone(), one, range.clone())),
+        // rand_var = random float [0, 1) * range
         Instruction::Control(ControlASM::Mov(
             Variable::Environment(EnvironmentFunc::RandomFloat),
             rand_var.clone(),
         )),
         Instruction::Control(ControlASM::Mul(rand_var.clone(), range, rand_var.clone())),
-        Instruction::Control(ControlASM::Redefine(0.into(), rand_var.clone())),
-        Instruction::Control(ControlASM::Mov(rand_var.clone(), rand_var.clone())),
+        // truncate to integer: dest = Integer(0), then Mov casts float to int
+        Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
+        Instruction::Control(ControlASM::Mov(rand_var, dest.clone())),
+        // dest = dest - step (center around 0)
         Instruction::Control(ControlASM::Sub(
-            rand_var.clone(),
+            dest.clone(),
             args[1].clone(),
-            rand_var.clone(),
+            dest.clone(),
         )),
-        Instruction::Control(ControlASM::Add(args[0].clone(), rand_var, dest.clone())),
+        // dest = current + dest
+        Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
     ]
 }
 
-fn op_wrap(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
-    let range = Variable::Instance("_bob_wrap_range".to_string());
-    let offset = Variable::Instance("_bob_wrap_offset".to_string());
-    let cond = Variable::Instance("_bob_wrap_cond".to_string());
+fn op_wrap(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec<Instruction> {
+    let range = ctx.temp("_bob_wrap_range");
+    let offset = ctx.temp("_bob_wrap_offset");
+    let cond = ctx.temp("_bob_wrap_cond");
     let zero = Variable::Constant(VariableValue::Integer(0));
-    vec![
-        Instruction::Control(ControlASM::Sub(
+    let end_label = ctx.new_label();
+
+    resolve_labels(vec![
+        // range = max - min
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Sub(
             args[2].clone(),
             args[1].clone(),
             range.clone(),
-        )),
-        Instruction::Control(ControlASM::Sub(
+        ))),
+        // offset = (val - min) % range
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Sub(
             args[0].clone(),
             args[1].clone(),
             offset.clone(),
-        )),
-        Instruction::Control(ControlASM::Mod(
+        ))),
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Mod(
             offset.clone(),
             range.clone(),
             offset.clone(),
-        )),
-        Instruction::Control(ControlASM::LowerThan(offset.clone(), zero, cond.clone())),
-        Instruction::Control(ControlASM::RelJumpIfNot(cond, 2)),
-        Instruction::Control(ControlASM::Add(offset.clone(), range, offset.clone())),
-        Instruction::Control(ControlASM::Add(args[1].clone(), offset, dest.clone())),
-    ]
+        ))),
+        // if offset < 0: offset += range
+        LabeledInstr::Instr(Instruction::Control(ControlASM::LowerThan(
+            offset.clone(),
+            zero,
+            cond.clone(),
+        ))),
+        LabeledInstr::JumpIfNot(cond, end_label.clone()),
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Add(
+            offset.clone(),
+            range,
+            offset.clone(),
+        ))),
+        // dest = min + offset
+        LabeledInstr::Mark(end_label),
+        LabeledInstr::Instr(Instruction::Control(ControlASM::Add(
+            args[1].clone(),
+            offset,
+            dest.clone(),
+        ))),
+    ])
 }
 
-fn op_scale(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_scale(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::Scale(
         args[0].clone(),
         args[1].clone(),
@@ -492,7 +506,7 @@ fn op_scale(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
     ))]
 }
 
-fn op_ccin_context(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_ccin_context(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::GetMidiCC(
         Variable::Instance("_use_context_device".to_string()),
         Variable::Instance("_use_context_channel".to_string()),
@@ -501,7 +515,7 @@ fn op_ccin_context(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
     ))]
 }
 
-fn op_ccin_explicit(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+fn op_ccin_explicit(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::GetMidiCC(
         args[1].clone(),
         args[2].clone(),

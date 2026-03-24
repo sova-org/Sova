@@ -65,10 +65,20 @@ pub(super) struct CagireVM {
 }
 
 impl CagireVM {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self {
             vars: HashMap::new(),
             dict: Dictionary::new(),
+            rng: StdRng::from_os_rng(),
+            global_params: Vec::new(),
+        }
+    }
+
+    pub fn with_dict(dict: Dictionary) -> Self {
+        Self {
+            vars: HashMap::new(),
+            dict,
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
         }

@@ -1,13 +1,26 @@
+use std::sync::{Arc, Mutex};
+
 use sova_core::compiler::{CompilationError, CompilationState};
 use sova_core::scene::script::Script;
 use sova_core::vm::Language;
 use sova_core::vm::interpreter::{Interpreter, InterpreterFactory};
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
 
+use super::compiler::Dictionary;
 use super::interpreter::CagireInterpreter;
 use super::words::WORDS;
 
-pub struct CagireInterpreterFactory;
+pub struct CagireInterpreterFactory {
+    shared_dict: Arc<Mutex<Dictionary>>,
+}
+
+impl CagireInterpreterFactory {
+    pub fn new() -> Self {
+        Self {
+            shared_dict: Arc::new(Mutex::new(Dictionary::new())),
+        }
+    }
+}
 
 impl Language for CagireInterpreterFactory {
     fn name(&self) -> &str {
@@ -133,7 +146,7 @@ mod tests {
     use sova_core::vm::language::TokenCategory;
 
     fn categories_for(text: &str) -> Vec<(std::string::String, TokenCategory)> {
-        let factory = CagireInterpreterFactory;
+        let factory = CagireInterpreterFactory::new();
         let syntax = factory.syntax().expect("syntax() returned None");
         let mut parts = Vec::new();
         let mut cats = Vec::new();
@@ -215,11 +228,16 @@ mod tests {
 
 impl InterpreterFactory for CagireInterpreterFactory {
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
-        Ok(Box::new(CagireInterpreter::new(script.content())))
+        let dict = self.shared_dict.lock().unwrap().clone();
+        Ok(Box::new(CagireInterpreter::new(
+            script.content(),
+            dict,
+            Arc::clone(&self.shared_dict),
+        )))
     }
 
     fn check(&self, script: &Script) -> CompilationState {
-        let mut dict = std::collections::HashMap::new();
+        let mut dict = self.shared_dict.lock().unwrap().clone();
         match super::compiler::compile_script(script.content(), &mut dict) {
             Ok(_) => CompilationState::Parsed(None),
             Err(e) => CompilationState::Error(CompilationError { lang: "cagire".into(), info: e, from: 0, to: 0 }),

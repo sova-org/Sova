@@ -85,6 +85,9 @@ pub(crate) struct CompileContext {
     pub default_dev: i64,
     pub temp_counter: usize,
     pub label_counter: usize,
+    /// Maps global arg names → instance var names inside function bodies.
+    /// Empty outside function compilation.
+    pub arg_remapping: HashMap<String, String>,
 }
 
 impl CompileContext {
@@ -94,6 +97,7 @@ impl CompileContext {
             default_dev: 1,
             temp_counter: 0,
             label_counter: 0,
+            arg_remapping: HashMap::new(),
         }
     }
 

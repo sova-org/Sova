@@ -16,6 +16,70 @@ use sova_core::vm::variable::{Variable, VariableValue};
 use std::collections::HashMap;
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/// Extract a key from a map that is known to exist (dispatch already checked).
+/// Pattern: dest = default; dest = map[key] (overwrites default)
+fn extract_required(
+    labeled: &mut Vec<LabeledInstr>,
+    map_var: &Variable,
+    key: &Variable,
+    dest: &Variable,
+    default: &Variable,
+) {
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+        default.clone(),
+        dest.clone(),
+    ))));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(
+        ControlASM::Index(map_var.clone(), key.clone(), dest.clone()),
+    )));
+}
+
+/// Extract a key from a map that may or may not exist.
+/// Pattern: dest = default; if map has key: dest = map[key]
+fn extract_optional(
+    labeled: &mut Vec<LabeledInstr>,
+    map_var: &Variable,
+    key: &Variable,
+    dest: &Variable,
+    default: &Variable,
+    cond: &Variable,
+    ctx: &mut CompileContext,
+) {
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+        default.clone(),
+        dest.clone(),
+    ))));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(
+        ControlASM::Contains(map_var.clone(), key.clone(), cond.clone()),
+    )));
+    let skip = ctx.new_label();
+    labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip.clone()));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(
+        ControlASM::Index(map_var.clone(), key.clone(), dest.clone()),
+    )));
+    labeled.push(LabeledInstr::Mark(skip));
+}
+
+/// Emit a MIDI event with expansion, appending to labeled instructions.
+fn emit_expanded<F>(
+    labeled: &mut Vec<LabeledInstr>,
+    keys: &[&str],
+    params: HashMap<String, Variable>,
+    ctx: &mut CompileContext,
+    emit_fn: F,
+) where
+    F: Fn(&HashMap<String, Variable>) -> Vec<Instruction>,
+{
+    let expanded = emit_with_expansion(keys, &params, ctx, emit_fn);
+    for instr in expanded {
+        labeled.push(LabeledInstr::Instr(instr));
+    }
+}
+
+// ============================================================================
 // Runtime Event Emission
 // ============================================================================
 
@@ -24,25 +88,9 @@ pub(crate) fn emit_map_var_as_asm(
     default_dev: i64,
     ctx: &mut CompileContext,
 ) -> Vec<Instruction> {
-    // Runtime emit of a map variable with key-based dispatch and list expansion.
-    //
-    // Handles two cases:
-    // A) Variable is a list of maps (e.g., '[[note: 60] [note: 64]]) → emit each map
-    // B) Variable is a single map (possibly with list values) → dispatch + expand
-    //
-    // For case B, key priority (same as compile-time emit_as_asm):
-    // - cc → MidiControl
-    // - pc → MidiProgram
-    // - at + note → MidiAftertouch
-    // - pressure → MidiChannelPressure
-    // - addr → Osc
-    // - note/vel → MidiNote
-    // - sound/s → Dirt
-    // - else → Dirt generic
-
     let mut labeled: Vec<LabeledInstr> = Vec::new();
 
-    // Labels
+    // Labels for dispatch chain
     let label_single_map = ctx.new_label();
     let label_list_loop_start = ctx.new_label();
     let label_list_loop_end = ctx.new_label();
@@ -53,18 +101,15 @@ pub(crate) fn emit_map_var_as_asm(
     let label_emit_dirt = ctx.new_label();
     let label_done = ctx.new_label();
 
-    // Variables for list-of-maps handling
+    // Shared variables
     let list_len = ctx.temp("_em_list_len");
     let list_idx = ctx.temp("_em_list_idx");
     let elem_map = ctx.temp("_em_elem_map");
-    let is_list_cond = ctx.temp("_em_is_list");
-
+    let cond = ctx.temp("_em_cond");
     let zero = Variable::Constant(VariableValue::Integer(0));
     let one = Variable::Constant(VariableValue::Integer(1));
 
     // ========== Check if variable is a list of maps ==========
-    // Skip list-of-maps check for known scalar constants (Str, Int, etc.)
-    // — Len returns string length for Str, which would incorrectly trigger expansion.
     if !is_expandable(map_var) {
         labeled.push(LabeledInstr::Jump(label_single_map.clone()));
     } else {
@@ -72,12 +117,9 @@ pub(crate) fn emit_map_var_as_asm(
             ControlASM::Len(map_var.clone(), list_len.clone()),
         )));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::GreaterThan(list_len.clone(), zero.clone(), is_list_cond.clone()),
+            ControlASM::GreaterThan(list_len.clone(), zero.clone(), cond.clone()),
         )));
-        labeled.push(LabeledInstr::JumpIfNot(
-            is_list_cond.clone(),
-            label_single_map.clone(),
-        ));
+        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), label_single_map.clone()));
     }
 
     // ----- LIST OF MAPS PATH -----
@@ -85,32 +127,19 @@ pub(crate) fn emit_map_var_as_asm(
         zero.clone(),
         list_idx.clone(),
     ))));
-
-    // Loop: for each element in the list
     labeled.push(LabeledInstr::Mark(label_list_loop_start.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::GreaterOrEqual(list_idx.clone(), list_len.clone(), is_list_cond.clone()),
+        ControlASM::GreaterOrEqual(list_idx.clone(), list_len.clone(), cond.clone()),
     )));
-    labeled.push(LabeledInstr::JumpIf(
-        is_list_cond.clone(),
-        label_list_loop_end.clone(),
-    ));
-
-    // Get element at index
+    labeled.push(LabeledInstr::JumpIf(cond.clone(), label_list_loop_end.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::Index(map_var.clone(), list_idx.clone(), elem_map.clone()),
     )));
-
-    // Generate emit code for elem_map and add it inline
-    // (We'll jump to label_check_cc with current_map set, then jump back)
-    // Actually, this is complex - let's just emit a simple Dirt event for list-of-maps
-    // since that was the original behavior
     {
         let time_var = ctx.temp("_em_lom_time");
         let dev_var = Variable::Constant(VariableValue::Integer(default_dev));
         let mut params: HashMap<String, Variable> = HashMap::new();
         params.insert("_map".to_string(), elem_map.clone());
-
         labeled.push(LabeledInstr::Instr(Instruction::Control(
             ControlASM::FloatAsFrames(
                 Variable::Constant(VariableValue::Float(0.0)),
@@ -126,22 +155,19 @@ pub(crate) fn emit_map_var_as_asm(
             time_var,
         )));
     }
-
-    // Increment index
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Add(
         list_idx.clone(),
-        one.clone(),
+        one,
         list_idx.clone(),
     ))));
     labeled.push(LabeledInstr::Jump(label_list_loop_start));
-
     labeled.push(LabeledInstr::Mark(label_list_loop_end));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ----- SINGLE MAP PATH -----
     labeled.push(LabeledInstr::Mark(label_single_map));
 
-    // Variables for extracted values
+    // Allocate destination variables for extracted values
     let note_var = ctx.temp("_em_note");
     let vel_var = ctx.temp("_em_vel");
     let chan_var = ctx.temp("_em_chan");
@@ -154,34 +180,16 @@ pub(crate) fn emit_map_var_as_asm(
     let sound_var = ctx.temp("_em_sound");
     let dev_var = ctx.temp("_em_dev");
 
-    // Has-key result variables
+    // Has-key checks for dispatch
     let has_cc = ctx.temp("_em_has_cc");
     let has_pc = ctx.temp("_em_has_pc");
     let has_at = ctx.temp("_em_has_at");
     let has_note = ctx.temp("_em_has_note");
     let has_pressure = ctx.temp("_em_has_pressure");
 
-    // Expansion variables
-    let cond = ctx.temp("_em_cond");
-    let time_var = ctx.temp("_em_time");
-
+    // Key and default constants
+    let key = |s: &str| Variable::Constant(VariableValue::Str(s.to_string()));
     let default_dev_var = Variable::Constant(VariableValue::Integer(default_dev));
-
-    // Key constants
-    let key_note = Variable::Constant(VariableValue::Str("note".to_string()));
-    let key_vel = Variable::Constant(VariableValue::Str("vel".to_string()));
-    let key_chan = Variable::Constant(VariableValue::Str("chan".to_string()));
-    let key_dur = Variable::Constant(VariableValue::Str("dur".to_string()));
-    let key_cc = Variable::Constant(VariableValue::Str("cc".to_string()));
-    let key_val = Variable::Constant(VariableValue::Str("val".to_string()));
-    let key_pc = Variable::Constant(VariableValue::Str("pc".to_string()));
-    let key_at = Variable::Constant(VariableValue::Str("at".to_string()));
-    let key_pressure = Variable::Constant(VariableValue::Str("pressure".to_string()));
-    let key_sound = Variable::Constant(VariableValue::Str("sound".to_string()));
-    let key_s = Variable::Constant(VariableValue::Str("s".to_string()));
-    let key_dev = Variable::Constant(VariableValue::Str("dev".to_string()));
-
-    // Default values
     let default_note = Variable::Constant(VariableValue::Integer(defaults::MIDI_NOTE));
     let default_vel = Variable::Constant(VariableValue::Integer(defaults::MIDI_VEL));
     let default_chan = Variable::Constant(VariableValue::Integer(defaults::MIDI_CHAN));
@@ -193,380 +201,98 @@ pub(crate) fn emit_map_var_as_asm(
     let default_pressure = Variable::Constant(VariableValue::Integer(defaults::MIDI_PRESSURE));
     let default_sound = Variable::Constant(VariableValue::Str("bd".to_string()));
 
-    // ========== Extract all relevant keys with defaults ==========
+    let key_note = key("note");
+    let key_vel = key("vel");
+    let key_chan = key("chan");
+    let key_dur = key("dur");
+    let key_cc = key("cc");
+    let key_val = key("val");
+    let key_pc = key("pc");
+    let key_at = key("at");
+    let key_pressure = key("pressure");
+    let key_sound = key("sound");
+    let key_s = key("s");
+    let key_dev = key("dev");
 
-    // Helper macro-like inline: Index with default if key not present
-    // Index(map, key, dest) - sets dest to value or keeps it if not found
-    // We use Contains first, then Index
-
-    // dev (with default)
-    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-        default_dev_var.clone(),
-        dev_var.clone(),
-    ))));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_dev.clone(), cond.clone()),
-    )));
-    let skip_dev = ctx.new_label();
-    labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_dev.clone()));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Index(map_var.clone(), key_dev.clone(), dev_var.clone()),
-    )));
-    labeled.push(LabeledInstr::Mark(skip_dev));
+    // Extract dev (common to all paths)
+    extract_optional(&mut labeled, map_var, &key_dev, &dev_var, &default_dev_var, &cond, ctx);
 
     // Check which keys exist for dispatch
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_cc.clone(), has_cc.clone()),
-    )));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_pc.clone(), has_pc.clone()),
-    )));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_at.clone(), has_at.clone()),
-    )));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_note.clone(), has_note.clone()),
-    )));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Contains(map_var.clone(), key_pressure.clone(), has_pressure.clone()),
-    )));
-
-    // ========== Dispatch based on keys ==========
-
-    // if has_cc → emit CC
-    labeled.push(LabeledInstr::JumpIfNot(
-        has_cc.clone(),
-        label_check_pc.clone(),
-    ));
-
-    // ----- EMIT CC PATH -----
-    {
-        // Extract cc, val, chan with defaults
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_cc.clone(),
-            cc_var.clone(),
-        ))));
+    for (k, dest) in [
+        (&key_cc, &has_cc), (&key_pc, &has_pc), (&key_at, &has_at),
+        (&key_note, &has_note), (&key_pressure, &has_pressure),
+    ] {
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_cc.clone(), cc_var.clone()),
+            ControlASM::Contains(map_var.clone(), k.clone(), dest.clone()),
         )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_val.clone(),
-            val_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_val.clone(), cond.clone()),
-        )));
-        let skip_val = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_val.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_val.clone(), val_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_val));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_chan.clone(),
-            chan_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
-        )));
-        let skip_chan = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_chan));
-
-        // Now emit with expansion for cc, val, chan
-        let params: HashMap<String, Variable> = [
-            ("cc".to_string(), cc_var.clone()),
-            ("val".to_string(), val_var.clone()),
-            ("chan".to_string(), chan_var.clone()),
-        ]
-        .into_iter()
-        .collect();
-
-        let expanded = emit_with_expansion(&["cc", "val", "chan"], &params, ctx, |p| {
-            emit_midi_control_single(p, &dev_var)
-        });
-        for instr in expanded {
-            labeled.push(LabeledInstr::Instr(instr));
-        }
     }
+
+    // ========== CC ==========
+    labeled.push(LabeledInstr::JumpIfNot(has_cc.clone(), label_check_pc.clone()));
+    extract_required(&mut labeled, map_var, &key_cc, &cc_var, &default_cc);
+    extract_optional(&mut labeled, map_var, &key_val, &val_var, &default_val, &cond, ctx);
+    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
+    emit_expanded(&mut labeled, &["cc", "val", "chan"], HashMap::from([
+        ("cc".into(), cc_var.clone()), ("val".into(), val_var.clone()), ("chan".into(), chan_var.clone()),
+    ]), ctx, |p| emit_midi_control_single(p, &dev_var));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
-    // ----- CHECK PC -----
+    // ========== PC ==========
     labeled.push(LabeledInstr::Mark(label_check_pc));
-    labeled.push(LabeledInstr::JumpIfNot(
-        has_pc.clone(),
-        label_check_at.clone(),
-    ));
-
-    // ----- EMIT PC PATH -----
-    {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_pc.clone(),
-            pc_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_pc.clone(), pc_var.clone()),
-        )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_chan.clone(),
-            chan_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
-        )));
-        let skip_chan = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_chan));
-
-        let params: HashMap<String, Variable> = [
-            ("pc".to_string(), pc_var.clone()),
-            ("chan".to_string(), chan_var.clone()),
-        ]
-        .into_iter()
-        .collect();
-
-        let expanded = emit_with_expansion(&["pc", "chan"], &params, ctx, |p| {
-            emit_midi_program_single(p, &dev_var)
-        });
-        for instr in expanded {
-            labeled.push(LabeledInstr::Instr(instr));
-        }
-    }
+    labeled.push(LabeledInstr::JumpIfNot(has_pc.clone(), label_check_at.clone()));
+    extract_required(&mut labeled, map_var, &key_pc, &pc_var, &default_pc);
+    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
+    emit_expanded(&mut labeled, &["pc", "chan"], HashMap::from([
+        ("pc".into(), pc_var.clone()), ("chan".into(), chan_var.clone()),
+    ]), ctx, |p| emit_midi_program_single(p, &dev_var));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
-    // ----- CHECK AT (aftertouch needs both at AND note) -----
+    // ========== Aftertouch (requires both at AND note) ==========
     labeled.push(LabeledInstr::Mark(label_check_at));
-    // at && note
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::And(
-        has_at.clone(),
-        has_note.clone(),
-        cond.clone(),
+        has_at.clone(), has_note.clone(), cond.clone(),
     ))));
-    labeled.push(LabeledInstr::JumpIfNot(
-        cond.clone(),
-        label_check_pressure.clone(),
-    ));
-
-    // ----- EMIT AFTERTOUCH PATH -----
-    {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_note.clone(),
-            note_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_note.clone(), note_var.clone()),
-        )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_at.clone(),
-            at_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_at.clone(), at_var.clone()),
-        )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_chan.clone(),
-            chan_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
-        )));
-        let skip_chan = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_chan));
-
-        let params: HashMap<String, Variable> = [
-            ("note".to_string(), note_var.clone()),
-            ("at".to_string(), at_var.clone()),
-            ("chan".to_string(), chan_var.clone()),
-        ]
-        .into_iter()
-        .collect();
-
-        let expanded = emit_with_expansion(&["note", "at", "chan"], &params, ctx, |p| {
-            emit_midi_aftertouch_single(p, &dev_var)
-        });
-        for instr in expanded {
-            labeled.push(LabeledInstr::Instr(instr));
-        }
-    }
+    labeled.push(LabeledInstr::JumpIfNot(cond.clone(), label_check_pressure.clone()));
+    extract_required(&mut labeled, map_var, &key_note, &note_var, &default_note);
+    extract_required(&mut labeled, map_var, &key_at, &at_var, &default_at);
+    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
+    emit_expanded(&mut labeled, &["note", "at", "chan"], HashMap::from([
+        ("note".into(), note_var.clone()), ("at".into(), at_var.clone()), ("chan".into(), chan_var.clone()),
+    ]), ctx, |p| emit_midi_aftertouch_single(p, &dev_var));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
-    // ----- CHECK PRESSURE -----
+    // ========== Channel Pressure ==========
     labeled.push(LabeledInstr::Mark(label_check_pressure));
-    labeled.push(LabeledInstr::JumpIfNot(
-        has_pressure.clone(),
-        label_check_note.clone(),
-    ));
-
-    // ----- EMIT CHANNEL PRESSURE PATH -----
-    {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_pressure.clone(),
-            pressure_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_pressure.clone(), pressure_var.clone()),
-        )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_chan.clone(),
-            chan_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
-        )));
-        let skip_chan = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_chan));
-
-        let params: HashMap<String, Variable> = [
-            ("pressure".to_string(), pressure_var.clone()),
-            ("chan".to_string(), chan_var.clone()),
-        ]
-        .into_iter()
-        .collect();
-
-        let expanded = emit_with_expansion(&["pressure", "chan"], &params, ctx, |p| {
-            emit_midi_channel_pressure_single(p, &dev_var)
-        });
-        for instr in expanded {
-            labeled.push(LabeledInstr::Instr(instr));
-        }
-    }
+    labeled.push(LabeledInstr::JumpIfNot(has_pressure.clone(), label_check_note.clone()));
+    extract_required(&mut labeled, map_var, &key_pressure, &pressure_var, &default_pressure);
+    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
+    emit_expanded(&mut labeled, &["pressure", "chan"], HashMap::from([
+        ("pressure".into(), pressure_var.clone()), ("chan".into(), chan_var.clone()),
+    ]), ctx, |p| emit_midi_channel_pressure_single(p, &dev_var));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
-    // ----- CHECK NOTE (MIDI Note) -----
+    // ========== MIDI Note ==========
     labeled.push(LabeledInstr::Mark(label_check_note));
-    labeled.push(LabeledInstr::JumpIfNot(
-        has_note.clone(),
-        label_emit_dirt.clone(),
-    ));
-
-    // ----- EMIT MIDI NOTE PATH -----
-    {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_note.clone(),
-            note_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_note.clone(), note_var.clone()),
-        )));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_vel.clone(),
-            vel_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_vel.clone(), cond.clone()),
-        )));
-        let skip_vel = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_vel.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_vel.clone(), vel_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_vel));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_chan.clone(),
-            chan_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
-        )));
-        let skip_chan = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_chan));
-
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_dur.clone(),
-            dur_var.clone(),
-        ))));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_dur.clone(), cond.clone()),
-        )));
-        let skip_dur = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_dur.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_dur.clone(), dur_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_dur));
-
-        let params: HashMap<String, Variable> = [
-            ("note".to_string(), note_var.clone()),
-            ("vel".to_string(), vel_var.clone()),
-            ("chan".to_string(), chan_var.clone()),
-            ("dur".to_string(), dur_var.clone()),
-        ]
-        .into_iter()
-        .collect();
-
-        let expanded = emit_with_expansion(&["note", "vel", "chan", "dur"], &params, ctx, |p| {
-            emit_midi_note_single(p, &dev_var)
-        });
-        for instr in expanded {
-            labeled.push(LabeledInstr::Instr(instr));
-        }
-    }
+    labeled.push(LabeledInstr::JumpIfNot(has_note.clone(), label_emit_dirt.clone()));
+    extract_required(&mut labeled, map_var, &key_note, &note_var, &default_note);
+    extract_optional(&mut labeled, map_var, &key_vel, &vel_var, &default_vel, &cond, ctx);
+    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
+    extract_optional(&mut labeled, map_var, &key_dur, &dur_var, &default_dur, &cond, ctx);
+    emit_expanded(&mut labeled, &["note", "vel", "chan", "dur"], HashMap::from([
+        ("note".into(), note_var.clone()), ("vel".into(), vel_var.clone()),
+        ("chan".into(), chan_var.clone()), ("dur".into(), dur_var.clone()),
+    ]), ctx, |p| emit_midi_note_single(p, &dev_var));
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
-    // ----- EMIT DIRT (fallback) -----
+    // ========== Dirt (fallback) ==========
     labeled.push(LabeledInstr::Mark(label_emit_dirt));
+    extract_optional(&mut labeled, map_var, &key_sound, &sound_var, &default_sound, &cond, ctx);
+    // Also check "s" as alias for "sound"
+    extract_optional(&mut labeled, map_var, &key_s, &sound_var, &sound_var, &cond, ctx);
     {
-        // For Dirt, we just pass the whole map as params
-        // Extract sound if present
-        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
-            default_sound.clone(),
-            sound_var.clone(),
-        ))));
-
-        // Check for "sound" key
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_sound.clone(), cond.clone()),
-        )));
-        let skip_sound = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_sound.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_sound.clone(), sound_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Jump(skip_sound.clone()));
-        labeled.push(LabeledInstr::Mark(skip_sound.clone()));
-
-        // Check for "s" key if sound not found
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Contains(map_var.clone(), key_s.clone(), cond.clone()),
-        )));
-        let skip_s = ctx.new_label();
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_s.clone()));
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Index(map_var.clone(), key_s.clone(), sound_var.clone()),
-        )));
-        labeled.push(LabeledInstr::Mark(skip_s));
-
-        // For Dirt, we emit with the _map pattern - pass whole map
-        // This is simpler for Dirt since it takes arbitrary params
+        let time_var = ctx.temp("_em_time");
         let mut params: HashMap<String, Variable> = HashMap::new();
         params.insert("_map".to_string(), map_var.clone());
-
         labeled.push(LabeledInstr::Instr(Instruction::Control(
             ControlASM::FloatAsFrames(
                 Variable::Constant(VariableValue::Float(0.0)),
@@ -585,6 +311,5 @@ pub(crate) fn emit_map_var_as_asm(
 
     // ----- DONE -----
     labeled.push(LabeledInstr::Mark(label_done));
-
     resolve_labels(labeled)
 }

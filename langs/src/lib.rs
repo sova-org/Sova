@@ -13,7 +13,7 @@ pub fn create_language_center() -> LanguageCenter {
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(boinx::BoinxInterpreterFactory);
-    interpreters.add_factory(cagire::CagireInterpreterFactory);
+    interpreters.add_factory(cagire::CagireInterpreterFactory::new());
 
     LanguageCenter { transcoder, interpreters }
 }

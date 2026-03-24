@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::ops::Op;
 use super::words::compile_word;
 
-pub(super) type Dictionary = HashMap<String, Vec<Op>>;
+pub(crate) type Dictionary = HashMap<String, Vec<Op>>;
 
 #[derive(Clone, Debug)]
 enum Token {
