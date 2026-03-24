@@ -4,7 +4,6 @@ use sova_core::vm::runner::execute_program;
 use std::collections::BTreeMap;
 
 mod basics;
-mod brace_syntax;
 mod ccin;
 mod control_flow;
 mod emit_dispatch;

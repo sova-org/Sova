@@ -4,7 +4,7 @@ use sova_core::vm::variable::VariableValue;
 #[test]
 fn symbolic_operators() {
     let result = compile_and_run(
-        "SET G.A + 2 3; SET G.B - 10 3; SET G.C * 4 5; SET G.D / 20 4; SET G.E % 17 5",
+        "SET G.A ADD 2 3; SET G.B SUB 10 3; SET G.C MUL 4 5; SET G.D DIV 20 4; SET G.E MOD 17 5",
     );
     assert_eq!(
         result.global_vars.get("A"),
@@ -31,7 +31,7 @@ fn symbolic_operators() {
 #[test]
 fn symbolic_comparison() {
     let result = compile_and_run(
-        "SET G.A > 5 3; SET G.B < 2 8; SET G.C >= 5 5; SET G.D <= 3 3; SET G.E == 4 4; SET G.F != 1 2",
+        "SET G.A GT 5 3; SET G.B LT 2 8; SET G.C GTE 5 5; SET G.D LTE 3 3; SET G.E EQ 4 4; SET G.F NE 1 2",
     );
     assert_eq!(
         result.global_vars.get("A"),
@@ -84,8 +84,8 @@ fn bor_integers() {
 
 #[test]
 fn bor_symbolic_integers() {
-    // | on integers: bitwise or
-    let result = compile_and_run("SET G.A | 3 5");
+    // BOR on integers: bitwise or
+    let result = compile_and_run("SET G.A BOR 3 5");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(7))
@@ -147,7 +147,7 @@ fn add_maps_via_variables() {
 #[test]
 fn division_truncates_toward_zero() {
     // Integer division should truncate toward zero
-    let result = compile_and_run("SET G.A / 7 3; SET G.B / NEG 7 3; SET G.C / 7 NEG 3");
+    let result = compile_and_run("SET G.A DIV 7 3; SET G.B DIV NEG 7 3; SET G.C DIV 7 NEG 3");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(2))
@@ -169,7 +169,7 @@ fn division_truncates_toward_zero() {
 #[test]
 fn band_integers() {
     // BAND 12 10 → 8 (1100 & 1010 = 1000)
-    let result = compile_and_run("SET G.A BAND 12 10; SET G.B & 12 10");
+    let result = compile_and_run("SET G.A BAND 12 10; SET G.B BAND 12 10");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(8))
@@ -183,7 +183,7 @@ fn band_integers() {
 #[test]
 fn bxor_integers() {
     // BXOR 12 10 → 6 (1100 ^ 1010 = 0110)
-    let result = compile_and_run("SET G.A BXOR 12 10; SET G.B ^ 12 10");
+    let result = compile_and_run("SET G.A BXOR 12 10; SET G.B BXOR 12 10");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(6))
@@ -197,7 +197,7 @@ fn bxor_integers() {
 #[test]
 fn bnot_integer() {
     // BNOT 0 → -1 (all bits flipped)
-    let result = compile_and_run("SET G.A BNOT 0; SET G.B ~ 0");
+    let result = compile_and_run("SET G.A BNOT 0; SET G.B BNOT 0");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(-1))
@@ -211,7 +211,7 @@ fn bnot_integer() {
 #[test]
 fn shl_integer() {
     // SHL 1 4 → 16
-    let result = compile_and_run("SET G.A SHL 1 4; SET G.B << 1 4");
+    let result = compile_and_run("SET G.A SHL 1 4; SET G.B SHL 1 4");
     assert_eq!(
         result.global_vars.get("A"),
         Some(&VariableValue::Integer(16))

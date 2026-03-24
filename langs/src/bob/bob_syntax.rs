@@ -13,7 +13,7 @@ pub fn syntax() -> LanguageSyntax {
             SyntaxRule::new(Builtin, r"\b(PLAY|WAIT|DEV|PRINT|P|SET|MNEW|MGET|MSET|MHAS|MMERGE|MLEN|LEN|GET|PICK|CYCLE|MAP|FILTER|REDUCE)\b|>>|@"),
             SyntaxRule::new(Operator, r"\b(ADD|SUB|MUL|DIV|MOD|NEG|ABS|GT|LT|GTE|LTE|EQ|NE|AND|OR|XOR|NOT|BAND|BOR|BXOR|BNOT|SHL|SHR|MIN|MAX|CLAMP|WRAP|SCALE|QT|TOSS|RAND|RRAND|DRUNK)\b"),
             SyntaxRule::new(Special, r"\b[IETR]\b"),
-            SyntaxRule::new(Punctuation, r"\?|'\[|\[|\]|\{|\}|:"),
+            SyntaxRule::new(Punctuation, r"\?|'\[|\[|\]|:"),
         ],
     }
 }

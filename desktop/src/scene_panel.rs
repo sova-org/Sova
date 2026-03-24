@@ -331,26 +331,32 @@ impl ScenePanel {
 
                                             ui.add_space(GAP);
 
-                                            // Drag handle below every frame for vertical resizing
-                                            let handle_width = ui.available_width();
-                                            let (handle_rect, handle_resp) = ui.allocate_exact_size(
-                                                egui::vec2(handle_width, DRAG_HANDLE_HEIGHT),
-                                                egui::Sense::drag(),
-                                            );
-                                            if handle_resp.dragged() {
-                                                let delta = handle_resp.drag_delta().y;
-                                                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                                                    state.height = (state.height + delta).clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
-                                                }
-                                            }
-                                            if handle_resp.hovered() || handle_resp.dragged() {
-                                                let center_y = handle_rect.center().y;
-                                                ui.painter().hline(
-                                                    handle_rect.x_range(),
-                                                    center_y,
-                                                    egui::Stroke::new(1.0, accent),
+                                            // Drag handle below every frame for vertical resizing (hidden when collapsed)
+                                            let frame_collapsed = self.frame_states.get(&(li, fi))
+                                                .is_some_and(|s| s.collapsed);
+                                            if frame_collapsed {
+                                                ui.add_space(DRAG_HANDLE_HEIGHT);
+                                            } else {
+                                                let handle_width = ui.available_width();
+                                                let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                                                    egui::vec2(handle_width, DRAG_HANDLE_HEIGHT),
+                                                    egui::Sense::drag(),
                                                 );
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                                if handle_resp.dragged() {
+                                                    let delta = handle_resp.drag_delta().y;
+                                                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                                                        state.height = (state.height + delta).clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
+                                                    }
+                                                }
+                                                if handle_resp.hovered() || handle_resp.dragged() {
+                                                    let center_y = handle_rect.center().y;
+                                                    ui.painter().hline(
+                                                        handle_rect.x_range(),
+                                                        center_y,
+                                                        egui::Stroke::new(1.0, accent),
+                                                    );
+                                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                                }
                                             }
                                         }
 
@@ -635,11 +641,18 @@ impl ScenePanel {
                 .fill(bg)
                 .inner_margin(egui::Margin { left: 5, right: 5, ..egui::Margin::ZERO });
 
+            let is_collapsed = self.frame_states.get(&(li, fi))
+                .is_some_and(|s| s.collapsed);
+
             let frame_resp = cell_frame.show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let frame_height = self.frame_states.get(&(li, fi))
-                    .map_or(CELL_HEIGHT, |s| s.height);
-                ui.set_height(HEADER_HEIGHT + frame_height);
+                if is_collapsed {
+                    ui.set_height(HEADER_HEIGHT);
+                } else {
+                    let frame_height = self.frame_states.get(&(li, fi))
+                        .map_or(CELL_HEIGHT, |s| s.height);
+                    ui.set_height(HEADER_HEIGHT + frame_height);
+                }
 
                 opacity.override_widget_visuals(ui);
 
@@ -681,62 +694,64 @@ impl ScenePanel {
                     }
                 }
 
-                ui.separator();
+                if !is_collapsed {
+                    ui.separator();
 
-                // Body (code editor)
-                let syntax = bridge.syntax_map.get(
-                    self.frame_states
-                        .get(&(li, fi))
-                        .map(|s| s.lang.as_str())
-                        .unwrap_or(""),
-                );
-                let syntax_pair = syntax.map(|cs| (cs, theme));
-
-                let reference = bridge
-                    .languages()
-                    .iter()
-                    .find(|l| {
+                    // Body (code editor)
+                    let syntax = bridge.syntax_map.get(
                         self.frame_states
                             .get(&(li, fi))
-                            .is_some_and(|s| s.lang == l.name)
-                    })
-                    .filter(|l| !l.documentation.reference.is_empty())
-                    .map(|l| &l.documentation.reference);
+                            .map(|s| s.lang.as_str())
+                            .unwrap_or(""),
+                    );
+                    let syntax_pair = syntax.map(|cs| (cs, theme));
 
-                let mut cursors: Vec<PeerCursor> = bridge
-                    .text_cursors_for_frame(li, fi)
-                    .into_iter()
-                    .map(|(name, line, col)| PeerCursor {
-                        name: name.to_owned(),
-                        line,
-                        col,
-                        color: username_color(name),
-                    })
-                    .collect();
+                    let reference = bridge
+                        .languages()
+                        .iter()
+                        .find(|l| {
+                            self.frame_states
+                                .get(&(li, fi))
+                                .is_some_and(|s| s.lang == l.name)
+                        })
+                        .filter(|l| !l.documentation.reference.is_empty())
+                        .map(|l| &l.documentation.reference);
 
-                // Include the local user's text cursor
-                if let Some(my_name) = bridge.confirmed_username()
-                    && let Some(state) = self.frame_states.get(&(li, fi))
-                    && let (Some(line), Some(col)) =
-                        (state.last_cursor_line, state.last_cursor_col)
-                {
-                    cursors.push(PeerCursor {
-                        name: my_name.to_owned(),
-                        line,
-                        col,
-                        color: username_color(my_name),
-                    });
-                }
+                    let mut cursors: Vec<PeerCursor> = bridge
+                        .text_cursors_for_frame(li, fi)
+                        .into_iter()
+                        .map(|(name, line, col)| PeerCursor {
+                            name: name.to_owned(),
+                            line,
+                            col,
+                            color: username_color(name),
+                        })
+                        .collect();
 
-                let editor_ctx = EditorContext {
-                    settings: editor_settings,
-                    syntax: syntax_pair,
-                    reference,
-                    peer_cursors: &cursors,
-                    opacity: Some(opacity),
-                };
-                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                    state.show_body(ui, li, fi, &editor_ctx, bridge);
+                    // Include the local user's text cursor
+                    if let Some(my_name) = bridge.confirmed_username()
+                        && let Some(state) = self.frame_states.get(&(li, fi))
+                        && let (Some(line), Some(col)) =
+                            (state.last_cursor_line, state.last_cursor_col)
+                    {
+                        cursors.push(PeerCursor {
+                            name: my_name.to_owned(),
+                            line,
+                            col,
+                            color: username_color(my_name),
+                        });
+                    }
+
+                    let editor_ctx = EditorContext {
+                        settings: editor_settings,
+                        syntax: syntax_pair,
+                        reference,
+                        peer_cursors: &cursors,
+                        opacity: Some(opacity),
+                    };
+                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                        state.show_body(ui, li, fi, &editor_ctx, bridge);
+                    }
                 }
             });
 
@@ -817,28 +832,22 @@ impl ScenePanel {
                 }
             }
 
-            // Peer presence: colored border for peers on this cell
+            // Peer presence: colored left bar for peers on this cell
             for (name, &(pli, pfi, _)) in bridge.peer_cursors() {
                 if pli == li && pfi == fi {
                     let color = username_color(name);
                     let s = egui::Stroke::new(2.0, color);
-                    let p = ui.painter();
-                    p.hline(cell_rect.x_range(), cell_rect.top(), s);
-                    p.hline(cell_rect.x_range(), cell_rect.bottom(), s);
-                    p.vline(cell_rect.right(), cell_rect.y_range(), s);
+                    ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);
                 }
             }
 
-            // Local user: colored border on cursor frame
+            // Local user: colored left bar on cursor frame
             if is_cursor
                 && let Some(my_name) = bridge.confirmed_username()
             {
                 let color = username_color(my_name);
                 let s = egui::Stroke::new(2.0, color);
-                let p = ui.painter();
-                p.hline(cell_rect.x_range(), cell_rect.top(), s);
-                p.hline(cell_rect.x_range(), cell_rect.bottom(), s);
-                p.vline(cell_rect.right(), cell_rect.y_range(), s);
+                ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);
             }
 
             // Re-register with actual rect (updates in-place, keeping early list position)
@@ -860,10 +869,16 @@ impl ScenePanel {
             });
 
             // If frame count changed for a line, clear all states for that line
-            // (indices may have shifted)
+            // (indices may have shifted), but preserve UI-only fields (collapsed, height)
             for (li, &count) in current_counts.iter().enumerate() {
                 let old_count = self.last_frame_counts.get(li).copied().unwrap_or(0);
                 if count != old_count {
+                    let saved_ui: Vec<_> = self
+                        .frame_states
+                        .iter()
+                        .filter(|&(&(l, _), _)| l == li)
+                        .map(|(&(_, fi), s)| (fi, s.collapsed, s.height))
+                        .collect();
                     let keys_to_remove: Vec<_> = self
                         .frame_states
                         .keys()
@@ -872,6 +887,17 @@ impl ScenePanel {
                         .collect();
                     for key in keys_to_remove {
                         self.frame_states.remove(&key);
+                    }
+                    // Restore collapsed/height for indices that still exist
+                    for (fi, collapsed, height) in saved_ui {
+                        if fi < count {
+                            if let Some(frame) = scene.lines[li].frames.get(fi) {
+                                let mut state = InlineFrameState::new(frame);
+                                state.collapsed = collapsed;
+                                state.height = height;
+                                self.frame_states.insert((li, fi), state);
+                            }
+                        }
                     }
                 }
             }

@@ -1027,7 +1027,7 @@ impl CagireVM {
                 Op::EmitAll => {
                     if !cmd.params().is_empty() {
                         for (event, _) in events.iter_mut() {
-                            if let ConcreteEvent::Dirt { args, .. } = event {
+                            if let ConcreteEvent::Generic(VariableValue::Map(args), ..) = event {
                                 for (k, v) in cmd.params() {
                                     if *k == "device" { continue; }
                                     let param_str = v.to_param_string();
@@ -1280,7 +1280,8 @@ impl CagireVM {
                     args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
                 }
 
-                events.push((ConcreteEvent::Dirt { args, device_id: dev }, time));
+                let dur_micros = (ctx.step_duration * 1_000_000.0) as SyncTime;
+                events.push((ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev), time));
             }
         } else {
             let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
@@ -1651,10 +1652,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sound_emits_dirt_event() {
+    fn test_sound_emits_generic_event() {
         let events = eval("\"sine\" sound 440 freq .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::Dirt { args, .. }
+        assert!(matches!(&events[0].0, ConcreteEvent::Generic(VariableValue::Map(args), ..)
             if args.get("sound") == Some(&VariableValue::Str("sine".into()))
         ));
     }
@@ -1879,9 +1880,9 @@ mod tests {
         events.iter().map(|(_, t)| *t).collect()
     }
 
-    fn get_dirt_param(ev: &ConcreteEvent, key: &str) -> Option<f64> {
+    fn get_generic_param(ev: &ConcreteEvent, key: &str) -> Option<f64> {
         match ev {
-            ConcreteEvent::Dirt { args, .. } => {
+            ConcreteEvent::Generic(VariableValue::Map(args), ..) => {
                 args.get(key).and_then(|v| match v {
                     VariableValue::Float(f) => Some(*f),
                     VariableValue::Integer(i) => Some(*i as f64),
@@ -1933,8 +1934,8 @@ mod tests {
     fn test_at_loop_rand_different_per_subdivision() {
         let events = eval("0 0.5 at sine snd 1 1000 rand freq .");
         assert_eq!(events.len(), 2);
-        let f0 = get_dirt_param(&events[0].0, "freq");
-        let f1 = get_dirt_param(&events[1].0, "freq");
+        let f0 = get_generic_param(&events[0].0, "freq");
+        let f1 = get_generic_param(&events[1].0, "freq");
         assert!(f0.is_some() && f1.is_some());
         assert_ne!(f0, f1, "rand should produce different values per at subdivision");
     }
@@ -1944,7 +1945,7 @@ mod tests {
         let events = eval("0 0.5 at sine snd c4 e4 note .");
         assert_eq!(events.len(), 4);
         // Each at iteration emits 2 poly voices (c4=60, e4=64)
-        let notes: Vec<f64> = events.iter().filter_map(|(ev, _)| get_dirt_param(ev, "note")).collect();
+        let notes: Vec<f64> = events.iter().filter_map(|(ev, _)| get_generic_param(ev, "note")).collect();
         assert_eq!(notes, vec![60.0, 64.0, 60.0, 64.0]);
     }
 

@@ -35,6 +35,7 @@ pub struct InlineFrameState {
     pub last_op_send: Instant,
     pub has_remote_edits: bool,
     pub height: f32,
+    pub collapsed: bool,
 }
 
 impl InlineFrameState {
@@ -63,6 +64,7 @@ impl InlineFrameState {
             last_op_send: Instant::now(),
             has_remote_edits: false,
             height: crate::scene_panel::CELL_HEIGHT,
+            collapsed: false,
         }
     }
 
@@ -185,9 +187,8 @@ impl InlineFrameState {
         _opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
-        // Cmd/Ctrl+L shortcut — check focus on any widget in this cell
-        let any_focus = ui.memory(|m| m.focused().is_some());
-        if any_focus {
+        // Cmd/Ctrl+L shortcut — only for the frame whose editor has focus
+        if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
             let shortcut_pressed = ui.input(|i| {
                 i.key_pressed(egui::Key::L)
@@ -204,7 +205,23 @@ impl InlineFrameState {
             }
         }
 
-        // Enabled toggle (first)
+        // Collapse toggle (chevron)
+        let collapse_icon = if self.collapsed {
+            crate::icons::CHEVRON_RIGHT
+        } else {
+            crate::icons::CHEVRON_DOWN
+        };
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new(collapse_icon).color(COLOR_MUTED))
+                    .fill(egui::Color32::TRANSPARENT),
+            )
+            .clicked()
+        {
+            self.collapsed = !self.collapsed;
+        }
+
+        // Enabled toggle
         let enabled = frame.enabled;
         let toggle_icon = if enabled {
             crate::icons::CIRCLE_LARGE_FILLED
@@ -494,6 +511,7 @@ impl InlineFrameState {
                     .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())))
         {
             self.lang_popup_open = false;
+            self.request_focus = true;
         }
     }
 
@@ -612,6 +630,7 @@ pub struct InlineScriptState {
     pub lang_popup_selection: usize,
     pub height: f32,
     pub editor_has_focus: bool,
+    pub request_focus: bool,
     pub last_eval: Option<Instant>,
 }
 
@@ -627,6 +646,7 @@ impl InlineScriptState {
             lang_popup_selection: 0,
             height: crate::scene_panel::CELL_HEIGHT,
             editor_has_focus: false,
+            request_focus: false,
             last_eval: None,
         }
     }
@@ -655,9 +675,8 @@ impl InlineScriptState {
         opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
-        // Cmd/Ctrl+L shortcut for language popup
-        let any_focus = ui.memory(|m| m.focused().is_some());
-        if any_focus {
+        // Cmd/Ctrl+L shortcut — only for the script whose editor has focus
+        if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
             let shortcut_pressed = ui.input(|i| {
                 i.key_pressed(egui::Key::L)
@@ -838,6 +857,7 @@ impl InlineScriptState {
                     .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())))
         {
             self.lang_popup_open = false;
+            self.request_focus = true;
         }
     }
 
@@ -850,6 +870,11 @@ impl InlineScriptState {
     ) {
         let editor_id = ui.id().with("prelude_editor_body");
         let editor_id_focus = editor_id.with("editor");
+
+        if self.request_focus {
+            self.request_focus = false;
+            ui.memory_mut(|m| m.request_focus(editor_id_focus));
+        }
 
         egui::ScrollArea::vertical()
             .id_salt(("prelude_editor_scroll", idx))

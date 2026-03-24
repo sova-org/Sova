@@ -101,7 +101,7 @@ fn eu_with_else_branch() {
 #[test]
 fn eu_index_available_in_body() {
     // I should be available and increment 0..steps-1
-    let result = compile_and_run("SET G.SUM 0; EU 8 8 0.125 : SET G.SUM + G.SUM I END");
+    let result = compile_and_run("SET G.SUM 0; EU 8 8 0.125 : SET G.SUM ADD G.SUM I END");
     // Sum of 0+1+2+3+4+5+6+7 = 28
     assert_eq!(
         result.global_vars.get("SUM"),
@@ -112,7 +112,7 @@ fn eu_index_available_in_body() {
 #[test]
 fn eu_index_for_velocity_curve() {
     // Use I for velocity curve
-    let result = compile_and_run("EU 4 4 0.25 : >> [note: 60 vel: * I 30] END");
+    let result = compile_and_run("EU 4 4 0.25 : >> [note: 60 vel: MUL I 30] END");
     let vels: Vec<u64> = result
         .events
         .iter()
@@ -181,7 +181,7 @@ fn eu_with_variable_hits() {
 #[test]
 fn eu_with_computed_hits() {
     // hits can be a computed expression
-    let result = compile_and_run("EU + 1 2 8 0.125 : >> [note: 60] END");
+    let result = compile_and_run("EU ADD 1 2 8 0.125 : >> [note: 60] END");
     let note_count = result
         .events
         .iter()
@@ -208,8 +208,8 @@ fn eu_with_variable_steps() {
 
 #[test]
 fn eu_brace_syntax_with_else() {
-    // Brace style requires ELSE - E(2,4) = 2 hits, 2 misses = 4 MIDI events
-    let result = compile_and_run("EU 2 4 0.25 { >> [note: 60] } ELSE { >> [note: 36] }");
+    // E(2,4) = 2 hits, 2 misses = 4 MIDI events
+    let result = compile_and_run("EU 2 4 0.25 : >> [note: 60] ELSE : >> [note: 36] END");
     let note_count = result
         .events
         .iter()
@@ -225,7 +225,7 @@ fn eu_brace_syntax_with_else() {
 #[test]
 fn eu_body_with_multiple_statements() {
     // Body can have multiple statements
-    let result = compile_and_run("SET G.X 0; EU 3 8 0.125 : SET G.X + G.X 1; >> [note: 60] END");
+    let result = compile_and_run("SET G.X 0; EU 3 8 0.125 : SET G.X ADD G.X 1; >> [note: 60] END");
     assert_eq!(
         result.global_vars.get("X"),
         Some(&VariableValue::Integer(3))
@@ -334,7 +334,7 @@ fn bin_with_else_branch() {
 fn bin_index_available_in_body() {
     // I should be available as step index (0..steps-1)
     // 7 = 111, 3 steps, all hits
-    let result = compile_and_run("SET G.SUM 0; BIN 7 0.125 : SET G.SUM + G.SUM I END");
+    let result = compile_and_run("SET G.SUM 0; BIN 7 0.125 : SET G.SUM ADD G.SUM I END");
     // Sum of 0+1+2 = 3
     assert_eq!(
         result.global_vars.get("SUM"),
@@ -388,7 +388,7 @@ fn bin_with_variable_pattern() {
 #[test]
 fn bin_brace_syntax_with_else() {
     // 5 = 101: 2 hits, 1 miss
-    let result = compile_and_run("BIN 5 0.125 { >> [note: 60] } ELSE { >> [note: 36] }");
+    let result = compile_and_run("BIN 5 0.125 : >> [note: 60] ELSE : >> [note: 36] END");
     let note_count = result
         .events
         .iter()

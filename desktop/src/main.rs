@@ -6,7 +6,6 @@ extern crate rust_i18n;
 i18n!("locales", fallback = "en");
 
 mod audio_panel;
-mod chat_overlay;
 mod chat_panel;
 mod client_bridge;
 mod client_panel;
@@ -190,7 +189,7 @@ fn main() -> eframe::Result {
                 recent_scenes: s.recent_scenes,
                 dismissed_tips: s.dismissed_tips,
                 visuals,
-                chat_overlay: chat_overlay::ChatOverlay::new(),
+                toasts: widgets::ToastStack::new(),
                 rename_input: None,
                 master_volume: saved_master_volume,
                 muted: false,
@@ -233,7 +232,7 @@ struct SovaApp {
     recent_scenes: Vec<std::path::PathBuf>,
     dismissed_tips: Vec<String>,
     visuals: visuals::VisualsEngine,
-    chat_overlay: chat_overlay::ChatOverlay,
+    toasts: widgets::ToastStack,
     rename_input: Option<String>,
     master_volume: f32,
     muted: bool,
@@ -789,25 +788,8 @@ impl eframe::App for SovaApp {
             self.bridge.send(ClientMessage::SetMasterVolume(0.0));
         }
 
-        // Compilation error toast (above bottom bar, fades after 5s)
-        let error_fade = 5.0_f32;
-        if let Some((ref msg, instant)) = self.bridge.last_error {
-            let elapsed = instant.elapsed().as_secs_f32();
-            if elapsed < error_fade {
-                let alpha = ((1.0 - elapsed / error_fade) * 255.0) as u8;
-                let error_bg = egui::Color32::from_rgba_unmultiplied(40, 10, 10, alpha);
-                let text_color = egui::Color32::from_rgba_unmultiplied(255, 100, 100, alpha);
-                egui::TopBottomPanel::bottom("error_toast")
-                    .frame(
-                        egui::Frame::NONE
-                            .fill(error_bg)
-                            .inner_margin(egui::Margin::symmetric(8, 4)),
-                    )
-                    .show(ctx, |ui| {
-                        ui.label(egui::RichText::new(msg).color(text_color).small());
-                    });
-                ctx.request_repaint();
-            }
+        if let Some((msg, _)) = self.bridge.last_error.take() {
+            self.toasts.push(widgets::ToastLevel::Error, msg);
         }
 
         let bar = egui::TopBottomPanel::bottom("bottom_bar")
@@ -941,8 +923,8 @@ impl eframe::App for SovaApp {
         // Floating windows
         self.chat_panel
             .show(ctx, &mut self.bridge, &self.appearance);
-        self.chat_overlay.poll(self.bridge.chat_messages());
-        self.chat_overlay.show(ctx);
+        self.toasts.poll_chat(self.bridge.chat_messages());
+        self.toasts.show(ctx);
         self.devices.show(ctx, &self.bridge);
 
         let sample_paths = self.audio.sample_paths();

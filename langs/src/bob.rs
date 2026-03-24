@@ -13,9 +13,9 @@
 //! ## Quick Example
 //!
 //! ```text
-//! DEV 1
-//! L 0 3 :
-//!     PLAY [note: ADD 60 I, vel: RRAND 80 120]
+//! DEV 1;
+//! RANGE 0 3 :
+//!     >> [note: ADD 60 I vel: RRAND 80 120];
 //!     WAIT 0.25
 //! END
 //! ```
@@ -27,7 +27,6 @@ lalrpop_mod!(bob_grammar, "/bob/bob_grammar.rs");
 
 pub mod bob_ast;
 mod bob_compiler;
-mod bob_preprocess;
 mod bob_syntax;
 mod compile_expr;
 mod context;

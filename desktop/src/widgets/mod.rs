@@ -8,6 +8,7 @@ pub mod inline_scene_view;
 mod spectrum;
 pub mod syntax_highlight;
 pub mod tip_popup;
+mod toast;
 mod vu_meter;
 mod waveform;
 
@@ -18,6 +19,7 @@ pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
 pub use spectrum::Spectrum;
+pub use toast::{ToastLevel, ToastStack};
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
 

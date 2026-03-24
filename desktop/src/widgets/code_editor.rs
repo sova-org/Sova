@@ -755,8 +755,14 @@ fn paint_peer_cursors(
         );
         let label_w = label_galley.size().x + 4.0;
         let label_h = label_galley.size().y + 2.0;
+        let clip = ui.clip_rect();
+        let label_y = if screen_y - label_h < clip.min.y {
+            screen_y + row_height
+        } else {
+            screen_y - label_h
+        };
         let label_rect = egui::Rect::from_min_size(
-            egui::pos2(screen_x, screen_y - label_h),
+            egui::pos2(screen_x, label_y),
             egui::vec2(label_w, label_h),
         );
         painter.rect_filled(label_rect, 0.0, label_bg);

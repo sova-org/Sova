@@ -399,7 +399,7 @@ fn consecutive_loops() {
 #[test]
 fn loop_returns_list() {
     // Loop expression returns a list of collected values
-    let result = compile_and_run("SET G.NOTES RANGE 1 3 : + 60 I END");
+    let result = compile_and_run("SET G.NOTES RANGE 1 3 : ADD 60 I END");
     assert_eq!(
         result.global_vars.get("NOTES"),
         Some(&VariableValue::Vec(vec![
@@ -413,7 +413,7 @@ fn loop_returns_list() {
 #[test]
 fn loop_returns_squares() {
     // Loop expression returns squares
-    let result = compile_and_run("SET G.SQ RANGE 1 4 : * I I END");
+    let result = compile_and_run("SET G.SQ RANGE 1 4 : MUL I I END");
     assert_eq!(
         result.global_vars.get("SQ"),
         Some(&VariableValue::Vec(vec![

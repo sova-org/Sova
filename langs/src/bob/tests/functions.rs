@@ -293,7 +293,7 @@ fn function_digit_sum() {
 fn func_implicit_return() {
     // Function returns the last expression in its body
     let result = compile_and_run(
-        "FUNC DOUBLE X : * X 2 END;
+        "FUNC DOUBLE X : MUL X 2 END;
          SET G.Y (CALL DOUBLE 7)",
     );
     assert_eq!(
@@ -307,8 +307,8 @@ fn func_implicit_return_with_body() {
     // Function with body statements and implicit return
     let result = compile_and_run(
         "FUNC COMPUTE X :
-             SET G.A * X 2;
-             SET G.B + G.A 10;
+             SET G.A MUL X 2;
+             SET G.B ADD G.A 10;
              G.B
          END;
          SET G.Y (CALL COMPUTE 5)",

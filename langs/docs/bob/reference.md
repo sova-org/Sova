@@ -1,6 +1,6 @@
 # Bob Language Reference
 
-Bob is a terse, Monome Teletype-inspired DSL for live coding music. It uses **Polish notation** (operator before operands) with **fixed arity** operators, eliminating the need for parentheses. Expressions nest naturally: `ADD 2 MUL 3 4` evaluates to 14 because `MUL 3 4` yields 12, then `ADD 2 12` yields 14. The language prioritizes brevity and immediacy: every keystroke counts when performing live.
+Bob is a terse, Monome Teletype-inspired DSL for live coding music. It uses **Polish notation** (operator before operands) with **fixed arity** operators, eliminating the need for parentheses. Expressions nest naturally: `ADD 2 MUL 3 4` evaluates to 14 because `MUL 3 4` yields 12, then `ADD 2 12` yields 14. Statements are separated with `;`. The language prioritizes brevity and immediacy: every keystroke counts when performing live.
 
 ## Data Types
 
@@ -57,15 +57,17 @@ Single uppercase letters (`A`-`Z`) can be read as globals, but assignment requir
 
 ## Operators
 
+All operators use word forms (Polish notation). No symbolic aliases.
+
 ### Arithmetic
 
 Binary operations on two values:
 
-- **`ADD`** or **`+`**: Addition. `ADD 2 3` -> 5
-- **`SUB`** or **`-`**: Subtraction. `SUB 10 3` -> 7
-- **`MUL`** or **`*`**: Multiplication. `MUL 4 5` -> 20
-- **`DIV`** or **`/`**: Division. `DIV 20 4` -> 5
-- **`MOD`** or **`%`**: Modulo. `MOD 17 5` -> 2
+- **`ADD`**: Addition. `ADD 2 3` -> 5
+- **`SUB`**: Subtraction. `SUB 10 3` -> 7
+- **`MUL`**: Multiplication. `MUL 4 5` -> 20
+- **`DIV`**: Division. `DIV 20 4` -> 5
+- **`MOD`**: Modulo. `MOD 17 5` -> 2
 
 Unary operations on one value:
 
@@ -76,27 +78,27 @@ Unary operations on one value:
 
 All return boolean (true/false):
 
-- **`GT`** or **`>`**: Greater than. `GT 5 3` -> true
-- **`LT`** or **`<`**: Less than. `LT 2 8` -> true
-- **`GTE`** or **`>=`**: Greater or equal. `GTE 5 5` -> true
-- **`LTE`** or **`<=`**: Less or equal. `LTE 3 3` -> true
-- **`EQ`** or **`==`**: Equal. `EQ 4 4` -> true
-- **`NE`** or **`!=`**: Not equal. `NE 1 2` -> true
+- **`GT`**: Greater than. `GT 5 3` -> true
+- **`LT`**: Less than. `LT 2 8` -> true
+- **`GTE`**: Greater or equal. `GTE 5 5` -> true
+- **`LTE`**: Less or equal. `LTE 3 3` -> true
+- **`EQ`**: Equal. `EQ 4 4` -> true
+- **`NE`**: Not equal. `NE 1 2` -> true
 
 ### Logical
 
-- **`AND`** or **`&&`**: Logical and. `AND 1 1` -> true
-- **`OR`** or **`||`**: Logical or. `OR 0 1` -> true
+- **`AND`**: Logical and. `AND 1 1` -> true
+- **`OR`**: Logical or. `OR 0 1` -> true
 - **`XOR`**: Logical exclusive or. `XOR 1 0` -> true
 - **`NOT`** or **`!`**: Logical not (unary). `NOT 0` -> true
 
 ### Bitwise
 
-- **`BAND`** or **`&`**: Bitwise and. `BAND 12 10` -> 8
-- **`BOR`** or **`|`**: Bitwise or. `BOR 12 10` -> 14
-- **`BXOR`** or **`^`**: Bitwise exclusive or. `BXOR 12 10` -> 6
-- **`BNOT`** or **`~`**: Bitwise not (unary). `BNOT 0` -> -1
-- **`SHL`** or **`<<`**: Shift left. `SHL 1 4` -> 16
+- **`BAND`**: Bitwise and. `BAND 12 10` -> 8
+- **`BOR`**: Bitwise or. `BOR 12 10` -> 14
+- **`BXOR`**: Bitwise exclusive or. `BXOR 12 10` -> 6
+- **`BNOT`**: Bitwise not (unary). `BNOT 0` -> -1
+- **`SHL`**: Shift left. `SHL 1 4` -> 16
 - **`SHR`**: Shift right. `SHR 16 2` -> 4
 
 ### Utility
@@ -117,7 +119,7 @@ All return boolean (true/false):
 
 ## Control Flow
 
-All control structures use `:` to open a body and `END` to close. Alternatively, braces `{ }` can be used instead.
+All control structures use `:` to open a body and `END` to close it. Use `;` to separate statements within a block.
 
 ### Conditional
 
@@ -128,11 +130,6 @@ IF cond : body ELSE : body END
 
 -- no ELIF: use nested IF/ELSE
 IF cond1 : body1 ELSE : IF cond2 : body2 ELSE : body3 END END
-```
-
-Brace style:
-```
-IF cond { body } ELSE { body }
 ```
 
 ### Ternary
@@ -170,13 +167,13 @@ Iterate over each element with `EACH`. Inside the body, `E` is the current eleme
 
 ```
 EACH '[60 64 67] : >> [note: E] END
-EACH '[60 64 67] : >> [note: E] WAIT 0.25 END
+EACH '[60 64 67] : >> [note: E]; WAIT 0.25 END
 
 -- use I for index-based calculations
 EACH '[60 64 67] : >> [note: E vel: SUB 127 MUL I 20] END
 
 -- with variable
-SET G.NOTES '[48 55 60 64]
+SET G.NOTES '[48 55 60 64];
 EACH G.NOTES : >> [note: E vel: 100] END
 ```
 
@@ -237,7 +234,7 @@ BIN 255 0.125 : >> [note: 60] END     -- 255 = 11111111: 8 steps, all hits
 BIN 5 0.125 : >> [note: 60 vel: 100] ELSE : >> [note: 60 vel: 20] END
 
 -- pattern from variable (can evolve over time)
-SET G.PAT 5
+SET G.PAT 5;
 BIN G.PAT 0.125 : >> [note: 60] END
 ```
 
@@ -283,9 +280,8 @@ Spawn a concurrent execution branch. The main script continues immediately while
 
 ```
 FORK : body END
-FORK { body }
 
-FORK : DO 4 : >> [note: 60] WAIT 0.25 END END
+FORK : DO 4 : >> [note: 60]; WAIT 0.25 END END;
 SET G.X 99    -- continues immediately
 ```
 
@@ -330,7 +326,7 @@ SET G.Z (CALL GCD 48 18)      -- G.Z = 6
 
 Anonymous functions stored in variables:
 ```
-SET G.F FN X : MUL X 2 END
+SET G.F FN X : MUL X 2 END;
 SET G.Y (CALL G.F 5)          -- G.Y = 10
 
 -- multi-argument
@@ -424,9 +420,6 @@ Apply a function to each element, returning a new list:
 MAP fn list
 
 SET G.X MAP FN A : MUL A 2 END '[1 2 3]        -- '[2 4 6]
-
-FUNC OCTAVE N : ADD N 12 END
-SET G.Y (CALL MAP OCTAVE '[60 64 67])          -- '[72 76 79]
 ```
 
 ### FILTER
@@ -457,7 +450,7 @@ SET G.X REDUCE FN A B : MUL A B END 1 '[1 2 3 4]  -- 24 (product)
 RANGE 0 3 : >> [note: CYCLE '[60 64 67 72]] END
 
 -- using GET with loop index
-SET G.NOTES '[60 64 67]
+SET G.NOTES '[60 64 67];
 RANGE 0 2 : >> [note: GET G.NOTES I] END
 ```
 
@@ -479,8 +472,8 @@ PLAY [key: value ...]
 The `dev` key specifies which output device receives the event. If omitted, events go to the device set by `DEV`:
 
 ```
-DEV 1                          -- set default device for this frame
->> [note: 60]                  -- goes to device 1
+DEV 1;                         -- set default device for this frame
+>> [note: 60];                 -- goes to device 1
 >> [note: 72 dev: 2]           -- override: goes to device 2
 ```
 
@@ -623,10 +616,10 @@ WAIT DIV 1 8                  -- wait eighth beat (computed)
 Events fire at the current time position. Use `WAIT` between events to create sequences:
 
 ```
->> [note: 60]                  -- fires at t=0
-WAIT 0.5
->> [note: 64]                  -- fires at t=0.5
-WAIT 0.5
+>> [note: 60];                 -- fires at t=0
+WAIT 0.5;
+>> [note: 64];                 -- fires at t=0.5
+WAIT 0.5;
 >> [note: 67]                  -- fires at t=1.0
 ```
 
@@ -635,10 +628,10 @@ WAIT 0.5
 The `DEV` statement sets the default output device for subsequent events in the current frame:
 
 ```
-DEV 1                          -- all following events go to device 1
->> [note: 60]
->> [note: 64]
-DEV 2                          -- switch to device 2
+DEV 1;                         -- all following events go to device 1
+>> [note: 60];
+>> [note: 64];
+DEV 2;                         -- switch to device 2
 >> [note: 48]
 ```
 
