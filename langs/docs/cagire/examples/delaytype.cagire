@@ -1,1 +1,12 @@
-tri snd c4 note 0.005 0.2 ad 0.25 delay 0.25 delaytime 0.5 delayfeedback "pingpong" delaytype .
+;; delaytype (play with them)
+;; try different values
+;; 0 - standard 1 - pingpong
+;; 2 - tape     3 - multitap
+tri snd
+200 300 2 choose
+.2 decay
+.5 delay
+.25 delaytime
+.5 delayfeedback
+1 delaytype
+.

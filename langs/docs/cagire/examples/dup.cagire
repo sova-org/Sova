@@ -1,1 +1,5 @@
-c3 dup M3 note saw snd 0.01 0.3 ad 1500 lpf .
+c3 dup M3 dup m3 note
+saw snd
+0.7 decay
+5500 lpf
+.

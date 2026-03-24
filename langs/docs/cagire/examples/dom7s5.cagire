@@ -1,1 +1,4 @@
-c3 dom7s5 note sine snd 0.01 0.5 ad 0.2 verb .
+c4 dom7s5 note
+tri snd .5 decay
+4000 lpf
+.

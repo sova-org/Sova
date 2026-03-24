@@ -1,1 +1,4 @@
-g2 dom7b9 note saw snd 0.01 0.3 ad 1500 lpf .
+c4 dom7b9 note
+tri snd .5 decay
+4000 lpf
+.

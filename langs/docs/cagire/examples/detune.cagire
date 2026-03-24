@@ -1,1 +1,6 @@
-saw snd c3 note 0.01 0.4 ad 1200 lpf 100 detune .
+pulse saw snd
+c3 note
+0.4 decay
+4000 lpf
+2000 0 0.5 slide detune
+.

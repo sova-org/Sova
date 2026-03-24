@@ -1,1 +1,3 @@
-saw snd c2 note 0.01 0.3 ad 600 lpf 2 distort .
+kick snd
+( 1 distort ) 2 every
+.

@@ -1,1 +1,5 @@
-2 device c4 note 100 velocity .
+;; Device 2 on the DeviceMap
+2 device
+c4 note
+100 velocity
+ .

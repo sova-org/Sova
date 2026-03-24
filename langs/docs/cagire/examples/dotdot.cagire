@@ -1,1 +1,6 @@
-0 7 .. 8 cycle minor note sine snd 0.005 0.2 ad .
+0 1 0.25 ., at
+0 7 .. 8 cycle minor note
+8000 200 0.2 slide lpf
+saw snd .5 decay
+0.2 phaser 1.5 gain
+.

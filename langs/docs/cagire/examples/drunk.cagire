@@ -1,1 +1,6 @@
-saw snd c3 note 0.01 0.4 ad 400 2000 0.2 drunk lpf .
+saw snd
+c3 note
+0.01 0.4 ad
+100 15000 0.1 drunk llpf
+0.4 llpq
+.

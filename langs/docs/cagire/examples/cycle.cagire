@@ -1,1 +1,5 @@
-c3 e3 g3 c4 4 cycle note saw snd 0.01 0.2 ad 1200 lpf .
+c3 e3 g3 c4 4 cycle note
+saw snd
+0.01 0.2 ad
+1200 lpf
+.

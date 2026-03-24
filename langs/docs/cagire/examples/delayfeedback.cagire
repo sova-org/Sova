@@ -1,1 +1,6 @@
-tri snd c4 note 0.005 0.15 ad 0.3 delay 0.25 delaytime 0.7 delayfeedback .
+white sound
+.25 decay
+.5 delay
+0.125 delaytime
+[ 0 0.25 0.5 .99 ] cycle delayfeedback
+.

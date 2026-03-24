@@ -1,1 +1,4 @@
-c3 dom7b5 note tri snd 0.01 0.4 ad 1200 lpf .
+c4 dom7b5 note
+tri snd .5 decay
+4000 lpf
+.

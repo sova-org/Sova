@@ -1,1 +1,4 @@
-g2 dom9 note saw snd 0.01 0.4 0.6 0.2 adsr 1500 lpf .
+c4 dom9 note
+tri snd .5 decay
+4000 lpf
+.

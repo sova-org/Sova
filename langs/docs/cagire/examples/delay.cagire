@@ -1,1 +1,11 @@
-tri snd 0 4 rand pentatonic note 0.005 0.15 ad 0.3 delay 0.25 delaytime 0.5 delayfeedback .
+0 0.5 at
+tri snd
+0 8 rand pentatonic note
+0.0 1.0 rand pan
+0.0 2.0 rand vib
+0.0 1.0 rand vibmod
+0.02 0.15 ad
+0.5 delay 0.125 delaytime
+0.2 triangle delayfeedback
+0.8 verb 0 verbpredelay
+.

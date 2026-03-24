@@ -1,1 +1,3 @@
-saw snd c3 note 0.01 0.3 ad 1200 lpf .
+;; The most important word!
+saw snd
+( . ) 50 prob

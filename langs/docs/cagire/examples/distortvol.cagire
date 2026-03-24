@@ -1,1 +1,4 @@
-saw snd c2 note 0.01 0.3 ad 800 lpf 4 distort 0.6 distortvol .
+kick snd
+( 1 distort ) 2 every
+0.0 1.0 rand distortvol
+.

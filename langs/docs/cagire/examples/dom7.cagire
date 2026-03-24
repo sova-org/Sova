@@ -1,1 +1,9 @@
-g2 dom7 note saw snd 0.01 0.3 ad 1500 lpf .
+( g3 dom7 inv note
+saw snd
+0.01 0.3 ad 1500 lpf
+)
+( c4 maj note
+  saw snd .5 decay
+  1500 lpf
+) [ 0 0 0 1 ] cycle select
+.

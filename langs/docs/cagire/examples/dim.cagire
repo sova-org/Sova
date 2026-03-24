@@ -1,1 +1,6 @@
-b2 dim note tri snd 0.01 0.3 ad 1500 lpf 0.2 verb .
+0 0.25 0.75 0.5 at
+[ c4 c5 ] bounce dim note
+tri snd .8 decay
+8000 2000 .1 slide lpf
+0.2 verb
+.

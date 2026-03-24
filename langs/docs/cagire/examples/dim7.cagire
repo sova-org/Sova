@@ -1,1 +1,6 @@
-b2 dim7 note tri snd 0.01 0.3 ad 1200 lpf 0.15 verb .
+0 ( 0.5 ) 3 every at
+[ c4 g4 ] bounce dim7 note
+tri snd .8 decay
+8000 2000 .1 slide lpf
+0.2 verb
+.

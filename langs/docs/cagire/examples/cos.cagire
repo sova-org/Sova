@@ -1,1 +1,12 @@
-iter 0.3 * cos 0.5 * 0.5 + gain tri snd c4 note 0.005 0.2 ad .
+;; computing a modulation manually using cos
+iter 0.3 * cos 0.5 *
+0.5 + gain
+tri snd
+[ c4 g4 ] choose e4 e3 2 choose
+0.125 slide note
+0.0 1.0 rand pan
+0.005 0.2 2.0 rand ad
+0.8 verb 0.5 delay 0.7 delayfeedback
+0.25 delaytime
+0.01 verbpredelay
+.

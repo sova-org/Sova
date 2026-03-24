@@ -1,1 +1,4 @@
-c3 c4 drop note sine snd 0.005 0.2 ad .
+;; Only note note (c4 is gone)
+c3 c4 drop note
+sine snd .5 decay
+.

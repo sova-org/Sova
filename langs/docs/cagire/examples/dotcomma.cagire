@@ -1,1 +1,5 @@
-0 1 0.125 ., at hat snd 0.4 gain 0.001 0.04 ad .
+;; 0, 0.125, 0.25, etc...
+0 1 0.125 ., at
+hat snd 0.4 gain
+.2 decay
+.
