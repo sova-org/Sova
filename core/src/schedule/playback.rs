@@ -1,7 +1,7 @@
 use crate::{
     clock::{Clock, SyncTime},
     log_println,
-    scene::{Scene, script::ScriptExecution},
+    scene::Scene,
 };
 
 use serde::{Deserialize, Serialize};

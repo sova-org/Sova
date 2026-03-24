@@ -68,10 +68,11 @@ impl BoinxLine {
 
         let dur = dur.as_micros(ctx.clock, ctx.frame_len);
 
+        let addr = channel.clone().as_str(ctx);
+
         match item {
             BoinxItem::Note(n) => {
-                let channel = channel.yield_integer(ctx).to_string();
-                Some(ConcreteEvent::Generic(VariableValue::from(*n), dur, channel, device))
+                Some(ConcreteEvent::Generic(VariableValue::from(*n), dur, addr, device))
             }
             BoinxItem::ArgMap(map) => {
                 let map : HashMap<String, VariableValue> = 
@@ -82,19 +83,9 @@ impl BoinxLine {
                             Some((key.clone(), VariableValue::from(value.clone())))
                         }
                     }).collect();
-                let addr = if channel.is_str() {
-                    channel.clone().as_str(ctx)
-                } else {
-                    String::new()
-                };
                 Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
             }
             BoinxItem::Str(s) => {
-                let addr = if channel.is_str() {
-                    channel.clone().as_str(ctx)
-                } else {
-                    String::new()
-                };
                 Some(ConcreteEvent::Generic(s.clone().into(), dur, addr, device))
             }
             _ => None,
