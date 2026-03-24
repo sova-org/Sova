@@ -1,0 +1,1 @@
+: bass saw snd 0.01 0.3 ad 600 lpf ; c2 note bass .

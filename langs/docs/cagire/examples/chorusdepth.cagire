@@ -1,0 +1,7 @@
+0 0.5 at
+saw snd c3 min7 note
+0.8 decay
+4000 lpf
+0.2 chorus
+0.1 0.9 rand chorusdepth
+.

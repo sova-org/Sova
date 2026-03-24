@@ -1,0 +1,1 @@
+tempo 120 / 0.25 * delaytime 0.2 delay sine snd c4 note 0.005 0.2 ad .

@@ -1,0 +1,4 @@
+;; Will ceil to note 4
+3.2 ceil pentatonic note
+sine snd 0.005 0.2 ad
+.

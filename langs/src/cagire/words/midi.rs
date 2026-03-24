@@ -1,16 +1,16 @@
 use super::{Word, WordCompile::*};
 
 pub(super) const WORDS: &[Word] = &[
-    Word { name: "chan", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI channel 1-16", example: "1 chan", compile: Param, varargs: true },
-    Word { name: "ccnum", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI CC number 0-127", example: "1 ccnum", compile: Param, varargs: true },
-    Word { name: "ccout", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI CC output value 0-127", example: "64 ccout", compile: Param, varargs: true },
-    Word { name: "bend", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set pitch bend -1.0 to 1.0 (0 = center)", example: "0.5 bend", compile: Param, varargs: true },
-    Word { name: "pressure", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set channel pressure (aftertouch) 0-127", example: "64 pressure", compile: Param, varargs: true },
-    Word { name: "program", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set program change number 0-127", example: "0 program", compile: Param, varargs: true },
-    Word { name: "mclock", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI clock pulse", example: "mclock", compile: Simple, varargs: false },
-    Word { name: "mstart", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI start message", example: "mstart", compile: Simple, varargs: false },
-    Word { name: "mstop", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI stop message", example: "mstop", compile: Simple, varargs: false },
-    Word { name: "mcont", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI continue message", example: "mcont", compile: Simple, varargs: false },
-    Word { name: "ccval", aliases: &[], category: "MIDI", stack: "(cc chan -- val)", desc: "Read CC value 0-127 from MIDI input", example: "1 1 ccval", compile: Simple, varargs: false },
-    Word { name: "device", aliases: &["dev"], category: "MIDI", stack: "(v.. --)", desc: "Set device slot 1-16 for output/input", example: "1 device 60 note .", compile: Param, varargs: true },
+    Word { name: "chan", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI channel 1-16", example: include_str!("../../../docs/cagire/examples/chan.cagire"), compile: Param, varargs: true },
+    Word { name: "ccnum", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI CC number 0-127", example: include_str!("../../../docs/cagire/examples/ccnum.cagire"), compile: Param, varargs: true },
+    Word { name: "ccout", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set MIDI CC output value 0-127", example: include_str!("../../../docs/cagire/examples/ccout.cagire"), compile: Param, varargs: true },
+    Word { name: "bend", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set pitch bend -1.0 to 1.0 (0 = center)", example: include_str!("../../../docs/cagire/examples/bend.cagire"), compile: Param, varargs: true },
+    Word { name: "pressure", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set channel pressure (aftertouch) 0-127", example: include_str!("../../../docs/cagire/examples/pressure.cagire"), compile: Param, varargs: true },
+    Word { name: "program", aliases: &[], category: "MIDI", stack: "(v.. --)", desc: "Set program change number 0-127", example: include_str!("../../../docs/cagire/examples/program.cagire"), compile: Param, varargs: true },
+    Word { name: "mclock", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI clock pulse", example: include_str!("../../../docs/cagire/examples/mclock.cagire"), compile: Simple, varargs: false },
+    Word { name: "mstart", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI start message", example: include_str!("../../../docs/cagire/examples/mstart.cagire"), compile: Simple, varargs: false },
+    Word { name: "mstop", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI stop message", example: include_str!("../../../docs/cagire/examples/mstop.cagire"), compile: Simple, varargs: false },
+    Word { name: "mcont", aliases: &[], category: "MIDI", stack: "(--)", desc: "Send MIDI continue message", example: include_str!("../../../docs/cagire/examples/mcont.cagire"), compile: Simple, varargs: false },
+    Word { name: "ccval", aliases: &[], category: "MIDI", stack: "(cc chan -- val)", desc: "Read CC value 0-127 from MIDI input", example: include_str!("../../../docs/cagire/examples/ccval.cagire"), compile: Simple, varargs: false },
+    Word { name: "device", aliases: &["dev"], category: "MIDI", stack: "(v.. --)", desc: "Set device slot 1-16 for output/input", example: include_str!("../../../docs/cagire/examples/device.cagire"), compile: Param, varargs: true },
 ];

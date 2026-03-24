@@ -1,0 +1,1 @@
+kick snd . ( cymbal snd 0.3 gain 0.3 verb . ) rarely

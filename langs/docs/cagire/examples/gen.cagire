@@ -1,0 +1,1 @@
+( 0 7 rand ) 4 gen 4 choose pentatonic note sine snd 0.005 0.2 ad .

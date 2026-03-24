@@ -1,0 +1,8 @@
+;; Read CC value 74 from MIDI device 2
+;; Map to frequency range 200-4000 Hz
+;; (linear mapping)
+2 device
+74 1 ccval 127 / 200 4000 range lpf
+saw snd
+.5 decay
+.

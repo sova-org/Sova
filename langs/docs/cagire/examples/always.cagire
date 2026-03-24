@@ -1,0 +1,4 @@
+;; always apply the quoted content
+sine snd 1 decay
+( 0.8 verb ) always
+.

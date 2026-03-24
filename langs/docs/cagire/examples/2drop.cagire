@@ -1,0 +1,5 @@
+;; drop two notes (50% prob)
+c4 min9 ( 2drop ) 50 prob note
+sine sound
+.5 decay
+.

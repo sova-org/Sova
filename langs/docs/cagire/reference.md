@@ -415,7 +415,6 @@ Read-only words that push current execution state:
 | `step` | Current frame index |
 | `beat` | Current beat position |
 | `pattern` | Current line index |
-| `pbank` | Current pattern bank |
 | `tempo` | Current BPM |
 | `phase` | Phase in bar (0-1) |
 | `slot` | Current line index |

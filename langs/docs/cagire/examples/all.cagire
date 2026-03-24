@@ -1,0 +1,11 @@
+;; apply crush to all
+4 3 rand crush all
+
+sine sound
+c4 min7 note
+.5 decay
+.
+
+0 0.5 at
+[ kick hat snare hat ] cycle sound
+.

@@ -1,0 +1,1 @@
+stepdur 2 * delaytime 0.2 delay tri snd c4 note 0.005 0.3 ad .

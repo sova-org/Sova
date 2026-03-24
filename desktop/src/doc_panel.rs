@@ -1273,6 +1273,7 @@ impl DocPanel {
                 if let Some((elem, entry)) = ref_entries.get(idx) {
                     // Clone what we need so self is free for mutation
                     let entry_category = entry.category.clone();
+                    let entry_signature = entry.signature.clone();
                     let entry_aliases = entry.aliases.clone();
                     let entry_description = entry.description.clone();
                     let entry_example = entry.example.clone();
@@ -1280,14 +1281,30 @@ impl DocPanel {
 
                     // Category badge
                     if let Some(cat) = &entry_category {
-                        ui.label(
-                            egui::RichText::new(cat)
-                                .small()
-                                .color(ui.visuals().weak_text_color()),
-                        );
+                        egui::Frame::NONE
+                            .fill(ui.visuals().faint_bg_color)
+                            .inner_margin(egui::Margin::symmetric(6, 2))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(cat)
+                                        .small()
+                                        .color(ui.visuals().weak_text_color()),
+                                );
+                            });
+                        ui.add_space(4.0);
                     }
 
                     ui.heading(&heading);
+
+                    // Signature (stack effect)
+                    if let Some(sig) = &entry_signature {
+                        ui.label(
+                            egui::RichText::new(sig)
+                                .monospace()
+                                .size(13.0)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    }
 
                     // Aliases
                     if !entry_aliases.is_empty() {
@@ -1297,6 +1314,7 @@ impl DocPanel {
                                 entry_aliases.join(", ")
                             ))
                             .italics()
+                            .small()
                             .color(ui.visuals().weak_text_color()),
                         );
                     }
@@ -1514,7 +1532,7 @@ impl DocPanel {
                 egui::TextEdit::multiline(&mut self.edited_example)
                     .font(font_id)
                     .desired_rows(row_count)
-                    .desired_width(f32::INFINITY)
+                    .desired_width(ui.available_width())
                     .layouter(&mut layouter)
                     .show(ui);
             });

@@ -1,0 +1,7 @@
+;; Control n°74
+74 ccnum
+;; Value
+0 64 rand ccout
+;; MIDI device
+2 device
+.

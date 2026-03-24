@@ -1,0 +1,1 @@
+0.5 2.0 ramp 200 2000 range lpf saw snd c3 note 0.01 0.4 ad .

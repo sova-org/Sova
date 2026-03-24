@@ -1,0 +1,1 @@
+0.5 linramp 2000 * lpf saw snd c3 note 0.01 0.3 ad .

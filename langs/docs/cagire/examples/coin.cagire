@@ -1,0 +1,6 @@
+coin
+if
+kick snd .
+else
+hat snd 0.5 gain .
+then

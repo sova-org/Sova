@@ -1,0 +1,11 @@
+;; Playing a note on MIDI Device 2
+c3 note
+2 device
+.
+
+clear
+
+;; Bending the note
+2 device
+-1.0 1.0 rand bend
+.

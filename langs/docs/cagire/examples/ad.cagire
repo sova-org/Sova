@@ -1,0 +1,8 @@
+tri snd
+c4 note
+;; attack duration
+[ 0.005 0.1 0.5 ] cycle
+;; decay duration
+[ 0.2 0.5 2 ] cycle ad
+0.15 verb
+.

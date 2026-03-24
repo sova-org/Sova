@@ -1,0 +1,8 @@
+0 0.5 at
+saw snd c3 min7 note
+0.8 decay
+4000 lpf
+0.2 chorus
+[ 16 32 1 2 4 8 ] choose chorusdelay
+4 chorusdepth
+.

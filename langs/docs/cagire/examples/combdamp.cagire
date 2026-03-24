@@ -1,0 +1,7 @@
+white snd
+0.01 0.3 ad
+0.3 gain 0.5 comb
+100 combfreq
+0.9 combfeedback
+0.0 1.0 rand combdamp
+.

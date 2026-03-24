@@ -1,0 +1,8 @@
+c2 c3 e3 c4
+;; duplicate high notes
+2dup 12 + note
+saw snd
+0.01 2 ad
+8000 12000 rand
+200 0.25 expslide lpf
+.

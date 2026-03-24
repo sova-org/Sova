@@ -50,11 +50,12 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push(("Language Reference".into(), include_str!("../../docs/cagire/reference.md").into()));
 
         for word in WORDS.iter() {
-            let desc = format!("{} {}", word.stack, word.desc);
-            let mut entry = ReferenceEntry::new(&desc)
+            let mut entry = ReferenceEntry::new(word.desc)
+                .with_signature(word.stack)
                 .with_category(word.category);
-            if !word.example.is_empty() {
-                entry = entry.with_example(word.example);
+            let example = word.example.trim();
+            if !example.is_empty() {
+                entry = entry.with_example(example);
             }
             if !word.aliases.is_empty() {
                 entry = entry.with_aliases(word.aliases);

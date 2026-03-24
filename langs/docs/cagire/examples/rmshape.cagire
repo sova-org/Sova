@@ -1,0 +1,1 @@
+sine snd c4 note 0.01 0.5 ad 120 rm 0.6 rmdepth "saw" rmshape .

@@ -1,0 +1,6 @@
+;; /!\ requires using a sample
+;; starts at 1/4 of sample duration
+pianoloop snd
+0.25 begin
+0.5 gain
+.

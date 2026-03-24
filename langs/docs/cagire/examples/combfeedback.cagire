@@ -1,0 +1,9 @@
+0 0.75 at
+sine snd
+200 freq
+99 combfreq
+0.001 0.3 ad
+0.3 gain
+1 comb
+0.0 0.99 rand combfeedback
+.

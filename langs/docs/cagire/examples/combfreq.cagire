@@ -1,0 +1,8 @@
+0 0.5 0.75 0.125 at
+white snd
+1000 4000 rand combfreq
+0.001 0.3 ad
+0.3 gain
+1 comb
+0.8 0.99 rand combfeedback
+.

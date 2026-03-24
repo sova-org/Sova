@@ -1,0 +1,8 @@
+sine snd
+2 fm 0.999 1.001 fmh
+c2 eb4 g4 bb4 note
+1 2000.0 rand am
+0.0 1.0 rand ampdeth
+.8 decay
+.2 verb
+.

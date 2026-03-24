@@ -347,7 +347,6 @@ impl CagireVM {
                     let val = match *name {
                         "step" => Value::Int(ctx.step as i64),
                         "beat" => Value::Float(ctx.beat),
-                        "bank" => Value::Int(0), // deferred
                         "pattern" => Value::Int(ctx.frame_index as i64),
                         "tempo" => Value::Float(ctx.tempo),
                         "phase" => Value::Float(ctx.phase),
@@ -1202,7 +1201,7 @@ impl CagireVM {
 
         let (sound_opt, params) = match cmd.snapshot() {
             Some(s) => s,
-            None => return Err("nothing to emit".into()),
+            None => return Ok(()),
         };
 
         let resolved_sound = sound_opt.map(|sv| resolve_cycling(sv, poly_idx));

@@ -1,0 +1,11 @@
+;; Composing a synth definition
+: pluck
+1 comb 100 101 combfreq
+0.99 combfeedback
+white snd
+0.005 0.2 ad
+0.15 verb
+;
+
+;; Using it
+pluck .

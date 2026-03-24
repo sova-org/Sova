@@ -52,6 +52,7 @@ pub enum LanguageElement {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ReferenceEntry {
     pub description: String,
+    pub signature: Option<String>,
     pub example: Option<String>,
     pub category: Option<String>,
     pub aliases: Vec<String>,
@@ -59,7 +60,11 @@ pub struct ReferenceEntry {
 
 impl ReferenceEntry {
     pub fn new(description: impl Into<String>) -> Self {
-        Self { description: description.into(), example: None, category: None, aliases: Vec::new() }
+        Self { description: description.into(), signature: None, example: None, category: None, aliases: Vec::new() }
+    }
+    pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
+        self.signature = Some(signature.into());
+        self
     }
     pub fn with_example(mut self, example: impl Into<String>) -> Self {
         self.example = Some(example.into());

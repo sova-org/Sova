@@ -1,0 +1,1 @@
+tri snd 0 4 rand pentatonic note 0.005 0.15 ad 0.3 delay 0.25 delaytime 0.5 delayfeedback .

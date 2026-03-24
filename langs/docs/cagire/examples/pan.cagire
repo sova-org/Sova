@@ -1,0 +1,1 @@
+0 3 rand pentatonic note sine snd 0.005 0.2 ad -0.7 0.7 2 choose pan .

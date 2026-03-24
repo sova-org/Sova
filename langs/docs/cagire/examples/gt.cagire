@@ -1,0 +1,1 @@
+0 10 rand ,x 5 gt if @x minor note sine snd 0.005 0.2 ad . then

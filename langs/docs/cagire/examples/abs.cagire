@@ -1,0 +1,5 @@
+;; turns -5 into 5 (absolute value)
+-5 abs pentatonic note
+sine snd
+.5 decay
+.

@@ -575,12 +575,14 @@ mod tests {
                 reference: BTreeMap::from([
                     (LanguageElement::Word("note".into()), ReferenceEntry {
                         description: "Play a MIDI note".into(),
+                        signature: None,
                         example: Some("note 60 0.5".into()),
                         category: Some("MIDI".into()),
                         aliases: vec!["n".into()],
                     }),
                     (LanguageElement::Brackets("{".into(), "}".into()), ReferenceEntry {
                         description: "Block delimiter".into(),
+                        signature: None,
                         example: None,
                         category: Some("Syntax".into()),
                         aliases: vec![],

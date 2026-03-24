@@ -1,0 +1,1 @@
+sine snd c3 note 0.01 0.5 ad 0.35 verb 0.85 verbdecay 0.8 verbdamp .

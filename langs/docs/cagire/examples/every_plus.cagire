@@ -1,0 +1,1 @@
+kick snd . ( snare snd 0.7 gain . ) 4 2 every+

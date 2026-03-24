@@ -1,0 +1,13 @@
+( kick snd )
+( snare snd )
+beat 2 mod select
+.
+
+clear
+
+(
+2 orbit
+0 ( 0.125 ) 10 prob 0.25 0.5 at
+rim snd .
+)
+beat 3 mod ?

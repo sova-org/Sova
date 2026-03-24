@@ -1,0 +1,8 @@
+saw snd
+c2 c3 note
+2 att
+4 release
+0.8 sus
+1500 4000 0.2 lfo lpf
+0.8 lpq
+.

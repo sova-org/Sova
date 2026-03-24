@@ -1,0 +1,5 @@
+white snd
+0.001 0.2 ad
+.5 gain
+1000 4000 rand bpf
+0.1 0.9 bpq .
