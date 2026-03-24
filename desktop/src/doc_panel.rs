@@ -549,7 +549,14 @@ impl DocPanel {
                 }
                 for (i, lang) in langs.iter().enumerate() {
                     let tab_idx = i + 1;
-                    let r = ui.selectable_label(self.selected_tab == tab_idx, &lang.name);
+                    let display_name = {
+                        let mut c = lang.name.chars();
+                        match c.next() {
+                            None => String::new(),
+                            Some(f) => f.to_uppercase().to_string() + c.as_str(),
+                        }
+                    };
+                    let r = ui.selectable_label(self.selected_tab == tab_idx, &display_name);
                     if self.selected_tab == tab_idx {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
