@@ -1,7 +1,7 @@
 use crate::{
     clock::{Clock, SyncTime},
     log_println,
-    scene::Scene,
+    scene::{Scene, script::ScriptExecution},
 };
 
 use serde::{Deserialize, Serialize};
@@ -55,9 +55,6 @@ impl PlaybackManager {
                     if current_beat >= target_beat {
                         log_println!("Target beat {:.4} reached. Starting playback.", target_beat);
 
-                        scene.kill_executions();
-                        scene.reset();
-
                         self.playback_state = PlaybackState::Playing;
                         self.has_changed = true;
                         None
@@ -71,6 +68,7 @@ impl PlaybackManager {
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
                     scene.kill_executions();
+                    scene.reset();
                     Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
@@ -82,6 +80,7 @@ impl PlaybackManager {
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
                     scene.kill_executions();
+                    scene.reset();
                     Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }

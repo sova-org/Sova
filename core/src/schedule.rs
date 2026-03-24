@@ -394,6 +394,7 @@ impl Scheduler {
         }
     }
 
+    /// Called to start the transport
     pub fn process_transport_start(&mut self) {
         let start_date = self.clock.next_phase_reset_date();
 
@@ -405,7 +406,6 @@ impl Scheduler {
         );
         
         self.clock.set_playing(true);
-        self.clock.commit_app_state();
         
         //self.scratchpad.clear();
         self.scratchpad = self.scene
@@ -419,7 +419,6 @@ impl Scheduler {
 
         self.clock.set_playing(false);
 
-        self.scene.reset();
         self.scratchpad.clear();
     }
 }

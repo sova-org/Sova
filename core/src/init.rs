@@ -4,8 +4,9 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::{clock::ClockServer, device_map::DeviceMap, vm::LanguageCenter, schedule::{Scheduler, SchedulerMessage, SovaNotification}, world::World};
 
-/// Starts both World and Scheduler, ensuring that Scheduler is connected to World
-/// And returns handles to both threads, as well as scheduler communication channels
+/// Starts both [World] and [Scheduler] from the same [ClockServer], 
+/// ensuring that [Scheduler] is connected to [World]
+/// And returns handles to both threads, as well as [Scheduler] communication channels
 pub fn start_scheduler_and_world(
     clock_server: Arc<ClockServer>,
     devices: Arc<DeviceMap>,

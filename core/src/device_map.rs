@@ -1,19 +1,19 @@
 //! Manages connections to external and virtual devices (MIDI, OSC, Log)
 //! and maps internal events to protocol-specific messages for output.
 //!
-//! This module provides the `DeviceMap` struct, which serves as the central
+//! This module provides the [DeviceMap] struct, which serves as the central
 //! registry for devices known to the Sova system. It handles:
 //! - Discovering available system MIDI ports.
 //! - Connecting to and disconnecting from MIDI devices (physical and virtual).
 //! - Creating and removing virtual MIDI ports.
 //! - Creating and removing OSC output endpoints.
 //! - Assigning unique, user-friendly names to connected devices.
-//! - Mapping devices to numbered slots (1 to `MAX_DEVICE_SLOTS`) for easy referencing.
+//! - Mapping devices to numbered slots (1 to [MAX_DEVICE_SLOTS]) for easy referencing.
 //!   Slot 0 is reserved for the internal Log device.
-//! - Translating `ConcreteEvent`s into `ProtocolMessage`s
-//!   (like `MIDIMessage`, `OSCMessage`, `LogMessage`)
+//! - Translating [ConcreteEvent]s into [ProtocolMessage]s
+//!   (like [MIDIMessage], `OSCMessage`, [LogMessage])
 //!   based on the target device (specified by name or slot ID).
-//! - Providing a list of available and connected devices (`DeviceInfo`).
+//! - Providing a list of available and connected devices ([DeviceInfo]).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -68,7 +68,7 @@ pub struct DeviceMap {
 }
 
 impl DeviceMap {
-    /// Creates a new `DeviceMap` and attempts to initialize system MIDI interfaces.
+    /// Creates a new [DeviceMap] and attempts to initialize system MIDI interfaces.
     /// The internal Log device is handled implicitly and not registered here.
     pub fn new() -> Self {
         let midi_in = match MidiInput::new("Sova Input") {
@@ -109,7 +109,7 @@ impl DeviceMap {
     /// Registers a connected input device.
     ///
     /// Associates the given `name` with the `device` and stores it in the
-    /// `input_connections` map, keyed by the device's address.
+    /// `input_connections` map.
     pub fn register_input_connection(&self, name: String, device: ProtocolDevice) {
         self.input_connections
             .lock()
@@ -250,6 +250,7 @@ impl DeviceMap {
         None
     }
 
+    /// Returns an optionnal output device if it is assigned to the given slot id.
     pub fn get_out_device_at_slot(&self, slot_id: usize) -> Option<Arc<ProtocolDevice>> {
         self.get_name_for_slot(slot_id).and_then(|name| {
             let outputs = self.output_connections.lock().unwrap();
@@ -258,6 +259,7 @@ impl DeviceMap {
         })
     }
 
+    /// Returns the latency for the given device name.
     pub fn get_latency(&self, name: &str) -> f64 {
         self.latencies
             .lock()
@@ -267,6 +269,7 @@ impl DeviceMap {
             .unwrap_or_default()
     }
 
+    /// Sets the latency for the given device name.
     pub fn set_latency(&self, name: String, value: f64) {
         self.latencies
             .lock()
@@ -274,6 +277,8 @@ impl DeviceMap {
             .insert(name, value);
     }
 
+    /// Translate a [ConcreteEvent] to [TimedMessage]s for the given device,
+    /// using [ProtocolDevice::translate_event].
     fn map_event_to_device(
         device: &Arc<ProtocolDevice>,
         event: ConcreteEvent,
@@ -293,22 +298,22 @@ impl DeviceMap {
             .collect()
     }
 
-    /// Maps a `ConcreteEvent` to `TimedMessage`s for a target device specified by its `target_device_name`.
+    /// Maps a [ConcreteEvent] to [TimedMessage]s for a target device specified by its `target_device_name`.
     ///
     /// This function handles the core logic of translating events into the appropriate
     /// protocol messages (MIDI, OSC, Log) based on the type of the target device.
     ///
     /// # Arguments
     /// * `target_device_name` - The name of the destination device.
-    /// * `event` - The `ConcreteEvent` to be mapped.
-    /// * `date` - The timestamp (`SyncTime`) for the generated message(s).
-    /// * `clock` - A reference to the `Clock` for time-sensitive calculations (e.g., for Dirt/SuperDirt messages).
+    /// * `event` - The [ConcreteEvent] to be mapped.
+    /// * `date` - The timestamp ([SyncTime]) for the generated message(s).
+    /// * `clock` - A reference to the [Clock] for time-sensitive calculations (e.g., for Dirt/SuperDirt messages).
     ///
     /// # Behavior
-    /// - If `target_device_name` is `"log"` (case-sensitive), it generates a `LogMessage`.
-    /// - Otherwise, it looks up the device in `output_connections`.
-    /// - If the device is not found, it generates an error `LogMessage`.
-    /// - If the device is found, it dispatches based on the `ProtocolDevice` type:
+    /// - If `target_device_name` is `"log"` (case-sensitive), it generates a [LogMessage].
+    /// - Otherwise, it looks up the device in [DeviceMap::output_connections].
+    /// - If the device is not found, it generates an error [LogMessage].
+    /// - If the device is found, it dispatches based on the [ProtocolDevice] type:
     ///   - `OSCOutDevice`: Maps the event to an `OSCMessage`. Handles `ConcreteEvent::Osc` directly
     ///     and maps `ConcreteEvent::Dirt` to a SuperDirt `/dirt/play` message, calculating
     ///     context parameters (cps, cycle, delta, orbit) using the provided `clock`. Also includes
@@ -318,7 +323,7 @@ impl DeviceMap {
     ///   - Other types: Prints an error and returns an empty vector.
     ///
     /// # Returns
-    /// A `Vec<TimedMessage>` containing zero or more protocol messages ready for scheduling/sending.
+    /// A [Vec<TimedMessage>] containing zero or more protocol messages ready for scheduling/sending.
     /// Note that some events (like `MidiNote`) generate multiple messages (NoteOn and NoteOff).
     pub fn map_event_for_device_name(
         &self,
@@ -363,27 +368,27 @@ impl DeviceMap {
         Self::map_event_to_device(&device, event, date, clock)
     }
 
-    /// Maps a `ConcreteEvent` to `TimedMessage`s for a target device specified by its `target_slot_id`.
+    /// Maps a [ConcreteEvent] to [TimedMessage]s for a target device specified by its `target_slot_id`.
     ///
     /// # Arguments
     /// * `target_slot_id` - The slot ID of the destination device.
     ///   - Slot `0` implicitly targets the internal Log device.
-    ///   - Slots `1` to `MAX_DEVICE_SLOTS` target the device assigned via `assign_slot`.
+    ///   - Slots `1` to [MAX_DEVICE_SLOTS] target the device assigned via `assign_slot`.
     /// * `event` - The `ConcreteEvent` to be mapped.
-    /// * `date` - The timestamp (`SyncTime`) for the generated message(s).
-    /// * `clock` - A reference to the `Clock` for time-sensitive calculations (passed to `map_event_for_device_name`).
+    /// * `date` - The timestamp ([SyncTime]) for the generated message(s).
+    /// * `clock` - A reference to the [Clock] for time-sensitive calculations (passed to [DeviceMap::map_event_for_device_name]).
     ///
     /// # Behavior
-    /// - If `target_slot_id` is `0`, it calls `map_event_for_device_name` with `LOG_NAME`.
-    /// - If `target_slot_id` is `1` to `MAX_DEVICE_SLOTS`:
-    ///   - It looks up the device name assigned to that slot using `get_name_for_slot`.
-    ///   - If a name is found, it calls `map_event_for_device_name` with that name.
-    ///   - If no device is assigned to the slot, it generates a warning `LogMessage` containing the original event.
+    /// - If `target_slot_id` is `0`, it calls [DeviceMap::map_event_for_device_name] with [LOG_NAME].
+    /// - If `target_slot_id` is `1` to [MAX_DEVICE_SLOTS]:
+    ///   - It looks up the device name assigned to that slot using [DeviceMap::get_name_for_slot].
+    ///   - If a name is found, it calls [DeviceMap::map_event_for_device_name] with that name.
+    ///   - If no device is assigned to the slot, it generates a warning [LogMessage] containing the original event.
     /// - If `target_slot_id` is invalid (outside 0-N range), behavior is currently undefined by slot lookup,
     ///   but `get_name_for_slot` would return `None`, leading to the warning log message.
     ///
     /// # Returns
-    /// A `Vec<TimedMessage>` resulting from the call to `map_event_for_device_name` or a single warning `LogMessage`.
+    /// A [Vec<TimedMessage>] resulting from the call to [DeviceMap::map_event_for_device_name] or a single warning [LogMessage].
     pub fn map_event_for_slot_id(
         &self,
         target_slot_id: usize,
@@ -419,6 +424,8 @@ impl DeviceMap {
         }
     }
 
+    /// Translates a [ConcreteEvent] into a [Vec<TimedMessage>] using the device id stored in the event.
+    /// It essentially calls [DeviceMap::map_event_for_slot_id].
     pub fn map_event(
         &self,
         event: ConcreteEvent,
@@ -487,7 +494,7 @@ impl DeviceMap {
     /// connection status, and address (for OSC devices).
     ///
     /// # Returns
-    /// A `Vec<DeviceInfo>` sorted primarily by assigned slot ID (ascending, with 0/unassigned last)
+    /// A [Vec<DeviceInfo>] sorted primarily by assigned slot ID (ascending, with 0/unassigned last)
     /// and secondarily by name (alphabetical for unassigned devices).
     /// The internal Log device is excluded from this list.
     pub fn device_list(&self) -> Vec<DeviceInfo> {
@@ -1016,8 +1023,8 @@ impl DeviceMap {
 
     /// Creates a snapshot of all connected output devices for save/restore.
     ///
-    /// Returns a Vec<DeviceInfo> containing virtual MIDI, physical MIDI, and OSC devices.
-    /// Uses DeviceKind::VirtualMidi vs DeviceKind::Midi to distinguish virtual from physical.
+    /// Returns a [Vec<DeviceInfo>] containing virtual MIDI, physical MIDI, and OSC devices.
+    /// Uses [DeviceKind::VirtualMidi] vs [DeviceKind::Midi] to distinguish virtual from physical.
     pub fn create_device_snapshot(&self) -> Vec<DeviceInfo> {
         let output_connections = self.output_connections.lock().unwrap();
 
