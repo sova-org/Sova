@@ -35,6 +35,8 @@ Many built-in words expect a quotation on the stack:
 
 When a word like `cycle` or `choose` selects a quotation, it executes it. When it selects a plain value, it pushes it.
 
+The cycling and selection words (`cycle`, `pcycle`, `bounce`, `pbounce`, `choose`, `index`) are covered in the **Randomness** article. The periodic words (`every`, `except`, `every+`, `except+`, `bjork`, `pbjork`) are also in **Randomness**. The `map` word is documented in the **Language Reference**.
+
 ### Nesting
 
 Quotations nest freely:

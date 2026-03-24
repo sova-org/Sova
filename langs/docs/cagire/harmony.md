@@ -95,6 +95,7 @@ c4 dom9       ;; stack: 60 64 67 70 74
 | `aug` | 0 4 8 | 60 64 68 |
 | `sus2` | 0 2 7 | 60 62 67 |
 | `sus4` | 0 5 7 | 60 65 67 |
+| `pwr` | 0 7 | 60 67 |
 
 **Seventh chords:**
 
@@ -107,6 +108,8 @@ c4 dom9       ;; stack: 60 64 67 70 74
 | `m7b5` | 0 3 6 10 | 60 63 66 70 |
 | `minmaj7` | 0 3 7 11 | 60 63 67 71 |
 | `aug7` | 0 4 8 10 | 60 64 68 70 |
+| `augmaj7` | 0 4 8 11 | 60 64 68 71 |
+| `7sus4` | 0 5 7 10 | 60 65 67 70 |
 
 **Sixth chords:**
 
@@ -114,6 +117,8 @@ c4 dom9       ;; stack: 60 64 67 70 74
 |------|-----------|-------------|
 | `maj6` | 0 4 7 9 | 60 64 67 69 |
 | `min6` | 0 3 7 9 | 60 63 67 69 |
+| `maj69` | 0 4 7 9 14 | 60 64 67 69 74 |
+| `min69` | 0 3 7 9 14 | 60 63 67 69 74 |
 
 **Extended chords:**
 
@@ -125,6 +130,10 @@ c4 dom9       ;; stack: 60 64 67 70 74
 | `dom11` | 0 4 7 10 14 17 | 60 64 67 70 74 77 |
 | `min11` | 0 3 7 10 14 17 | 60 63 67 70 74 77 |
 | `dom13` | 0 4 7 10 14 21 | 60 64 67 70 74 81 |
+| `9sus4` | 0 5 7 10 14 | 60 65 67 70 74 |
+| `maj11` | 0 4 7 11 14 17 | 60 64 67 71 74 77 |
+| `maj13` | 0 4 7 11 14 21 | 60 64 67 71 74 81 |
+| `min13` | 0 3 7 10 14 21 | 60 63 67 70 74 81 |
 
 **Add chords:**
 
@@ -142,12 +151,55 @@ c4 dom9       ;; stack: 60 64 67 70 74
 | `dom7s9` | 0 4 7 10 15 | 60 64 67 70 75 |
 | `dom7b5` | 0 4 6 10 | 60 64 66 70 |
 | `dom7s5` | 0 4 8 10 | 60 64 68 70 |
+| `dom7s11` | 0 4 7 10 18 | 60 64 67 70 78 |
 
 Chord tones are varargs — they eat the entire stack. So a chord word should come right after the root note:
 
 ```forth
 c4 maj note sine snd .    ;; plays all 3 notes as one chord
 ```
+
+## Voicings
+
+Four words reshape chord voicings without changing the harmony.
+
+`inv` moves the bottom note up an octave (inversion):
+
+```forth
+c4 maj inv note sine snd .     ;; E4 G4 C5 — first inversion
+c4 maj inv inv note sine snd . ;; G4 C5 E5 — second inversion
+```
+
+`dinv` moves the top note down an octave:
+
+```forth
+c4 maj dinv note sine snd .    ;; G3 C4 E4
+```
+
+`drop2` and `drop3` are jazz voicing techniques for four-note chords. `drop2` takes the second-from-top note and drops it an octave:
+
+```forth
+c4 maj7 drop2 note saw snd .   ;; G3 C4 E4 B4
+```
+
+`drop3` drops the third-from-top:
+
+```forth
+c4 maj7 drop3 note saw snd .   ;; E3 C4 G4 B4
+```
+
+These create wider, more open voicings common in jazz guitar and piano.
+
+## Transposition
+
+`tp` shifts every integer on the stack by N semitones:
+
+```forth
+c4 maj 3 tp note sine snd .    ;; C major transposed up 3 = Eb major
+c4 min7 -2 tp note saw snd .   ;; down 2 semitones = Bb minor 7
+```
+
+Unlike `oct` (which shifts a single note by octaves), `tp` shifts everything on the stack at once.
 
 ## Scales
 
@@ -229,6 +281,46 @@ Use scales with `cycle` or `rand` to walk through pitches:
 | `lydianaug` | 0 2 4 6 8 9 11 |
 | `mixb6` | 0 2 4 5 7 8 10 |
 | `locrian2` | 0 2 3 5 6 8 10 |
+
+## Diatonic Harmony
+
+`triad` and `seventh` build chords from scale degrees. Instead of specifying a chord type, you get whatever chord the scale produces at that degree:
+
+```forth
+0 major triad note sine snd .     ;; C E G — major triad (degree 0)
+1 major triad note sine snd .     ;; D F A — minor triad (degree 1)
+4 major triad note sine snd .     ;; G B D — major triad (degree 4)
+```
+
+`seventh` adds a fourth note:
+
+```forth
+0 major seventh note saw snd .    ;; C E G B — Cmaj7
+4 major seventh note saw snd .    ;; G B D F — G7 (dominant)
+```
+
+The scale determines the chord quality automatically. Use `key!` to change the tonal center (default is C4):
+
+```forth
+g3 key! 0 major triad note sine snd .    ;; G major triad rooted at G3
+a3 key! 0 minor seventh note saw snd .   ;; Am7 rooted at A3
+```
+
+A I-vi-IV-V chord progression using `pcycle`:
+
+```forth
+( 0 major seventh ) ( 5 major seventh )
+( 3 major seventh ) ( 4 major seventh ) 4 pcycle
+note saw snd .
+```
+
+Combine with voicings for smoother voice leading:
+
+```forth
+( 0 major seventh ) ( 5 major seventh inv )
+( 3 major seventh ) ( 4 major seventh drop2 ) 4 pcycle
+note saw snd .
+```
 
 ## Octave Shifting
 

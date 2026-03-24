@@ -103,6 +103,16 @@ The order of parameters does not matter. You can even emit multiple times in a s
 
 This is useful when conditionals might cancel a sound before it emits.
 
+`all` takes the current register parameters and applies them to every subsequent sound in the script. Use it when you want a shared effect across all voices. `noall` clears the global parameters. Per-sound parameters override global ones:
+
+```forth
+500 lpf 0.5 verb all
+"kick" snd .                 ;; gets lpf and verb
+"hat" snd 2000 lpf .         ;; lpf overridden, verb from global
+noall
+"snare" snd .                ;; no global params
+```
+
 ## How Scripts Run in Sova
 
 Sova organizes music into a **Scene** made of parallel **Lines**, each containing a sequence of **Frames**. Each frame holds a script and a duration in beats.

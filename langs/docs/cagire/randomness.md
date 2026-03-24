@@ -125,12 +125,45 @@ sine snd .
 60 64 67 72 4 bounce note sine snd .    ;; 60, 64, 67, 72, 67, 64, 60, 64, ...
 ```
 
+`pbounce` is to `bounce` what `pcycle` is to `cycle` — it counts by line iterations instead of frame triggers:
+
+```forth
+60 64 67 72 4 pbounce note sine snd .   ;; ping-pong by line iteration
+```
+
+`index` selects by an explicit index instead of an internal counter. The index wraps with modulo, so it never goes out of bounds:
+
+```forth
+[ c4 e4 g4 ] step index note sine snd .    ;; frame index picks the note
+[ c4 e4 g4 ] iter index note sine snd .    ;; line iteration picks the note
+```
+
 ## Periodic Execution
 
 `every` runs a quotation once every n line iterations:
 
 ```forth
 ( crash snd . ) 4 every    ;; crash cymbal every 4th iteration
+```
+
+`except` is the inverse — it runs a quotation on all iterations *except* every nth:
+
+```forth
+( 2 distort ) 4 except    ;; distort on all iterations except every 4th
+```
+
+`every+` and `except+` take an extra offset argument to shift the phase:
+
+```forth
+( snare snd . ) 4 2 every+     ;; fires at iter 2, 6, 10, 14...
+( snare snd . ) 4 2 except+    ;; skips at iter 2, 6, 10, 14...
+```
+
+Without the offset, `every` fires at 0, 4, 8... The offset shifts that by 2, so it fires at 2, 6, 10... This lets you interleave patterns that share the same period:
+
+```forth
+( kick snd . ) 4 every         ;; kick at 0, 4, 8...
+( snare snd . ) 4 2 every+     ;; snare at 2, 6, 10...
 ```
 
 `bjork` and `pbjork` use Bjorklund's algorithm to distribute k hits across n positions as evenly as possible. Classic Euclidean rhythms:

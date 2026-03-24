@@ -74,3 +74,14 @@ Wrap the whole expression in quotations for conditional timing:
 ```
 
 When the quotation doesn't execute, no deltas are set — you get no emit from that expression.
+
+## Fitting Samples to Beats
+
+`loop` stretches or compresses a sample to fit a given number of beats:
+
+```forth
+"break" snd 4 loop .    ;; fit the sample into 4 beats
+"break" snd 2 loop .    ;; same sample, half the time
+```
+
+This adjusts the sample's playback speed so it aligns with the frame duration and tempo.

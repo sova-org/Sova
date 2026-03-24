@@ -1,6 +1,52 @@
 # Cagire vs Classic Forth
 
-Cagire is not a classic Forth. It borrows the core ideas (stack-based evaluation, postfix notation, word definitions) but adds modern features and domain-specific extensions. If you know traditional Forth, here are the differences.
+Cagire is not a classic Forth. It borrows the core ideas (stack-based evaluation, postfix notation, word definitions) but adds modern features and domain-specific extensions. If you've used the standalone Cagire project, read the first section. If you know traditional Forth, the rest covers how Cagire differs.
+
+## Coming From Standalone Cagire
+
+If you've used the original standalone Cagire, here are the key differences in Sova:
+
+### Terminology
+
+- "Step" in original Cagire = **Frame** in Sova
+- "Pattern" in original Cagire = **Line** in Sova
+- "Pattern bank" = **Scene** or line bank
+
+### Unified Output
+
+Standalone Cagire uses `m.` for MIDI output and `.` for audio output. Sova unifies both under `.` — the device slot (set with `dev`) determines where events route. There is no `m.` word in Sova.
+
+```forth
+60 note 100 velocity .       ;; MIDI note on device slot 1 (default)
+2 dev 60 note 100 velocity . ;; MIDI note on device slot 2
+"kick" snd .                 ;; audio on default device
+```
+
+### Scoped Variables
+
+Original Cagire variables are global. In Sova, the default scope is **Instance** (local to the script). Use prefixes to share data:
+
+- `!G.x` / `@G.x` — Global (all scripts in the session)
+- `!L.x` / `@L.x` — Line (all frames in the same line)
+- `!F.x` / `@F.x` — Frame (persists across runs of the same frame)
+
+See the **Variables** article for details.
+
+### Output Model
+
+Cagire scripts in Sova do not output directly to an audio engine. The `.` word sends events to Sova's scheduler, which forwards them to the world thread for dispatch to MIDI, OSC, and audio devices.
+
+### No Preludes
+
+Standalone Cagire has project and bank preludes (scripts that run before playback starts). Sova does not have preludes. Instead, word definitions created with `:` ... `;` in any frame are shared automatically across all frames in the session.
+
+### Timing with at
+
+Sova's `at` is a looping block where each delta iteration gets independent state. Nondeterministic ops (`rand`, `choose`, `coin`) roll fresh values per delta. Close an `at` block with `.` (emit sound) or `done` (no emit).
+
+### Tempo and Speed
+
+`tempo!` sets the global tempo of Sova's scheduler (shared across all scripts and lines). `speed!` sets the speed multiplier of the current line.
 
 ## Comments
 
@@ -220,34 +266,6 @@ When parameters have different lengths, shorter lists cycle:
 0.5 1.0 gain            ;; 2 gains (cycles: 0.5, 1.0, 0.5)
 sine snd .                ;; emits 3 voices
 ```
-
-## Sova-specific Adaptations
-
-If you've used the original standalone Cagire, a few things are different in Sova:
-
-### Terminology
-
-- "Step" in original Cagire = **Frame** in Sova
-- "Pattern" in original Cagire = **Line** in Sova
-- "Pattern bank" = **Scene** or line bank
-
-### Scoped Variables
-
-Original Cagire variables are global. In Sova, the default scope is **Instance** (local to the script). Use prefixes to share data:
-
-- `!G.x` / `@G.x` — Global (all scripts in the session)
-- `!L.x` / `@L.x` — Line (all frames in the same line)
-- `!F.x` / `@F.x` — Frame (persists across runs of the same frame)
-
-See the **Variables** article for details.
-
-### Output Model
-
-Cagire scripts in Sova do not output directly to an audio engine. The `.` word sends events to Sova's scheduler, which forwards them to the world thread for dispatch to MIDI, OSC, and audio devices.
-
-### Tempo and Speed
-
-`tempo!` sets the global tempo of Sova's scheduler (shared across all scripts and lines). `speed!` sets the speed multiplier of the current line.
 
 ## Summary
 

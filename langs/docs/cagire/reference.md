@@ -337,17 +337,17 @@ Words: `scan`, `wtlen`.
 
 | Word | Stack | Description |
 |------|-------|-------------|
-| `cycle` | `(v..n n -- val)` | Cycle through n items by step |
-| `pcycle` | `(v..n n -- val)` | Cycle through n items by pattern |
-| `bounce` | `(v..n n -- val)` | Ping-pong cycle |
-| `pbounce` | `(v..n n -- val)` | Ping-pong cycle by pattern |
+| `cycle` | `(v..n n -- val)` | Cycle through n items by frame runs |
+| `pcycle` | `(v..n n -- val)` | Cycle through n items by line iteration |
+| `bounce` | `(v..n n -- val)` | Ping-pong cycle by frame runs |
+| `pbounce` | `(v..n n -- val)` | Ping-pong cycle by line iteration |
 | `index` | `(v..n n idx -- val)` | Select item at explicit index |
 | `every` | `(quot n --)` | Execute every nth iteration |
 | `except` | `(quot n --)` | Execute on all iterations except every nth |
 | `every+` | `(quot n offset --)` | Every nth iteration with phase offset |
 | `except+` | `(quot n offset --)` | Skip every nth iteration with phase offset |
-| `bjork` | `(quot k n --)` | Euclidean distribution by step |
-| `pbjork` | `(quot k n --)` | Euclidean distribution by pattern |
+| `bjork` | `(quot k n --)` | Euclidean distribution by frame runs |
+| `pbjork` | `(quot k n --)` | Euclidean distribution by line iteration |
 | `loop` | `(n --)` | Fit sample to n beats |
 | `at` | `(v..n --)` | Looping block: re-executes body per delta. Close with `.` or `done` |
 | `tempo!` | `(bpm --)` | Set global tempo |
@@ -361,8 +361,8 @@ Words: `scan`, `wtlen`.
 | `.,` | `(start end step -- ...)` | Stepped sequence |
 | `gen` | `(quot n -- results..)` | Execute quotation n times |
 | `geom..` | `(start ratio count -- ...)` | Geometric sequence |
-| `euclid` | `(k n -- indices..)` | Euclidean rhythm indices |
-| `euclidrot` | `(k n r -- indices..)` | Euclidean indices with rotation |
+| `euclid` | `(k n -- positions..)` | Euclidean rhythm as normalized positions (0.0-1.0) |
+| `euclidrot` | `(k n r -- positions..)` | Euclidean positions with rotation |
 
 ## LFO & Ramps
 

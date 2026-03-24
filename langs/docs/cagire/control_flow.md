@@ -61,12 +61,12 @@ Reads naturally: "c3 or c4, depending on the coin."
 tri snd c4 note 0.2 decay .      ;; loud or quiet, coin flip
 ```
 
-## pick
+## select
 
 Choose the nth option from a list of quotations:
 
 ```forth
-( c4 ) ( e4 ) ( g4 ) ( b4 ) iter 4 mod pick
+( c4 ) ( e4 ) ( g4 ) ( b4 ) iter 4 mod select
 note sine snd 0.5 decay .
 ```
 
