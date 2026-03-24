@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread::{self, JoinHandle}};
 use crossbeam_channel::{Receiver, SendError, Sender};
 use serde::{Serialize, Deserialize};
 
-use crate::{LogMessage, clock::SyncTime, log_eprintln, log_println, protocol::{error::ProtocolError, payload::ProtocolPayload}, vm::{event::ConcreteEvent, variable::VariableValue}};
+use crate::{LogMessage, clock::SyncTime, log_eprintln, protocol::{error::ProtocolError, payload::ProtocolPayload}, vm::{event::ConcreteEvent, variable::VariableValue}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {

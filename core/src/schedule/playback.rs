@@ -1,7 +1,6 @@
 use crate::{
     clock::{Clock, SyncTime},
     log_println,
-    scene::Scene,
 };
 
 use serde::{Deserialize, Serialize};
@@ -30,7 +29,7 @@ pub struct PlaybackManager {
 }
 
 impl PlaybackManager {
-    pub fn update_state(&mut self, clock: &Clock, scene: &mut Scene) -> Option<SyncTime> {
+    pub fn update_state(&mut self, clock: &Clock) -> Option<SyncTime> {
         self.has_changed = false;
         let current_beat = clock.beat();
         let link_is_playing = clock.session_state.is_playing();
@@ -67,8 +66,6 @@ impl PlaybackManager {
                     );
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
-                    scene.kill_executions();
-                    scene.reset();
                     Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
@@ -79,8 +76,6 @@ impl PlaybackManager {
                     log_println!("Link stopped. Stopping playback and clearing executions.");
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
-                    scene.kill_executions();
-                    scene.reset();
                     Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
