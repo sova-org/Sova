@@ -157,6 +157,23 @@ impl OSCMessage {
                 let mut flat_args = Vec::new();
                 let mut args = match args {
                     VariableValue::Map(map) => map,
+                    value @ VariableValue::Str(_) => {
+                        let mut map = HashMap::new();
+                        map.insert("sound".to_owned(), value);
+                        map
+                    }
+                    value @ VariableValue::Integer(_) => {
+                        let mut map = HashMap::new();
+                        map.insert("sound".to_owned(), "sine".to_owned().into());
+                        map.insert("note".to_owned(), value.into());
+                        map
+                    }
+                    value @ VariableValue::Float(_) => {
+                        let mut map = HashMap::new();
+                        map.insert("sound".to_owned(), "sine".to_owned().into());
+                        map.insert("freq".to_owned(), value.into());
+                        map
+                    }
                     value => {
                         let mut map = HashMap::new();
                         map.insert("sound".to_owned(), value);

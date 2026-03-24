@@ -511,7 +511,7 @@ async fn on_message(
             args.insert("s".to_string(), VariableValue::Str(folder));
             args.insert("n".to_string(), VariableValue::Integer(index as i64));
             args.insert("gain".to_string(), VariableValue::Float(1.0));
-            args.insert("dur".to_string(), VariableValue::Float(2.0));
+            args.insert("gate".to_string(), VariableValue::Float(2.0));
             args.insert("begin".to_string(), VariableValue::Float(begin));
 
             let event = ConcreteEvent::Dirt { args, device_id: 0 };

@@ -1015,7 +1015,7 @@ impl VariableValue {
             }
             VariableValue::Integer(x) => {
                 let mut map = HashMap::new();
-                map.insert("i".to_owned(), x.into());
+                map.insert("note".to_owned(), x.into());
                 map
             }
             VariableValue::Float(x) => {
@@ -1032,7 +1032,7 @@ impl VariableValue {
             }
             VariableValue::Dur(x) => {
                 let mut map = HashMap::new();
-                map.insert("duration".to_owned(), x.into());
+                map.insert("gate".to_owned(), x.into());
                 map
             }
             VariableValue::Decimal(d) => {
