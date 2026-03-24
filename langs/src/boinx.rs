@@ -74,6 +74,9 @@ impl BoinxLine {
             BoinxItem::Note(n) => {
                 Some(ConcreteEvent::Generic(VariableValue::from(*n), dur, addr, device))
             }
+            BoinxItem::Number(f) => {
+                Some(ConcreteEvent::Generic(VariableValue::from(*f), dur, addr, device))
+            }
             BoinxItem::ArgMap(map) => {
                 let map : HashMap<String, VariableValue> = 
                     map.iter().filter_map(|(key, value)| {
