@@ -8,7 +8,8 @@ use std::sync::Arc;
 /// Associates a protocol-specific payload with its target device.
 ///
 /// Holds the message content (`payload`) and a reference-counted handle
-/// to the destination `ProtocolDevice`.
+/// to the destination [ProtocolDevice].
+/// The message is then self contained and do not need to resolve its destination again.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProtocolMessage {
     /// The target device for this message.
@@ -46,10 +47,10 @@ impl Display for ProtocolMessage {
     }
 }
 
-/// Associates a `ProtocolMessage` with a specific time (`SyncTime`).
+/// Associates a [ProtocolMessage] with a specific time [SyncTime].
 ///
 /// Used for scheduling messages in time-ordered queues (like a priority queue).
-/// Implements `Ord` based *inversely* on time, so earlier times have higher priority.
+/// Implements [Ord] based *inversely* on time, so earlier times have higher priority.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimedMessage {
     /// The underlying message (payload and device).

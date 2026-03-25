@@ -339,16 +339,31 @@ impl Scheduler {
 
             if let Some(wait_time) = self
                 .playback_manager
-                .update_state(&self.clock, &mut self.scene)
+                .update_state(&self.clock)
             {
                 self.next_wait = min(wait_time, self.next_wait);
             }
             if self.playback_manager.state_has_changed() {
+                let pb_state  = self.playback_manager.state();
                 let _ = self
                     .update_notifier
                     .send(SovaNotification::PlaybackStateChanged(
-                        self.playback_manager.state(),
+                        pb_state,
                     ));
+                match pb_state {
+                    playback::PlaybackState::Stopped => {
+                        self.scratchpad.clear();
+                        self.scene.kill_executions();
+                        self.scene.reset();
+                    },
+                    playback::PlaybackState::Starting(_) => {
+                        self.scratchpad.append(&mut self.scene
+                            .trigger_prelude(&self.languages, date)
+                            .map(|exec| (exec, 1.0))
+                            .collect());
+                    },
+                    playback::PlaybackState::Playing => (),
+                }                
             }
 
             self.next_wait = min(self.process_scratchpad_executions(date), self.next_wait);
@@ -394,6 +409,7 @@ impl Scheduler {
         }
     }
 
+    /// Called to start the transport
     pub fn process_transport_start(&mut self) {
         let start_date = self.clock.next_phase_reset_date();
 
@@ -405,21 +421,10 @@ impl Scheduler {
         );
         
         self.clock.set_playing(true);
-        self.clock.commit_app_state();
-        
-        //self.scratchpad.clear();
-        self.scratchpad = self.scene
-            .trigger_prelude(&self.languages, start_date)
-            .map(|exec| (exec, 1.0))
-            .collect();
     }
 
     pub fn process_transport_stop(&mut self) {
         log_println!("Requesting transport stop via Link now");
-
         self.clock.set_playing(false);
-
-        self.scene.reset();
-        self.scratchpad.clear();
     }
 }

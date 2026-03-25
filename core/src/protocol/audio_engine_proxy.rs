@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread::{self, JoinHandle}};
 use crossbeam_channel::{Receiver, SendError, Sender};
 use serde::{Serialize, Deserialize};
 
-use crate::{LogMessage, clock::SyncTime, vm::{event::ConcreteEvent, variable::VariableValue}, log_eprintln, protocol::{error::ProtocolError, payload::ProtocolPayload}};
+use crate::{LogMessage, clock::SyncTime, log_eprintln, protocol::{error::ProtocolError, payload::ProtocolPayload}, vm::{event::ConcreteEvent, variable::VariableValue}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
@@ -25,35 +25,38 @@ impl AudioEnginePayload {
             ConcreteEvent::Generic(args, dur, addr, _) => {
                 let dur_s = (dur as f64) / 1_000_000.0;
                 let addr = addr.parse::<i64>();
-                match args {
-                    VariableValue::Map(mut map) => {
-                        if !map.contains_key("gate") {
-                            map.insert("gate".to_owned(), dur_s.into());
-                        }
-                        if let Ok(a) = addr {
-                            map.insert("voice".to_owned(), a.into());
-                        }
-                        let audio_payload = AudioEnginePayload {
-                            args: map,
-                            timetag: Some(date),
-                        };
-                        vec![(audio_payload.into(), date)]
-                    }
-                    VariableValue::Str(s) => {
+                let mut map_payload = match args {
+                    VariableValue::Map(map) => map,
+                    s @ VariableValue::Str(_) => {
                         let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), s.into());
-                        map.insert("gate".to_owned(), dur_s.into());
-                        if let Ok(a) = addr {
-                            map.insert("voice".to_owned(), a.into());
-                        }
-                        let audio_payload = AudioEnginePayload {
-                            args: map,
-                            timetag: Some(date),
-                        };
-                        vec![(audio_payload.into(), date)]
+                        map.insert("sound".to_owned(), s);                        
+                        map
                     }
-                    _ => Vec::new()
+                    i @ VariableValue::Integer(_) => {
+                        let mut map = HashMap::new();
+                        map.insert("sound".to_owned(), "sine".to_string().into());
+                        map.insert("note".to_owned(), i);
+                        map
+                    }
+                    f @ VariableValue::Float(_) => {
+                        let mut map = HashMap::new();
+                        map.insert("sound".to_owned(), "sine".to_string().into());
+                        map.insert("freq".to_owned(), f);
+                        map
+                    }
+                    _ => return Vec::new()
+                };
+                if !map_payload.contains_key("gate") {
+                    map_payload.insert("gate".to_owned(), dur_s.into());
                 }
+                if let Ok(a) = addr {
+                    map_payload.insert("voice".to_owned(), a.into());
+                }
+                let audio_payload = AudioEnginePayload {
+                    args: map_payload,
+                    timetag: Some(date),
+                };
+                vec![(audio_payload.into(), date)]
             }
             _ => Vec::new()
         }

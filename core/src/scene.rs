@@ -27,7 +27,7 @@ fn default_offset() -> f64 {
 /// Represents a scene, which is a collection of [`Line`]s that can play concurrently.
 ///
 /// A scene defines the overall structure and timing for a musical piece or timed sequence.
-/// It primarily holds a vector of `Line` objects, each representing a distinct track or sequence
+/// It primarily holds a vector of [Line] objects, each representing a distinct track or sequence
 /// of events (frames) with associated scripts.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Scene {
@@ -73,22 +73,29 @@ impl Scene {
         }
     }
 
+    /// Resets the [Scene] to the initial state by calling [Line::reset] on each line 
+    /// and clearing the variables.
     pub fn reset(&mut self) {
         self.lines.iter_mut().for_each(Line::reset);
         self.vars.clear();
         self.beat_offset = f64::NAN;
     }
 
+    /// Checks if the [Scene] has a [Frame] at the given position.
     pub fn has_frame(&self, line_id: usize, frame_id: usize) -> bool {
         self.line(line_id)
             .map(|l| l.n_frames() > frame_id)
             .unwrap_or(false)
     }
 
+    /// Returns an optionnal reference to the [Frame] at the given index,
+    /// or None if there are none.
     pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
         self.line(line_id).and_then(|line| line.frame(frame_id))
     }
 
+    /// Returns a mutable reference to the [Frame] at the given index,
+    /// eventually creating necessary lines and frames in order to do so.
     pub fn get_frame_mut(&mut self, line_id: usize, frame_id: usize) -> &mut Frame {
         self.line_mut(line_id).frame_mut(frame_id)
     }
@@ -99,10 +106,13 @@ impl Scene {
         self.lines.len()
     }
 
+    /// Computes the structure in term of beats durations of the scene
     pub fn structure(&self) -> Vec<Vec<f64>> {
         self.lines.iter().map(Line::structure).collect()
     }
 
+    /// Returns an optionnal reference to the longest line in the scene,
+    /// according to [Line::length].
     pub fn longest_line(&self) -> Option<&Line> {
         let mut line = None;
         let mut dur = 0.0;
@@ -187,10 +197,13 @@ impl Scene {
         &mut self.lines[index]
     }
 
+    /// Returns `true` if the scene has no line.
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
 
+    /// Ensures that the scene contains at least `size` lines,
+    /// by adding [Line::default] if needed.
     pub fn ensure_min_size(&mut self, size: usize) {
         if self.n_lines() < size {
             self.lines.resize(size, Line::default());
@@ -204,6 +217,7 @@ impl Scene {
         self.lines.iter().map(Line::position)
     }
 
+    /// Iterates over the prelude [Script]s and start an execution at the specified `date`.
     pub fn trigger_prelude(&mut self, langs: &LanguageCenter, date: SyncTime) -> impl Iterator<Item = ScriptExecution> {
         self.prelude.iter_mut().filter_map(move |script| {
             langs.blocking_process(script);
@@ -214,10 +228,16 @@ impl Scene {
         })
     }
 
+    /// Stops all executions
     pub fn kill_executions(&mut self) {
         self.lines.iter_mut().for_each(Line::kill_executions);
     }
 
+    /// Update all executions in the scene.
+    /// 
+    /// # Returns
+    /// - Events that have been triggered this iteration,
+    /// - The delay until the next update.
     pub fn update_executions<'a>(
         &'a mut self,
         mut partial: PartialContext<'a>,
@@ -235,18 +255,22 @@ impl Scene {
         (events, next_wait)
     }
 
+    /// Invokes [Line::go_to_date] for each line
     pub fn go_to_date(&mut self, clock: &Clock, date: SyncTime) {
         for line in self.lines.iter_mut() {
             line.go_to_date(clock, date);
         }
     }
 
+    /// Invokes [Line::go_to_beat] for each line
     pub fn go_to_beat(&mut self, clock: &Clock, beat: f64) {
         for line in self.lines.iter_mut() {
             line.go_to_beat(clock, beat);
         }
     }
 
+    /// Computes the time remaining before the next trigge of a [Line] 
+    /// when the execution mode is [ExecutionMode::Free].
     fn handle_free_line(
         clock: &Clock, 
         line: &mut Line, 
@@ -264,6 +288,13 @@ impl Scene {
         ActionTiming::AtNextModulo(len).remaining(uncorrected.saturating_sub(date_offset), clock)
     }
 
+    /// Perform a step in time to the specified `date`.
+    /// The date is corrected according to events that might have been stepped over.
+    /// Starts new [Line]s if needed, and each [Line] is also made to step in time at the corrected date.
+    /// 
+    /// # Returns
+    /// - The delay until the next step,
+    /// - A flag indicating if a change in position has occured.
     pub fn step(
         &mut self,
         clock: &Clock,

@@ -14,6 +14,7 @@ pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
+/// Creates an audio-priority thread that receives [TimedMessage] and send them to the corresponding device at their precise date.
 pub struct World {
     queue: BinaryHeap<TimedMessage>,
     message_source: Receiver<TimedMessage>,
@@ -26,6 +27,10 @@ pub struct World {
 }
 
 impl World {
+    /// Initiate and start an audio-thread synchronized to the [ClockServer].
+    /// # Returns
+    /// - The handle to the thread,
+    /// - A channel [Sender] to send [TimedMessage].
     pub fn create(clock_server: Arc<ClockServer>) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx, rx) = crossbeam_channel::unbounded();
         let handle = ThreadBuilder::default()
@@ -50,6 +55,11 @@ impl World {
         (handle, tx)
     }
 
+    /// Main loop of the [World], performing until the channel is closed:
+    /// - Wait for a [TimedMessage] until a timeout corresponding to the next event, minus an active waiting threshold
+    /// - If the time until the next [TimedMessage] date is smaller than the active waiting threshold, active wait
+    /// - Execute the message
+    /// - Refresh the next timeout
     pub fn live(&mut self) {
         log_println!("Starting world");
         loop {
@@ -83,6 +93,8 @@ impl World {
         log_println!("[-] Exiting world...");
     }
 
+    /// Add the [TimedMessage] to the priority queue, 
+    /// eventually subtracting micros to the scheduled date to anticipate latency
     fn handle_timed_message(&mut self, mut timed_message: TimedMessage) {
         // Regular message - add to queue for timed execution
         let offset = match &timed_message.message.payload {
@@ -99,6 +111,8 @@ impl World {
         self.queue.push(timed_message);
     }
 
+    /// Look for the next message to execute (i.e., the nearest date)
+    /// and set the next timeout accordingly
     fn refresh_next_timeout(&mut self) {
         let Some(next_msg) = self.queue.peek() else {
             self.next_timeout = Duration::MAX;
@@ -110,6 +124,7 @@ impl World {
         self.next_timeout = Duration::from_micros(remaining);
     }
 
+    /// Execute the given [TimedMessage] at the instant this function is called
     pub fn execute_message(&mut self, msg: TimedMessage) {
         let message = msg.message;
         match message.payload {

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Scene, clock::{Clock, NEVER, SyncTime}, schedule::ActionTiming};
 
+/// The global execution mode of the scene
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExecutionMode {
     #[default]
@@ -13,6 +14,8 @@ pub enum ExecutionMode {
 }
 
 impl ExecutionMode {
+    /// Computes the time remaining before the next trigger of the mode,
+    /// when the mode is not [ExecutionMode::Free].
     pub fn remaining(&self, scene: &Scene, date: SyncTime, clock: &Clock) -> SyncTime {
         match self {
             ExecutionMode::AtQuantum => {
