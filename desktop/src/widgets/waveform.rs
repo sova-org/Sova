@@ -5,6 +5,7 @@ pub struct Waveform<'a> {
     color: egui::Color32,
     fill_alpha: f32,
     stroke_width: f32,
+    glow: f32,
     normalize: bool,
     num_bins: usize,
     cursor_pos: Option<f32>,
@@ -17,6 +18,7 @@ impl<'a> Waveform<'a> {
             color,
             fill_alpha: 0.35,
             stroke_width: 1.0,
+            glow: 0.0,
             normalize: false,
             num_bins: 256,
             cursor_pos: None,
@@ -40,6 +42,11 @@ impl<'a> Waveform<'a> {
 
     pub fn normalize(mut self, on: bool) -> Self {
         self.normalize = on;
+        self
+    }
+
+    pub fn glow(mut self, g: f32) -> Self {
+        self.glow = g;
         self
     }
 
@@ -75,11 +82,12 @@ impl<'a> Waveform<'a> {
         };
 
         let num_bins = self.num_bins.min(self.samples.len());
-        let bin_size = self.samples.len() / num_bins;
+        let len = self.samples.len() as f32;
+        let bins = num_bins as f32;
         let peaks: Vec<(f32, f32)> = (0..num_bins)
             .map(|i| {
-                let start = i * bin_size;
-                let end = (start + bin_size).min(self.samples.len());
+                let start = (i as f32 * len / bins) as usize;
+                let end = ((i as f32 + 1.0) * len / bins) as usize;
                 self.samples[start..end]
                     .iter()
                     .fold((f32::MAX, f32::MIN), |(mn, mx), &s| {
@@ -114,7 +122,6 @@ impl<'a> Waveform<'a> {
         }
         painter.add(egui::Shape::mesh(mesh));
 
-        let stroke = egui::Stroke::new(self.stroke_width, self.color);
         let top_line: Vec<egui::Pos2> = peaks
             .iter()
             .enumerate()
@@ -125,6 +132,19 @@ impl<'a> Waveform<'a> {
             .enumerate()
             .map(|(i, &(min, _))| egui::pos2(peak_x(i), val_y(min)))
             .collect();
+
+        if self.glow > 0.0 {
+            for &(width_mul, alpha_mul) in &[(4.0_f32, 0.06_f32), (2.0, 0.15)] {
+                let glow_stroke = egui::Stroke::new(
+                    self.stroke_width * width_mul,
+                    self.color.gamma_multiply(alpha_mul * self.glow),
+                );
+                painter.add(egui::Shape::line(top_line.clone(), glow_stroke));
+                painter.add(egui::Shape::line(bot_line.clone(), glow_stroke));
+            }
+        }
+
+        let stroke = egui::Stroke::new(self.stroke_width, self.color);
         painter.add(egui::Shape::line(top_line, stroke));
         painter.add(egui::Shape::line(bot_line, stroke));
 

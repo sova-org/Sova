@@ -11,6 +11,7 @@ mod client_bridge;
 mod client_panel;
 mod devices_panel;
 mod feedback_engine;
+mod fonts;
 mod doc_panel;
 mod icons;
 mod log_panel;
@@ -78,9 +79,10 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
             style.visuals.popup_shadow = egui::Shadow::NONE;
         }
 
-        if style.visuals.dark_mode {
-            style.visuals.extreme_bg_color = egui::Color32::from_gray(20);
-        }
+        let bg = a.bg_brightness;
+        style.visuals.extreme_bg_color = egui::Color32::from_gray(bg);
+        style.visuals.panel_fill = egui::Color32::from_gray(bg.saturating_add(8));
+        style.visuals.window_fill = egui::Color32::from_gray(bg.saturating_add(12));
 
         style.spacing.button_padding = egui::vec2(5.0, 4.0);
         style.spacing.indent_ends_with_horizontal_line = true;
@@ -140,6 +142,7 @@ fn main() -> eframe::Result {
             let s = settings::load();
             rust_i18n::set_locale(&s.appearance.locale);
             apply_appearance(&ctx, &s.appearance);
+            fonts::apply_custom_fonts(&ctx, &s.appearance.ui_font, &s.appearance.editor_font);
 
             let server = server_panel::ServerPanel::new(
                 handle.clone(),
@@ -157,7 +160,7 @@ fn main() -> eframe::Result {
             let scope_panel = scope_panel::ScopePanel::new(s.scope);
             let spectrum_panel = spectrum_panel::SpectrumPanel::new(s.spectrum);
             let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
-            let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar);
+            let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar_height);
             let chat_panel = chat_panel::ChatPanel::new();
             let mut scene_panel = scene_panel::ScenePanel::new();
             scene_panel.prelude_collapsed = s.scene.prelude_collapsed;
@@ -417,10 +420,7 @@ impl SovaApp {
             windows: settings::WindowSettings {
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
-                scope_bar: settings::ScopeBarSettings {
-                    height: self.scope_bar_panel.height(),
-                    smoothing: self.scope_bar_panel.smoothing(),
-                },
+                scope_bar_height: self.scope_bar_panel.height(),
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -493,7 +493,12 @@ impl eframe::App for SovaApp {
         self.was_audio_running = audio_running;
         self.logs.poll();
 
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+        egui::TopBottomPanel::top("menu_bar")
+            .frame(
+                egui::Frame::side_top_panel(&ctx.style())
+                    .inner_margin(egui::Margin::symmetric(8, 4)),
+            )
+            .show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 let icon = egui::Image::new(egui::include_image!("../assets/icon.png"))
                     .fit_to_exact_size(egui::vec2(20.0, 20.0));
@@ -759,6 +764,16 @@ impl eframe::App for SovaApp {
                     widgets::hint::set(ctx, t!("hint.view_menu"));
                 }
 
+                if self.bridge.is_connected() {
+                    ui.separator();
+                    if let Some(transport_bar::TransportAction::Panic) =
+                        self.transport_bar.show_inline(ui, ctx, &self.bridge)
+                    {
+                        self.muted = true;
+                        self.bridge.send(ClientMessage::SetMasterVolume(0.0));
+                    }
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let audio = self.bridge.audio_state();
                     if audio.running {
@@ -809,12 +824,6 @@ impl eframe::App for SovaApp {
             });
         });
 
-        // Transport bar
-        if let Some(transport_bar::TransportAction::Panic) = self.transport_bar.show(ctx, &self.bridge) {
-            self.muted = true;
-            self.bridge.send(ClientMessage::SetMasterVolume(0.0));
-        }
-
         if let Some((msg, _)) = self.bridge.last_error.take() {
             self.toasts.push(widgets::ToastLevel::Error, msg);
         }
@@ -834,7 +843,7 @@ impl eframe::App for SovaApp {
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
         if self.scope_bar_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
             self.scope_bar_panel
-                .show_bottom_panel(ctx, self.bridge.scope_data());
+                .show_bottom_panel(ctx, self.bridge.scope_data(), &self.scope_panel.settings);
         }
 
         // Sidebar (docs + settings + logs, must be before VU meter and CentralPanel)
@@ -865,6 +874,7 @@ impl eframe::App for SovaApp {
         }
         if sidebar_appearance_changed {
             apply_appearance(ctx, &self.appearance);
+            fonts::apply_custom_fonts(ctx, &self.appearance.ui_font, &self.appearance.editor_font);
         }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)

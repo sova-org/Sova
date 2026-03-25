@@ -65,6 +65,7 @@ pub struct ScopeSettings {
     pub smoothing: f32,
     pub stroke_width: f32,
     pub fill_alpha: f32,
+    pub glow: f32,
     pub detached: bool,
 }
 
@@ -74,6 +75,7 @@ impl Default for ScopeSettings {
             smoothing: 0.0,
             stroke_width: 1.0,
             fill_alpha: 0.35,
+            glow: 0.5,
             detached: false,
         }
     }
@@ -110,6 +112,9 @@ pub struct AppearanceSettings {
     pub scene_opacity: f32,
     pub ui_font_size: f32,
     pub animation_time: f32,
+    pub ui_font: String,
+    pub editor_font: String,
+    pub bg_brightness: u8,
 }
 
 impl Default for AppearanceSettings {
@@ -123,6 +128,9 @@ impl Default for AppearanceSettings {
             scene_opacity: 0.5,
             ui_font_size: 13.0,
             animation_time: 0.15,
+            ui_font: String::new(),
+            editor_font: String::new(),
+            bg_brightness: 20,
         }
     }
 }
@@ -134,29 +142,24 @@ pub struct VisualsSettings {
     pub shared: bool,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
-    pub scope_bar: ScopeBarSettings,
+    pub scope_bar_height: f32,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ScopeBarSettings {
-    pub height: f32,
-    pub smoothing: f32,
-}
-
-impl Default for ScopeBarSettings {
+impl Default for WindowSettings {
     fn default() -> Self {
         Self {
-            height: 64.0,
-            smoothing: 0.3,
+            chat_detached: false,
+            sample_browser_detached: false,
+            scope_bar_height: 64.0,
         }
     }
 }
+
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
