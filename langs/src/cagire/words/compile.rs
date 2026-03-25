@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::cagire::ops::Op;
 use crate::cagire::theory;
+use crate::cagire::types::Span;
 
 use super::{lookup_word, WordCompile::*};
 
@@ -174,6 +175,47 @@ fn parse_note_name(name: &str) -> Option<i64> {
     Some((octave + 1) * 12 + base + modifier)
 }
 
+fn parse_french_note_name(name: &str) -> Option<i64> {
+    // Normalize: lowercase and replace é with e
+    let name = name.to_lowercase().replace('é', "e");
+    let (base, rest) = if let Some(r) = name.strip_prefix("sol") {
+        (7, r)
+    } else if let Some(r) = name.strip_prefix("do") {
+        (0, r)
+    } else if let Some(r) = name.strip_prefix("re") {
+        (2, r)
+    } else if let Some(r) = name.strip_prefix("mi") {
+        (4, r)
+    } else if let Some(r) = name.strip_prefix("fa") {
+        (5, r)
+    } else if let Some(r) = name.strip_prefix("la") {
+        (9, r)
+    } else if let Some(r) = name.strip_prefix("si") {
+        (11, r)
+    } else if let Some(r) = name.strip_prefix("ti") {
+        (11, r)
+    } else if let Some(r) = name.strip_prefix("ut") {
+        (0, r)
+    } else {
+        return None;
+    };
+    let bytes = rest.as_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+    let (modifier, octave_start) = match bytes[0] {
+        b'#' => (1, 1),
+        b'b' if bytes.len() > 1 && bytes[1].is_ascii_digit() => (-1, 1),
+        b'0'..=b'9' => (0, 0),
+        _ => return None,
+    };
+    let octave: i64 = rest[octave_start..].parse().ok()?;
+    if !(-1..=9).contains(&octave) {
+        return None;
+    }
+    Some((octave + 1) * 12 + base + modifier)
+}
+
 fn parse_interval(name: &str) -> Option<i64> {
     Some(match name {
         "P1" | "unison" => 0,
@@ -198,26 +240,33 @@ fn parse_interval(name: &str) -> Option<i64> {
 
 type Dictionary = std::collections::HashMap<String, Vec<Op>>;
 
+fn push(ops: &mut Vec<Op>, spans: &mut Vec<Span>, op: Op, span: Span) {
+    ops.push(op);
+    spans.push(span);
+}
+
 pub(crate) fn compile_word(
     name: &str,
+    span: Span,
     ops: &mut Vec<Op>,
+    spans: &mut Vec<Span>,
     dict: &Dictionary,
-) -> bool {
+) {
     match name {
         "linramp" => {
-            ops.push(Op::PushFloat(1.0));
-            ops.push(Op::Ramp);
-            return true;
+            push(ops, spans, Op::PushFloat(1.0), span);
+            push(ops, spans, Op::Ramp, span);
+            return;
         }
         "expramp" => {
-            ops.push(Op::PushFloat(3.0));
-            ops.push(Op::Ramp);
-            return true;
+            push(ops, spans, Op::PushFloat(3.0), span);
+            push(ops, spans, Op::Ramp, span);
+            return;
         }
         "logramp" => {
-            ops.push(Op::PushFloat(0.3));
-            ops.push(Op::Ramp);
-            return true;
+            push(ops, spans, Op::PushFloat(0.3), span);
+            push(ops, spans, Op::Ramp, span);
+            return;
         }
         _ => {}
     }
@@ -227,82 +276,84 @@ pub(crate) fn compile_word(
     {
         let pattern = *pattern;
         ops.pop();
-        ops.push(if name == "triad" {
+        spans.pop();
+        push(ops, spans, if name == "triad" {
             Op::DiatonicTriad(pattern)
         } else {
             Op::DiatonicSeventh(pattern)
-        });
-        return true;
+        }, span);
+        return;
     }
 
     if let Some(pattern) = theory::lookup(name) {
-        ops.push(Op::Degree(pattern));
-        return true;
+        push(ops, spans, Op::Degree(pattern), span);
+        return;
     }
 
     if let Some(intervals) = theory::chords::lookup(name) {
-        ops.push(Op::Chord(intervals));
-        return true;
+        push(ops, spans, Op::Chord(intervals), span);
+        return;
     }
 
     if let Some(word) = lookup_word(name) {
         match &word.compile {
             Simple => {
                 if let Some(op) = simple_op(word.name) {
-                    ops.push(op);
+                    push(ops, spans, op, span);
                 }
             }
-            Context(ctx) => ops.push(Op::GetContext(ctx)),
-            Param => ops.push(Op::SetParam(word.name)),
+            Context(ctx) => push(ops, spans, Op::GetContext(ctx), span),
+            Param => push(ops, spans, Op::SetParam(word.name), span),
             Probability(p) => {
-                ops.push(Op::PushFloat(*p));
-                ops.push(Op::ChanceExec);
+                push(ops, spans, Op::PushFloat(*p), span);
+                push(ops, spans, Op::ChanceExec, span);
             }
         }
-        return true;
+        return;
     }
 
     if let Some(var_name) = name.strip_prefix('@').filter(|s| !s.is_empty()) {
-        ops.push(Op::PushStr(Arc::from(var_name)));
-        ops.push(Op::Get);
-        return true;
+        push(ops, spans, Op::PushStr(Arc::from(var_name)), span);
+        push(ops, spans, Op::Get, span);
+        return;
     }
 
     if let Some(var_name) = name.strip_prefix('!').filter(|s| !s.is_empty()) {
-        ops.push(Op::PushStr(Arc::from(var_name)));
-        ops.push(Op::Set);
-        return true;
+        push(ops, spans, Op::PushStr(Arc::from(var_name)), span);
+        push(ops, spans, Op::Set, span);
+        return;
     }
 
     if let Some(var_name) = name.strip_prefix(',').filter(|s| !s.is_empty()) {
-        ops.push(Op::PushStr(Arc::from(var_name)));
-        ops.push(Op::SetKeep);
-        return true;
+        push(ops, spans, Op::PushStr(Arc::from(var_name)), span);
+        push(ops, spans, Op::SetKeep, span);
+        return;
     }
 
-    if let Some(midi) = parse_note_name(name) {
-        ops.push(Op::PushInt(midi));
-        return true;
+    if let Some(midi) = parse_note_name(name).or_else(|| parse_french_note_name(name)) {
+        push(ops, spans, Op::PushInt(midi), span);
+        return;
     }
 
     if let Some(semitones) = parse_interval(name) {
-        ops.push(Op::Dup);
-        ops.push(Op::PushInt(semitones));
-        ops.push(Op::Add);
-        return true;
+        push(ops, spans, Op::Dup, span);
+        push(ops, spans, Op::PushInt(semitones), span);
+        push(ops, spans, Op::Add, span);
+        return;
     }
 
     if let Some(op) = simple_op(name) {
-        ops.push(op);
-        return true;
+        push(ops, spans, op, span);
+        return;
     }
 
     if let Some(body) = dict.get(name) {
-        ops.extend(body.iter().cloned());
-        return true;
+        for op in body.iter().cloned() {
+            push(ops, spans, op, span);
+        }
+        return;
     }
 
-    // Unknown words become strings
-    ops.push(Op::PushStr(Arc::from(name)));
-    true
+    // Unknown words become strings (intentional language feature)
+    push(ops, spans, Op::PushStr(Arc::from(name)), span);
 }

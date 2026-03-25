@@ -12,10 +12,11 @@ name = "sova_server"
 path = "src/main.rs"
 
 [features]
-default = ["audio", "soundfont"]
+default = ["audio", "soundfont", "default-samples"]
 audio = ["dep:doux-sova"]
 soundfont = ["audio", "doux-sova/soundfont"]
 asio = ["doux-sova/asio"]
+default-samples = ["audio", "dep:include_dir", "dep:dirs"]
 
 [dependencies]
 sova_core = { path = "../core", package = "core" }
@@ -29,3 +30,5 @@ crc32fast = "1"
 crossbeam-channel = "0.5.15"
 socket2 = "0.5"
 doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.20", package = "doux-sova", optional = true }
+include_dir = { version = "0.7", optional = true }
+dirs = { version = "6", optional = true }

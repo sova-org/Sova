@@ -158,7 +158,14 @@ async fn main() {
             input_device: cli.audio_input_device.clone(),
             channels: cli.audio_channels,
             buffer_size: cli.audio_buffer_size,
-            sample_paths: cli.sample_paths.clone(),
+            sample_paths: {
+                #[cfg(feature = "default-samples")]
+                let mut paths = vec![sova_server::audio::default_samples::ensure_default_samples()];
+                #[cfg(not(feature = "default-samples"))]
+                let mut paths = Vec::new();
+                paths.extend(cli.sample_paths.clone());
+                paths
+            },
             max_voices: cli.max_voices,
         };
 

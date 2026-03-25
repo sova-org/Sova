@@ -1,1 +1,8 @@
-sine snd c4 note 0.2 envdelay 0.1 att 0.8 sus 0.2 verb .
+;; delay before amplitude enveloppe
+sine snd
+c4 note
+0.2 0.5 rand envdelay
+0.1 att
+0.8 sus
+0.2 verb
+.

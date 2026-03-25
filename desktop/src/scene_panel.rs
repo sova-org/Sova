@@ -656,6 +656,24 @@ impl ScenePanel {
 
                 opacity.override_widget_visuals(ui);
 
+                // Progress fill behind header widgets
+                if is_playing && frame.enabled {
+                    let header_rect = egui::Rect::from_min_size(
+                        ui.min_rect().min,
+                        egui::vec2(ui.available_width() * progress, HEADER_HEIGHT),
+                    );
+                    let blend = |a: u8, b: u8| -> u8 {
+                        ((a as u16 * 2 + b as u16) / 3) as u8
+                    };
+                    let fill = egui::Color32::from_rgb(
+                        blend(accent.r(), bg.r()),
+                        blend(accent.g(), bg.g()),
+                        blend(accent.b(), bg.b()),
+                    );
+                    ui.painter().rect_filled(header_rect, 0.0, fill);
+                    ui.ctx().request_repaint();
+                }
+
                 // Header
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
@@ -758,10 +776,14 @@ impl ScenePanel {
             let cell_rect = frame_resp.response.rect;
 
             // Cursor/selection border (top, right, bottom — skip left where playing strip is)
+            let user_color = bridge
+                .confirmed_username()
+                .map(|n| username_color(n))
+                .unwrap_or(accent);
             let border_stroke = if is_cursor {
-                Some(egui::Stroke::new(2.0, accent))
+                Some(egui::Stroke::new(2.0, user_color))
             } else if is_selected {
-                Some(egui::Stroke::new(1.0, accent.linear_multiply(0.5)))
+                Some(egui::Stroke::new(1.0, user_color.linear_multiply(0.5)))
             } else {
                 None
             };
@@ -783,16 +805,6 @@ impl ScenePanel {
                 );
                 p.rect_filled(accent_strip, 0.0, accent);
 
-                // Header fill (left→right)
-                let fill_w = cell_rect.width() * progress;
-                let header = egui::Rect::from_min_size(
-                    cell_rect.min,
-                    egui::vec2(fill_w, HEADER_HEIGHT),
-                );
-                let hc = egui::Color32::from_rgba_unmultiplied(
-                    accent.r(), accent.g(), accent.b(), 100,
-                );
-                p.rect_filled(header, 0.0, hc);
                 // Background fill (top→bottom)
                 let fill_h = cell_rect.height() * progress;
                 let bg = egui::Rect::from_min_size(

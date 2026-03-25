@@ -1,1 +1,4 @@
-hat snd 0.5 gain . ( 0.15 verb ) 3 except
+hat snd
+( rim snd ) 4 except
+0.5 gain
+.

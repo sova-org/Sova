@@ -1,1 +1,7 @@
-5 8 2 euclidrot at hat snd 0.5 gain 0.001 0.04 ad .
+3 8 2 euclidrot at kick snd .
+clear
+2 8 1 euclidrot at snare snd .
+clear
+6 8 3 euclidrot at
+hat snd 0.6 gain 0.1 decay
+.

@@ -531,10 +531,18 @@ async fn on_message(
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
         }
-        ClientMessage::RestartAudioEngine(config) => {
+        ClientMessage::RestartAudioEngine(mut config) => {
             let Some(ref restart_tx) = state.audio_restart_tx else {
                 return ServerMessage::InternalError("Audio engine not available".to_string());
             };
+
+            #[cfg(feature = "default-samples")]
+            {
+                let default = super::audio::default_samples::ensure_default_samples();
+                if !config.sample_paths.contains(&default) {
+                    config.sample_paths.insert(0, default);
+                }
+            }
 
             let (response_tx, response_rx) = crossbeam_channel::bounded(1);
             let request = AudioRestartRequest {

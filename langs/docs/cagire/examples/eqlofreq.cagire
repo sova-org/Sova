@@ -1,1 +1,7 @@
-0 0.25 0.5 0.75 at kick snd 3 eqlo 300 eqlofreq .
+;; filtering the low frequencies
+0 1 0.25 ., at
+kick snd
+0.4 gain
+-6 -12 -18 3 choose eqlo
+50 5000 rand eqlofreq
+.

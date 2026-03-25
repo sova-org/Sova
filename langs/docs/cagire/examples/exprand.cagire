@@ -1,1 +1,5 @@
-200.0 8000.0 exprand lpf saw snd c2 note 0.01 0.3 ad .
+200.0 8000.0 exprand lpf
+saw snd
+c2 note
+0.01 0.5 ad
+.

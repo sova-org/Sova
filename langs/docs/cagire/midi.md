@@ -13,6 +13,7 @@ The `.` word emits both audio and MIDI messages — the system determines what t
 ```forth
 60 note 100 velocity .   ;; MIDI note: middle C, velocity 100
 c4 note 80 velocity .    ;; same pitch, lower velocity
+do4 note 80 velocity .   ;; French solfège, same as c4
 ```
 
 ### Note Messages
@@ -22,7 +23,7 @@ c4 note 80 velocity .    ;; same pitch, lower velocity
 | `note` | `(n --)` | 0-127 | MIDI note number |
 | `velocity` / `vel` | `(n --)` | 0-127 | Note velocity |
 | `chan` | `(n --)` | 1-16 | MIDI channel |
-| `dur` | `(f --)` | beats | Note duration |
+| `gate` | `(f --)` | beats | Note duration |
 | `dev` | `(n --)` | 1-16 | Output device slot |
 
 Channel defaults to `1`, device defaults to `1`.

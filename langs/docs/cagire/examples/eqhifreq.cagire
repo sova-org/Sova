@@ -1,1 +1,6 @@
-saw snd c4 note 0.01 0.2 ad 2 eqhi 6000 eqhifreq .
+0 1 0.25 ., at
+hat snd
+0.4 gain
+6 12 18 3 choose eqhi
+5000 10000 rand eqhifreq
+.

@@ -13,7 +13,7 @@ const DB_FLOOR: f32 = -60.0;
 
 const GAP: f32 = 3.0;
 const PADDING: f32 = 2.0;
-const DEFAULT_BAR_WIDTH: f32 = 20.0;
+const DEFAULT_BAR_WIDTH: f32 = 32.0;
 const MIN_BAR_WIDTH: f32 = 8.0;
 
 struct ChannelMeter {

@@ -51,7 +51,7 @@ impl Interpreter for CagireInterpreter {
                 Err(e) => {
                     self.terminated = true;
                     ctx.errors.throw(
-                        SovaError::from(ctx).message(format!("cagire error: {e}"))
+                        SovaError::from(ctx).message(format!("cagire error: {}", e.message))
                     );
                     return (None, NEVER);
                 }

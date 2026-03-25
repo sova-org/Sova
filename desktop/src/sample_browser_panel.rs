@@ -28,6 +28,7 @@ pub struct SampleBrowserPanel {
     pub detached: bool,
     state: Option<SampleBrowserState>,
     last_paths: Vec<PathBuf>,
+    default_path: Option<PathBuf>,
     preview: Option<PreviewData>,
     decode_rx: Option<mpsc::Receiver<DecodeResult>>,
     pending_key: Option<String>,
@@ -41,6 +42,7 @@ impl SampleBrowserPanel {
             detached: false,
             state: None,
             last_paths: Vec::new(),
+            default_path: None,
             preview: None,
             decode_rx: None,
             pending_key: None,
@@ -52,6 +54,7 @@ impl SampleBrowserPanel {
         &mut self,
         ctx: &egui::Context,
         bridge: &ClientBridge,
+        default_path: Option<&std::path::Path>,
         sample_paths: &[PathBuf],
         appearance: &AppearanceSettings,
         is_hosting: bool,
@@ -65,12 +68,17 @@ impl SampleBrowserPanel {
             return;
         }
 
-        if self.last_paths != sample_paths {
+        let dp_changed = self.default_path.as_deref() != default_path;
+        if self.last_paths != sample_paths || dp_changed {
             self.last_paths = sample_paths.to_vec();
-            if sample_paths.is_empty() {
+            self.default_path = default_path.map(PathBuf::from);
+            if sample_paths.is_empty() && default_path.is_none() {
                 self.state = None;
             } else {
-                self.state = Some(SampleBrowserState::new(sample_paths));
+                self.state = Some(SampleBrowserState::new(
+                    default_path,
+                    sample_paths,
+                ));
             }
             self.preview = None;
         }
@@ -243,7 +251,9 @@ impl SampleBrowserPanel {
                         }
                     }
 
-                    let color = if is_file {
+                    let color = if entry.is_default {
+                        ui.visuals().weak_text_color()
+                    } else if is_file {
                         ui.visuals().text_color()
                     } else {
                         ui.visuals().strong_text_color()
@@ -445,7 +455,13 @@ impl SampleBrowserPanel {
             return;
         }
 
-        let Some(path) = resolve_sample_path(sample_paths, entry) else {
+        let mut all_paths: Vec<PathBuf> = Vec::new();
+        if let Some(dp) = &self.default_path {
+            all_paths.push(dp.clone());
+        }
+        all_paths.extend_from_slice(sample_paths);
+
+        let Some(path) = resolve_sample_path(&all_paths, entry) else {
             return;
         };
 

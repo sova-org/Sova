@@ -1,1 +1,5 @@
-kick snd . ( snare snd 0.7 gain . ) 4 2 every+
+kick snd .
+clear
+( hat snd 0.5 gain . ) 4 1 every+
+( snare snd 0.7 gain . ) 4 2 every+
+( rim snd 0.7 gain . ) 4 3 every+

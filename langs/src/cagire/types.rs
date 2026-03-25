@@ -1,15 +1,43 @@
 use std::sync::Arc;
 
+use sova_core::compiler::CompilationError;
 use sova_core::vm::variable::VariableValue;
 
 use super::ops::Op;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct CagireError {
+    pub message: String,
+    pub span: Span,
+}
+
+impl CagireError {
+    pub fn new(message: impl Into<String>, span: Span) -> Self {
+        Self { message: message.into(), span }
+    }
+
+    pub fn into_compilation_error(self) -> CompilationError {
+        CompilationError {
+            lang: "cagire".into(),
+            info: self.message,
+            from: self.span.start,
+            to: self.span.end,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Str(Arc<str>),
-    Quotation(Arc<[Op]>),
+    Quotation(Arc<[Op]>, Arc<[Span]>),
     CycleList(Arc<[Value]>),
 }
 
@@ -61,7 +89,7 @@ impl Value {
             Value::Int(i) => Some(VariableValue::Integer(*i)),
             Value::Float(f) => Some(VariableValue::Float(*f)),
             Value::Str(s) => Some(VariableValue::Str(s.to_string())),
-            Value::Quotation(_) | Value::CycleList(_) => None,
+            Value::Quotation(..) | Value::CycleList(_) => None,
         }
     }
 

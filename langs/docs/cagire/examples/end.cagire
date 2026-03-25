@@ -1,1 +1,6 @@
-hat snd 0 begin 0.5 end .
+;; start at beginning (0)
+;; end sample mid-way (0.5)
+hat snd
+0 begin
+0.5 end 
+.

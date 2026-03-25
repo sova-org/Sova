@@ -7,7 +7,7 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 - **Integer**: `42`, `-10`, `0`
 - **Float**: `3.14`, `-0.5`, `0.25` (leading zero optional: `.25`)
 - **String**: `"kick"`, `"sine"`, `"hello"`
-- **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58) — pushes MIDI number
+- **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58) — pushes MIDI number. French solfège: `do4` (60), `mib3` (58), `sol#3` (56). Names: do/ut, ré/re, mi, fa, sol, la, si/ti
 - **Interval**: `P5` (7), `M3` (4), `m7` (10) — adds semitones to top of stack
 - **Quotation**: `( ... )` — deferred code block, first-class value
 
@@ -140,7 +140,6 @@ clear                       ;; reset sound register
 | `time` | Time offset |
 | `begin` / `end` | Sample start/end (0-1) |
 | `speed` | Playback speed |
-| `dur` | Duration |
 | `gate` | Gate duration (total note length, 0 = infinite sustain) |
 | `voice` | Voice number |
 | `orbit` | Orbit/bus |

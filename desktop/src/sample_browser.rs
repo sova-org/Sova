@@ -17,6 +17,7 @@ pub struct TreeLine {
     pub label: String,
     pub folder: String,
     pub index: usize,
+    pub is_default: bool,
 }
 
 pub enum SampleNode {
@@ -70,7 +71,7 @@ impl SampleNode {
         }
     }
 
-    fn flatten(&self, depth: u8, parent_folder: &str, file_index: usize, out: &mut Vec<TreeLine>) {
+    fn flatten(&self, depth: u8, parent_folder: &str, file_index: usize, is_default: bool, out: &mut Vec<TreeLine>) {
         let kind = match self {
             SampleNode::Root { expanded, .. } => TreeLineKind::Root {
                 expanded: *expanded,
@@ -86,6 +87,7 @@ impl SampleNode {
             label: self.label().to_string(),
             folder: parent_folder.to_string(),
             index: file_index,
+            is_default,
         });
         if self.expanded() {
             let folder_name = self.label();
@@ -98,7 +100,7 @@ impl SampleNode {
                 } else {
                     0
                 };
-                child.flatten(depth + 1, folder_name, child_idx, out);
+                child.flatten(depth + 1, folder_name, child_idx, is_default, out);
             }
         }
     }
@@ -106,21 +108,35 @@ impl SampleNode {
 
 pub struct SampleTree {
     roots: Vec<SampleNode>,
+    default_root_count: usize,
 }
 
 impl SampleTree {
-    pub fn from_paths(paths: &[PathBuf]) -> Self {
-        if paths.len() == 1 {
-            let roots = Self::scan_children(&paths[0]);
-            return Self { roots };
-        }
+    pub fn from_paths_with_default(default_path: Option<&Path>, user_paths: &[PathBuf]) -> Self {
         let mut roots = Vec::new();
-        for path in paths {
-            if let Some(root) = Self::scan_root(path) {
-                roots.push(root);
+
+        // Default samples first
+        if let Some(dp) = default_path
+            && let Some(root) = Self::scan_root(dp)
+        {
+            roots.push(root);
+        }
+        let default_root_count = roots.len();
+
+        // User paths
+        let all_user = default_root_count == 0 && user_paths.len() == 1;
+        if all_user {
+            let mut user_roots = Self::scan_children(&user_paths[0]);
+            roots.append(&mut user_roots);
+        } else {
+            for path in user_paths {
+                if let Some(root) = Self::scan_root(path) {
+                    roots.push(root);
+                }
             }
         }
-        Self { roots }
+
+        Self { roots, default_root_count }
     }
 
     fn scan_children(path: &Path) -> Vec<SampleNode> {
@@ -228,8 +244,8 @@ impl SampleTree {
 
     pub fn visible_entries(&self) -> Vec<TreeLine> {
         let mut out = Vec::new();
-        for root in &self.roots {
-            root.flatten(0, "", 0, &mut out);
+        for (i, root) in self.roots.iter().enumerate() {
+            root.flatten(0, "", 0, i < self.default_root_count, &mut out);
         }
         out
     }
@@ -294,8 +310,9 @@ impl SampleTree {
     fn filtered_entries(&self, names: &[String], collapsed: bool) -> Vec<TreeLine> {
         let mut out = Vec::new();
         for name in names {
-            for root in &self.roots {
-                Self::emit_filtered(root, name, collapsed, &mut out);
+            for (i, root) in self.roots.iter().enumerate() {
+                let is_default = i < self.default_root_count;
+                Self::emit_filtered(root, name, collapsed, is_default, &mut out);
             }
         }
         out
@@ -305,6 +322,7 @@ impl SampleTree {
         node: &SampleNode,
         target_name: &str,
         collapsed: bool,
+        is_default: bool,
         out: &mut Vec<TreeLine>,
     ) {
         match node {
@@ -322,6 +340,7 @@ impl SampleTree {
                     label: name.clone(),
                     folder: String::new(),
                     index: 0,
+                    is_default,
                 });
                 if show_children {
                     let mut idx = 0;
@@ -333,6 +352,7 @@ impl SampleTree {
                                 label: fname.clone(),
                                 folder: name.clone(),
                                 index: idx,
+                                is_default,
                             });
                             idx += 1;
                         }
@@ -341,7 +361,7 @@ impl SampleTree {
             }
             SampleNode::Root { children, .. } => {
                 for child in children {
-                    Self::emit_filtered(child, target_name, collapsed, out);
+                    Self::emit_filtered(child, target_name, collapsed, is_default, out);
                 }
             }
             _ => {}
@@ -359,8 +379,8 @@ pub struct SampleBrowserState {
 }
 
 impl SampleBrowserState {
-    pub fn new(paths: &[PathBuf]) -> Self {
-        let tree = SampleTree::from_paths(paths);
+    pub fn new(default_path: Option<&Path>, user_paths: &[PathBuf]) -> Self {
+        let tree = SampleTree::from_paths_with_default(default_path, user_paths);
         let cached_entries = tree.visible_entries();
         Self {
             tree,

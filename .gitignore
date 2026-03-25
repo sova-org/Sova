@@ -30,6 +30,7 @@ Cargo.lock
 !/website/static/*.pdf
 .DS_Store
 *.sova
+!desktop/assets/demos/**/*.sova
 
 # Claude Code artifacts - comprehensive exclusion
 **/.claude/

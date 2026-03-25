@@ -25,6 +25,8 @@ pub struct AudioPanel {
     buffer_size: Option<u32>,
     max_voices: usize,
     sample_paths: Vec<PathBuf>,
+    #[cfg(feature = "default-samples")]
+    default_samples_path: PathBuf,
     available_hosts: Vec<AudioHostInfo>,
     output_devices: Vec<AudioDeviceInfo>,
     input_devices: Vec<AudioDeviceInfo>,
@@ -41,6 +43,8 @@ impl AudioPanel {
             buffer_size: settings.buffer_size,
             max_voices: settings.max_voices,
             sample_paths: settings.sample_paths,
+            #[cfg(feature = "default-samples")]
+            default_samples_path: sova_server::audio::default_samples::ensure_default_samples(),
             available_hosts: Vec::new(),
             output_devices: Vec::new(),
             input_devices: Vec::new(),
@@ -52,6 +56,11 @@ impl AudioPanel {
 
     pub fn sample_paths(&self) -> &[PathBuf] {
         &self.sample_paths
+    }
+
+    #[cfg(feature = "default-samples")]
+    pub fn default_samples_path(&self) -> &std::path::Path {
+        &self.default_samples_path
     }
 
     pub fn settings(&self) -> AudioSettings {
@@ -104,7 +113,14 @@ impl AudioPanel {
             },
             channels: self.channels,
             buffer_size: self.buffer_size,
-            sample_paths: self.sample_paths.iter().map(|p| p.into()).collect(),
+            sample_paths: {
+                #[cfg(feature = "default-samples")]
+                let mut paths = vec![self.default_samples_path.clone()];
+                #[cfg(not(feature = "default-samples"))]
+                let mut paths = Vec::new();
+                paths.extend(self.sample_paths.iter().map(PathBuf::from));
+                paths
+            },
             max_voices: self.max_voices,
         }
     }
@@ -287,6 +303,12 @@ impl AudioPanel {
 
         ui.add_space(4.0);
         ui.label(t!("audio.sample_paths"));
+
+        #[cfg(feature = "default-samples")]
+        ui.horizontal(|ui| {
+            ui.colored_label(egui::Color32::GRAY, self.default_samples_path.display().to_string());
+            ui.weak("(built-in)");
+        });
 
         let mut remove_idx = None;
         for (i, path) in self.sample_paths.iter().enumerate() {

@@ -1,1 +1,7 @@
-saw snd c3 note 0.01 0.3 ad 3 eqmid 2000 eqmidfreq .
+0 .25 .5 .75 at
+saw snd
+[ c2 c3 e3 g3 bb3 ] cycle note
+0.8 decay
+-24 -48 rand eqmid
+2000 5000 rand eqmidfreq
+.

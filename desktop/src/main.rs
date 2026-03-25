@@ -34,8 +34,16 @@ use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
-const DEMOS: &[(&str, &[u8])] = &[
-    //("Evening jam with th4", include_bytes!("../assets/demos/th4.sova")),
+include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
+
+const DEMOS_GENERAL: &[(&str, &[u8])] = &[
+    ("Evening with th4", include_bytes!("../assets/demos/demos/th4.sova")),
+    ("Aliens near us", include_bytes!("../assets/demos/demos/aliens_near_us.sova")),
+    ("2005 algorave", include_bytes!("../assets/demos/demos/2005_algorave.sova")),
+    ("By the pond", include_bytes!("../assets/demos/demos/by_the_pond.sova")),
+    ("Classic move", include_bytes!("../assets/demos/demos/classic_move.sova")),
+    ("Lush elegiac stuff", include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova")),
+    ("Intense boots and cats", include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova")),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
@@ -193,6 +201,7 @@ fn main() -> eframe::Result {
                 rename_input: None,
                 master_volume: saved_master_volume,
                 muted: false,
+                was_audio_running: false,
             };
 
             app.chat_panel.detached = s.windows.chat_detached;
@@ -236,6 +245,7 @@ struct SovaApp {
     rename_input: Option<String>,
     master_volume: f32,
     muted: bool,
+    was_audio_running: bool,
 }
 
 impl SovaApp {
@@ -475,6 +485,12 @@ impl eframe::App for SovaApp {
             self.bridge.just_connected = false;
             self.bridge.send(ClientMessage::SetMasterVolume(self.effective_gain()));
         }
+        let audio_running = self.bridge.audio_state().running || self.bridge.has_feedback();
+        if audio_running && !self.was_audio_running {
+            self.scope_bar_panel.open = true;
+            self.vu_meter_panel.open = true;
+        }
+        self.was_audio_running = audio_running;
         self.logs.poll();
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -556,12 +572,23 @@ impl eframe::App for SovaApp {
                     });
                     ui.add_enabled_ui(connected, |ui| {
                         ui.menu_button(t!("menu.demos"), |ui| {
-                            for (name, bytes) in DEMOS {
-                                if ui.button(*name).clicked() {
-                                    self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
-                                    ui.close();
-                                }
-                            }
+                            let mut demo_submenu = |label: &str, demos: &[(&str, &[u8])]| {
+                                ui.add_enabled_ui(!demos.is_empty(), |ui| {
+                                    ui.menu_button(label, |ui| {
+                                        for (name, bytes) in demos {
+                                            if *name == "\x00" {
+                                                ui.separator();
+                                            } else if ui.button(*name).clicked() {
+                                                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                                                ui.close();
+                                            }
+                                        }
+                                    });
+                                });
+                            };
+                            demo_submenu("Cagire", DEMOS_CAGIRE);
+                            demo_submenu("Boinx", DEMOS_BOINX);
+                            demo_submenu("Demos", DEMOS_GENERAL);
                         });
                     });
                     ui.separator();
@@ -928,9 +955,13 @@ impl eframe::App for SovaApp {
         self.devices.show(ctx, &self.bridge);
 
         let sample_paths = self.audio.sample_paths();
+        #[cfg(feature = "default-samples")]
+        let default_sample_path = Some(self.audio.default_samples_path());
+        #[cfg(not(feature = "default-samples"))]
+        let default_sample_path: Option<&std::path::Path> = None;
         let is_hosting = self.server.is_running();
         self.sample_browser_panel
-            .show(ctx, &self.bridge, sample_paths, &self.appearance, is_hosting);
+            .show(ctx, &self.bridge, default_sample_path, sample_paths, &self.appearance, is_hosting);
 
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data, &self.appearance);

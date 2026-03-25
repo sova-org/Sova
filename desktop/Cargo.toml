@@ -8,7 +8,8 @@ name = "sova-frontend"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["default-samples"]
+default-samples = ["sova_server/default-samples"]
 asio = ["doux/asio", "sova_server/asio"]
 
 [dependencies]

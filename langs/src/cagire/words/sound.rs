@@ -14,7 +14,6 @@ pub(super) const WORDS: &[Word] = &[
     // Sample
     Word { name: "bank", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Select sample variant: appends suffix to sample name (e.g. kick + \"b\" → kick_b)", example: include_str!("../../../docs/cagire/examples/bank.cagire"), compile: Param, varargs: true },
     Word { name: "time", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set time offset", example: include_str!("../../../docs/cagire/examples/time.cagire"), compile: Param, varargs: true },
-    Word { name: "dur", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set duration", example: include_str!("../../../docs/cagire/examples/dur.cagire"), compile: Param, varargs: true },
     Word { name: "gate", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set gate duration (total note length, 0 = infinite sustain)", example: include_str!("../../../docs/cagire/examples/gate.cagire"), compile: Param, varargs: true },
     Word { name: "speed", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set playback speed", example: include_str!("../../../docs/cagire/examples/speed.cagire"), compile: Param, varargs: true },
     Word { name: "begin", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set sample start (0-1)", example: include_str!("../../../docs/cagire/examples/begin.cagire"), compile: Param, varargs: true },

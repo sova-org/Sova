@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use sova_core::compiler::{CompilationError, CompilationState};
+use sova_core::compiler::CompilationState;
 use sova_core::scene::script::Script;
 use sova_core::vm::Language;
 use sova_core::vm::interpreter::{Interpreter, InterpreterFactory};
@@ -131,6 +131,7 @@ impl Language for CagireInterpreterFactory {
             SyntaxRule::new(Variable, r"[@!,](?:[GLF]\.)?[a-zA-Z_][a-zA-Z0-9_]*"),
             SyntaxRule::new(String, r#""[^"]*""#),
             SyntaxRule::new(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
+            SyntaxRule::new(String, r"\b(?:sol|do|r[eé]|mi|fa|la|si|ti|ut)[#b]?[0-9]\b"),
             SyntaxRule::new(Number, r"-?\.?\d+(?:\.\d+)?"),
             SyntaxRule::new(Special, r"\."),
             SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
@@ -220,7 +221,7 @@ mod tests {
     #[test]
     fn syntax_notes_are_strings() {
         use TokenCategory::*;
-        let tokens = categories_for("c4 fs4 a3");
+        let tokens = categories_for("c4 fs4 a3 do4 mib3 sol#3 ré4 si4 ut4 fa5 ti2 la4 re4");
         for (tok, cat) in &tokens {
             assert_eq!(*cat, String, "note {tok} should be String (green)");
         }
@@ -241,7 +242,7 @@ impl InterpreterFactory for CagireInterpreterFactory {
         let mut dict = self.shared_dict.lock().unwrap().clone();
         match super::compiler::compile_script(script.content(), &mut dict) {
             Ok(_) => CompilationState::Parsed(None),
-            Err(e) => CompilationState::Error(CompilationError { lang: "cagire".into(), info: e, from: 0, to: 0 }),
+            Err(e) => CompilationState::Error(e.into_compilation_error()),
         }
     }
 }

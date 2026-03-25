@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use super::types::Span;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     PushInt(i64),
@@ -82,7 +84,7 @@ pub enum Op {
     Every,
     Bjork,
     PBjork,
-    Quotation(Arc<[Op]>),
+    Quotation(Arc<[Op]>, Arc<[Span]>),
     When,
     Unless,
     Adsr,
@@ -101,7 +103,7 @@ pub enum Op {
     ClearCmd,
     SetSpeed,
     At,
-    AtLoop(Arc<[Op]>),
+    AtLoop(Arc<[Op]>, Arc<[Span]>),
     IntRange,
     StepRange,
     Generate,
