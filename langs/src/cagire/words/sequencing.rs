@@ -52,6 +52,8 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "geom..", aliases: &[], category: "Generator", stack: "(start ratio count -- ...)", desc: "Geometric sequence", example: include_str!("../../../docs/cagire/examples/geom_seq.cagire"), compile: Simple, varargs: false },
     Word { name: "euclid", aliases: &[], category: "Generator", stack: "(k n -- f1 f2 ... fk)", desc: "Euclidean rhythm as normalized positions (0.0-1.0)", example: include_str!("../../../docs/cagire/examples/euclid.cagire"), compile: Simple, varargs: false },
     Word { name: "euclidrot", aliases: &[], category: "Generator", stack: "(k n r -- f1 f2 ... fk)", desc: "Euclidean rhythm as normalized positions with rotation", example: include_str!("../../../docs/cagire/examples/euclidrot.cagire"), compile: Simple, varargs: false },
+    Word { name: "div", aliases: &[], category: "Generator", stack: "(n -- f1 f2 ... fn)", desc: "Equal subdivision positions (0.0 to 1.0)", example: include_str!("../../../docs/cagire/examples/div.cagire"), compile: Simple, varargs: false },
+    Word { name: "swing", aliases: &[], category: "Generator", stack: "(n ratio -- f1 f2 ... fn)", desc: "Subdivision with swing (ratio 0.5 = straight)", example: include_str!("../../../docs/cagire/examples/swing.cagire"), compile: Simple, varargs: false },
     // Debug
     Word { name: "print", aliases: &[], category: "Debug", stack: "(v --)", desc: "Print top of stack to log", example: include_str!("../../../docs/cagire/examples/print.cagire"), compile: Simple, varargs: false },
 ];

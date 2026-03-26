@@ -110,6 +110,8 @@ pub enum Op {
     GeomRange,
     Euclid,
     EuclidRot,
+    Subdivide,
+    Swing,
     Times,
     Chord(&'static [i64]),
     Transpose,

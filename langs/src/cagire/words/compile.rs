@@ -117,6 +117,8 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "geom.." => Op::GeomRange,
         "euclid" => Op::Euclid,
         "euclidrot" => Op::EuclidRot,
+        "div" => Op::Subdivide,
+        "swing" => Op::Swing,
         "times" => Op::Times,
         "ccval" => Op::GetMidiCC,
         "mclock" => Op::MidiClock,

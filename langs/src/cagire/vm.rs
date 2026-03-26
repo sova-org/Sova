@@ -948,6 +948,33 @@ impl CagireVM {
                     }
                 }
 
+                Op::Subdivide => {
+                    let n = at!(pop_int(stack))?;
+                    if n < 1 { return Err(CagireError::new("div: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if n > 10_000 { return Err(CagireError::new("div: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let nf = n as f64;
+                    for i in 0..n {
+                        stack.push(Value::Float(i as f64 / nf));
+                    }
+                }
+
+                Op::Swing => {
+                    let ratio = at!(pop_float(stack))?;
+                    let n = at!(pop_int(stack))?;
+                    if n < 1 { return Err(CagireError::new("swing: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if n > 10_000 { return Err(CagireError::new("swing: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let pair_len = 2.0 / n as f64;
+                    for i in 0..n {
+                        let pair_start = (i / 2) as f64 * pair_len;
+                        let frac = if i % 2 == 0 {
+                            pair_start
+                        } else {
+                            (pair_start + ratio * pair_len).min(1.0 - f64::EPSILON)
+                        };
+                        stack.push(Value::Float(frac));
+                    }
+                }
+
                 Op::ModLfo(shape) => {
                     let period = at!(pop_float(stack))? * ctx.step_duration;
                     let max = at!(pop_float(stack))?;
