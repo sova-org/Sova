@@ -231,6 +231,7 @@ impl ScenePanel {
                     self.show_prelude_column(ui, available_height, accent, &opacity, &theme, editor_settings, bridge, &default_lang);
 
                     for li in 0..scene.lines.len() {
+                      ui.push_id(("line_col", li), |ui| {
                         let col_width = self.column_widths[li];
                         let line = &scene.lines[li];
 
@@ -413,6 +414,7 @@ impl ScenePanel {
                                 ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                             }
                         }
+                      });
                     }
 
                     // Add line button
