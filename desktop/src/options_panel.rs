@@ -5,13 +5,13 @@ use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::widgets::{EditorSettings, SyntaxThemePref};
 
 pub struct OptionsPanel {
-    system_fonts: Vec<String>,
+    system_fonts: Option<Vec<String>>,
 }
 
 impl OptionsPanel {
     pub fn new() -> Self {
         Self {
-            system_fonts: crate::fonts::list_system_fonts(),
+            system_fonts: None,
         }
     }
 
@@ -26,6 +26,7 @@ impl OptionsPanel {
         languages: &[LanguageDefinition],
     ) -> bool {
         let mut changed = false;
+        let system_fonts = self.system_fonts.get_or_insert_with(crate::fonts::list_system_fonts);
 
         use crate::widgets::hint;
 
@@ -70,7 +71,7 @@ impl OptionsPanel {
                         if ui.selectable_value(&mut appearance.ui_font, String::new(), "Default").changed() {
                             changed = true;
                         }
-                        for font in &self.system_fonts {
+                        for font in system_fonts.iter() {
                             if ui.selectable_value(&mut appearance.ui_font, font.clone(), font).changed() {
                                 changed = true;
                             }
@@ -212,7 +213,7 @@ impl OptionsPanel {
                         if ui.selectable_value(&mut appearance.editor_font, String::new(), "Default").changed() {
                             changed = true;
                         }
-                        for font in &self.system_fonts {
+                        for font in system_fonts.iter() {
                             if ui.selectable_value(&mut appearance.editor_font, font.clone(), font).changed() {
                                 changed = true;
                             }

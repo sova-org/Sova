@@ -255,7 +255,7 @@ impl TransportBar {
         }
 
         if clock.playing {
-            ctx.request_repaint();
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
 
         action

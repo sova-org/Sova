@@ -81,7 +81,7 @@ impl ScopePanel {
             .fill_alpha(fill_alpha)
             .glow(glow)
             .show(ui);
-        ctx.request_repaint();
+        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
     fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {

@@ -66,24 +66,24 @@ pub enum Op {
     Set,
     SetKeep,
     GetContext(&'static str),
-    Rand,
-    ExpRand,
-    LogRand,
+    Rand(Option<Span>),
+    ExpRand(Option<Span>),
+    LogRand(Option<Span>),
     Seed,
-    Cycle,
-    PCycle,
-    Choose,
-    Bounce,
-    WChoose,
-    ChanceExec,
-    ProbExec,
-    Coin,
+    Cycle(Option<Span>),
+    PCycle(Option<Span>),
+    Choose(Option<Span>),
+    Bounce(Option<Span>),
+    WChoose(Option<Span>),
+    ChanceExec(Option<Span>),
+    ProbExec(Option<Span>),
+    Coin(Option<Span>),
     Mtof,
     Ftom,
     SetTempo,
-    Every,
-    Bjork,
-    PBjork,
+    Every(Option<Span>),
+    Bjork(Option<Span>),
+    PBjork(Option<Span>),
     Quotation(Arc<[Op]>, Arc<[Span]>),
     When,
     Unless,
@@ -132,13 +132,13 @@ pub enum Op {
     MidiStart,
     MidiStop,
     MidiContinue,
-    PBounce,
-    Index,
-    Except,
-    EveryOffset,
-    ExceptOffset,
+    PBounce(Option<Span>),
+    Index(Option<Span>),
+    Except(Option<Span>),
+    EveryOffset(Option<Span>),
+    ExceptOffset(Option<Span>),
     Mark,
-    Count,
+    Count(Option<Span>),
     EmitAll,
     ClearGlobal,
     Rec,
@@ -146,4 +146,19 @@ pub enum Op {
     Orec,
     Odub,
     Print,
+}
+
+impl Op {
+    pub(crate) fn attach_span(&mut self, span: Span) {
+        match self {
+            Op::Rand(s) | Op::ExpRand(s) | Op::LogRand(s) | Op::Coin(s)
+            | Op::Cycle(s) | Op::PCycle(s) | Op::Bounce(s) | Op::PBounce(s)
+            | Op::Choose(s) | Op::WChoose(s)
+            | Op::ChanceExec(s) | Op::ProbExec(s)
+            | Op::Every(s) | Op::Except(s) | Op::EveryOffset(s) | Op::ExceptOffset(s)
+            | Op::Bjork(s) | Op::PBjork(s)
+            | Op::Count(s) | Op::Index(s) => *s = Some(span),
+            _ => {}
+        }
+    }
 }

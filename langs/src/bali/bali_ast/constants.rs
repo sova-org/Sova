@@ -1,6 +1,6 @@
 use sova_core::vm::variable::Variable;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 pub const DEBUG_TIME_STATEMENTS: bool = false;
 pub const DEBUG_INSTRUCTIONS: bool = false;
@@ -10,11 +10,12 @@ pub const DEFAULT_DURATION: i64 = 1;
 
 pub const FUNCTION_PREFIX: &str = "_function_";
 
-lazy_static! {
-    pub static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());
-    pub static ref LOCAL_PICK_VAR: Variable = Variable::Instance("_local_pick".to_owned());
-    pub static ref LOCAL_ALT_VAR: Variable = Variable::Instance("_local_alt".to_owned());
-}
+pub static LOCAL_TARGET_VAR: LazyLock<Variable> =
+    LazyLock::new(|| Variable::Instance("_local_target".to_owned()));
+pub static LOCAL_PICK_VAR: LazyLock<Variable> =
+    LazyLock::new(|| Variable::Instance("_local_pick".to_owned()));
+pub static LOCAL_ALT_VAR: LazyLock<Variable> =
+    LazyLock::new(|| Variable::Instance("_local_alt".to_owned()));
 
 pub fn generate_note_map() -> HashMap<String, i64> {
     let mut m = HashMap::new();
@@ -157,9 +158,7 @@ pub fn generate_note_map() -> HashMap<String, i64> {
     m
 }
 
-lazy_static! {
-    pub static ref NOTE_MAP: HashMap<String, i64> = generate_note_map();
-}
+pub static NOTE_MAP: LazyLock<HashMap<String, i64>> = LazyLock::new(generate_note_map);
 
 #[cfg(test)]
 mod tests {

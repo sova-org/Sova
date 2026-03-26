@@ -84,6 +84,7 @@ pub struct SpectrumPanel {
     analyzer: Option<SpectrumAnalyzer>,
     bands: Vec<f32>,
     normalized: Vec<f32>,
+    last_data_ptr: usize,
 }
 
 impl SpectrumPanel {
@@ -94,6 +95,7 @@ impl SpectrumPanel {
             analyzer: None,
             bands: vec![0.0; NUM_BANDS],
             normalized: vec![0.0; NUM_BANDS],
+            last_data_ptr: 0,
         }
     }
 
@@ -146,9 +148,13 @@ impl SpectrumPanel {
             .analyzer
             .get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
 
+        let data_ptr = scope_data.as_ptr() as usize;
         let smoothing = self.settings.smoothing;
-        let raw = analyzer.analyze(scope_data);
-        widgets::smooth(&mut self.bands, &raw, smoothing);
+        if data_ptr != self.last_data_ptr {
+            self.last_data_ptr = data_ptr;
+            let raw = analyzer.analyze(scope_data);
+            widgets::smooth(&mut self.bands, &raw, smoothing);
+        }
 
         let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
         for (i, &b) in self.bands.iter().enumerate() {
@@ -159,7 +165,7 @@ impl SpectrumPanel {
             .bar_gap(self.settings.bar_gap)
             .gradient_strength(self.settings.gradient_strength)
             .show(ui);
-        ctx.request_repaint();
+        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
     fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Instant;
 
@@ -101,7 +101,7 @@ pub struct ClientBridge {
     pub syntax_map: HashMap<String, CompiledSyntax>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
     peer_cursors: HashMap<String, (usize, usize, Option<(usize, usize)>)>,
-    chat_messages: Vec<ChatMessage>,
+    chat_messages: VecDeque<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
 
     // Remote Hydra code from peers
@@ -153,7 +153,7 @@ impl ClientBridge {
             syntax_map: HashMap::new(),
             peer_editing: HashMap::new(),
             peer_cursors: HashMap::new(),
-            chat_messages: Vec::new(),
+            chat_messages: VecDeque::new(),
             errors: HashMap::new(),
             remote_hydra: None,
             compilation_flashes: HashMap::new(),
@@ -503,7 +503,7 @@ impl ClientBridge {
                     let time = now_hhmm();
                     for p in &new_peers {
                         if !self.peers.contains(p) {
-                            self.chat_messages.push(ChatMessage {
+                            self.chat_messages.push_back(ChatMessage {
                                 time: time.clone(),
                                 user: String::new(),
                                 message: format!("{p} joined"),
@@ -513,7 +513,7 @@ impl ClientBridge {
                     }
                     for p in &self.peers {
                         if !new_peers.contains(p) {
-                            self.chat_messages.push(ChatMessage {
+                            self.chat_messages.push_back(ChatMessage {
                                 time: time.clone(),
                                 user: String::new(),
                                 message: format!("{p} left"),
@@ -555,7 +555,7 @@ impl ClientBridge {
                     });
                 }
                 ServerMessage::Chat(user, message) => {
-                    self.chat_messages.push(ChatMessage {
+                    self.chat_messages.push_back(ChatMessage {
                         time: now_hhmm(),
                         user,
                         message,
@@ -634,17 +634,15 @@ impl ClientBridge {
         }
         self.cap_chat();
 
-        if let Some(engine) = &self.feedback_engine {
+        if let Some(ref engine) = self.feedback_engine {
             self.devices = engine.devices().device_list();
             self.audio_state = engine.audio_state();
-            let data = engine.scope_data();
-            if !data.is_empty() {
-                self.scope_data = data;
-            }
-            let peaks = engine.peak_data();
-            if !peaks.is_empty() {
-                self.peak_data = peaks;
-            }
+        }
+        if let Some(ref engine) = self.feedback_engine {
+            engine.fill_scope_data(&mut self.scope_data);
+        }
+        if let Some(ref engine) = self.feedback_engine {
+            engine.fill_peak_data(&mut self.peak_data);
         }
     }
 
@@ -781,12 +779,12 @@ impl ClientBridge {
         self.scene().and_then(|s| s.get_frame(li, fi)).map(|f| f.script().compilation_state())
     }
 
-    pub fn chat_messages(&self) -> &[ChatMessage] {
+    pub fn chat_messages(&self) -> &VecDeque<ChatMessage> {
         &self.chat_messages
     }
 
     pub fn push_chat(&mut self, user: String, message: String) {
-        self.chat_messages.push(ChatMessage {
+        self.chat_messages.push_back(ChatMessage {
             time: now_hhmm(),
             user,
             message,
@@ -800,9 +798,8 @@ impl ClientBridge {
     }
 
     fn cap_chat(&mut self) {
-        if self.chat_messages.len() > MAX_CHAT_MESSAGES {
-            self.chat_messages
-                .drain(..self.chat_messages.len() - MAX_CHAT_MESSAGES);
+        while self.chat_messages.len() > MAX_CHAT_MESSAGES {
+            self.chat_messages.pop_front();
         }
     }
 

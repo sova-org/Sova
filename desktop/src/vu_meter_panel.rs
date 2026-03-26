@@ -119,7 +119,7 @@ impl VuMeterPanel {
                     VuMeter::new(ch.rms_db, ch.peak_db).paint_bar(&painter, bar_rect);
                 }
 
-                ctx.request_repaint();
+                ctx.request_repaint_after(std::time::Duration::from_millis(33));
             });
     }
 }

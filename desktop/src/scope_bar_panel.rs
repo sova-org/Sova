@@ -52,7 +52,7 @@ impl ScopeBarPanel {
                     .fill_alpha(scope_settings.fill_alpha)
                     .glow(scope_settings.glow)
                     .show(ui);
-                ctx.request_repaint();
+                ctx.request_repaint_after(std::time::Duration::from_millis(33));
             });
 
         self.height = resp.response.rect.height();
