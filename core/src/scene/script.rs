@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::vm::interpreter::Interpreter;
+use crate::vm::interpreter::{Annotation, Interpreter};
 use crate::{
     clock::{NEVER, SyncTime},
     compiler::{CompilationError, CompilationState},
@@ -240,6 +240,10 @@ impl ScriptExecution {
     #[inline]
     pub fn remaining_before(&self, date: SyncTime) -> SyncTime {
         self.scheduled_time.saturating_sub(date)
+    }
+
+    pub fn annotations(&self) -> Vec<Annotation> {
+        self.interpreter.as_ref().map(|i| i.annotations()).unwrap_or_default()
     }
 }
 

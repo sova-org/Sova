@@ -132,11 +132,11 @@ impl ServerPanel {
 
         sova_core::logger::init_standalone();
 
-        let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+        let (log_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
         let client_registry = ClientRegistry::new();
-        sova_core::logger::set_full_mode(update_sender.clone());
+        sova_core::logger::set_full_mode(log_sender.clone());
 
-        let mut log_sub = update_sender.subscribe();
+        let mut log_sub = log_sender.subscribe();
         let log_tx = self.log_tx.clone();
         let ctx = self.ctx.clone();
         let log_forwarder = self.runtime.spawn(async move {
@@ -163,7 +163,7 @@ impl ServerPanel {
 
         let languages = Arc::new(langs::create_language_center());
 
-        let (world_handle, sched_handle, sched_iface, sched_update) =
+        let (mut world_handle, mut sched_handle, sched_iface, sched_update) =
             sova_core::init::start_scheduler_and_world(
                 clock_server.clone(),
                 devices.clone(),
@@ -202,7 +202,7 @@ impl ServerPanel {
             clock_server.clone(),
             devices.clone(),
             sched_iface,
-            update_sender,
+            log_sender,
             client_registry.clone(),
             languages.clone(),
             audio_engine_state,
@@ -213,24 +213,16 @@ impl ServerPanel {
             master_gain,
         );
 
+        let ip = self.ip.clone();
+        let server = Arc::new(SovaCoreServer::new(ip, port, server_state));
+
         // Orchestrator thread for embedded server
-        let orch_sched_iface = server_state.sched_iface.clone();
-        let orch_scene_image = Arc::clone(&scene_image);
-        let orch_client_registry = client_registry;
-        let orch_is_playing = server_state.is_playing.clone();
-        let orch_clock = clock_server;
-        let orch_devices = devices.clone();
-        let orch_languages = languages;
+        let server_clone = Arc::clone(&server);
         std::thread::spawn(move || {
             let mut world_handle = world_handle;
             let mut sched_handle = sched_handle;
 
-            start_image_maintainer(
-                sched_update,
-                orch_scene_image.clone(),
-                orch_client_registry.clone(),
-                orch_is_playing.clone(),
-            );
+            server_clone.start_core();
 
             while let Ok(req) = core_restart_rx.recv() {
                 let mut requestors = vec![req];
@@ -238,60 +230,17 @@ impl ServerPanel {
                     requestors.push(extra);
                 }
 
-                {
-                    let iface = orch_sched_iface.read().unwrap();
-                    let _ = iface.send(SchedulerMessage::Shutdown);
-                }
+                server_clone.stop_core();
                 let _ = sched_handle.join();
                 let _ = world_handle.join();
-                orch_is_playing.store(false, std::sync::atomic::Ordering::Relaxed);
 
-                let (new_world, new_sched, new_iface, new_update) =
-                    sova_core::init::start_scheduler_and_world(
-                        orch_clock.clone(),
-                        orch_devices.clone(),
-                        orch_languages.clone(),
-                    );
-                world_handle = new_world;
-                sched_handle = new_sched;
+                let (new_world, new_sched, err) = server_clone.start_core();
 
-                let scene = orch_scene_image.blocking_lock().clone();
-                let result = new_iface.send(SchedulerMessage::SetScene(
-                    scene.clone(),
-                    ActionTiming::Immediate,
-                ));
-
-                if let Err(e) = result {
+                if let Some(e) = err {
                     for r in requestors {
-                        let _ = r.response_tx.send(Err(format!("Failed to set scene: {e}")));
+                        let _ = r.response_tx.send(Err(e));
                     }
                     continue;
-                }
-
-                *orch_sched_iface.write().unwrap() = new_iface;
-
-                start_image_maintainer(
-                    new_update,
-                    orch_scene_image.clone(),
-                    orch_client_registry.clone(),
-                    orch_is_playing.clone(),
-                );
-
-                if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
-                    &sova_server::ServerMessage::CoreRestarted,
-                ) {
-                    orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
-                        bytes: Arc::new(bytes),
-                        droppable: false,
-                    });
-                }
-                if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
-                    &sova_server::ServerMessage::SceneValue(scene),
-                ) {
-                    orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
-                        bytes: Arc::new(bytes),
-                        droppable: false,
-                    });
                 }
 
                 for r in requestors {
@@ -299,16 +248,10 @@ impl ServerPanel {
                 }
             }
 
-            {
-                let iface = orch_sched_iface.read().unwrap();
-                let _ = iface.send(SchedulerMessage::Shutdown);
-            }
-            let _ = sched_handle.join();
-            let _ = world_handle.join();
+            server_clone.stop_core();
         });
 
-        let ip = self.ip.clone();
-        let server = SovaCoreServer::new(ip, port, server_state);
+        
 
         let server_task = self
             .runtime

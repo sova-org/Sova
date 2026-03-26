@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene, script::Script}, schedule::{SchedulerMessage, playback::PlaybackState}, vm::{language::LanguageDefinition, variable::VariableValue}
+    clock::SyncTime, protocol::DeviceInfo, scene::Scene, schedule::{SchedulerMessage, SovaNotification}, vm::{language::LanguageDefinition}
 };
 
 use crate::server::Snapshot;
@@ -30,34 +28,19 @@ pub enum ServerMessage {
     PeerStartedEditing(String, usize, usize),
     PeerStoppedEditing(String, usize, usize),
     PeerCursorMoved(String, usize, usize, Option<(usize, usize)>),
-    PlaybackStateChanged(PlaybackState),
-    Log(LogMessage),
     Chat(String, String),
     Success,
     InternalError(String),
     ConnectionRefused(String),
     Snapshot(Snapshot),
-    DeviceList(Vec<DeviceInfo>),
     ClockState(f64, f64, SyncTime, f64),
-    SceneValue(Scene),
-    SceneMode(ExecutionMode),
-    LineValues(Vec<(usize, Line)>),
-    LineConfigurations(Vec<(usize, Line)>),
-    AddLine(usize, Line),
-    RemoveLine(usize),
-    FrameValues(Vec<(usize, usize, Frame)>),
-    AddFrame(usize, usize, Frame),
-    RemoveFrame(usize, usize),
-    FramePosition(Vec<Vec<(usize, usize)>>),
-    GlobalVariablesUpdate(HashMap<String, VariableValue>),
-    CompilationUpdate(usize, usize, u64, CompilationState),
     DevicesRestored {
         missing_devices: Vec<String>,
     },
     AudioEngineState(AudioEngineState),
     ScopeData(Vec<f32>),
     PeakData(Vec<f32>),
-    Error(SovaError),
+
     FeedbackEnabled {
         scene: Scene,
         tempo: f64,
@@ -71,7 +54,6 @@ pub enum ServerMessage {
         start_stop_sync: bool,
         num_peers: u32,
     },
-    ScenePrelude(Vec<Script>),
     HydraCode(String, String),
     ScriptEdit {
         sender: String,
@@ -79,19 +61,22 @@ pub enum ServerMessage {
         fi: usize,
         ops: Vec<crate::TextOp>,
     },
+    #[serde(untagged)]
+    Notification(SovaNotification),
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use sova_core::{
         compiler::{CompilationError, CompilationState},
         error::SovaError,
         protocol::{
-            log::{LogMessage, Severity},
-            DeviceInfo,
+            DeviceInfo, log::{LogMessage, Severity}
         },
-        scene::{ExecutionMode, Frame, Line, Scene},
+        scene::{ExecutionMode, Frame, Line, Scene, script::Script},
         schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState},
         vm::{language::LanguageDefinition, variable::VariableValue},
     };
@@ -112,6 +97,7 @@ mod tests {
 
     #[test]
     fn server_message_roundtrip_all_variants() {
+        use SovaNotification::*;
         let scene = Scene::default();
         let line = Line::default();
         let frame = Frame::default();
@@ -151,34 +137,34 @@ mod tests {
             ServerMessage::PeerStoppedEditing("user".into(), 0, 1),
             ServerMessage::PeerCursorMoved("user".into(), 2, 3, None),
             ServerMessage::PeerCursorMoved("user".into(), 2, 3, Some((10, 5))),
-            ServerMessage::PlaybackStateChanged(PlaybackState::Stopped),
-            ServerMessage::PlaybackStateChanged(PlaybackState::Starting(1.0)),
-            ServerMessage::PlaybackStateChanged(PlaybackState::Playing),
-            ServerMessage::Log(LogMessage {
+            ServerMessage::Notification(PlaybackStateChanged(PlaybackState::Stopped)),
+            ServerMessage::Notification(PlaybackStateChanged(PlaybackState::Starting(1.0))),
+            ServerMessage::Notification(PlaybackStateChanged(PlaybackState::Playing)),
+            ServerMessage::Notification(Log(LogMessage {
                 level: Severity::Info,
                 event: None,
                 msg: "hello".into(),
-            }),
+            })),
             ServerMessage::Chat("user".into(), "hi".into()),
             ServerMessage::Success,
             ServerMessage::InternalError("oops".into()),
             ServerMessage::ConnectionRefused("nope".into()),
             ServerMessage::Snapshot(snapshot),
-            ServerMessage::DeviceList(vec![device.clone()]),
+            ServerMessage::Notification(DeviceListChanged(vec![device.clone()])),
             ServerMessage::ClockState(120.0, 1.5, 1000, 4.0),
-            ServerMessage::SceneValue(scene.clone()),
-            ServerMessage::SceneMode(ExecutionMode::Free),
-            ServerMessage::SceneMode(ExecutionMode::AtQuantum),
-            ServerMessage::SceneMode(ExecutionMode::LongestLine),
-            ServerMessage::LineValues(vec![(0, line.clone())]),
-            ServerMessage::LineConfigurations(vec![(1, line.clone())]),
-            ServerMessage::AddLine(0, line.clone()),
-            ServerMessage::RemoveLine(2),
-            ServerMessage::FrameValues(vec![(0, 0, frame.clone())]),
-            ServerMessage::AddFrame(0, 1, frame.clone()),
-            ServerMessage::RemoveFrame(1, 2),
-            ServerMessage::FramePosition(vec![vec![(0, 1)], vec![(2, 3)]]),
-            ServerMessage::GlobalVariablesUpdate(HashMap::from([
+            ServerMessage::Notification(UpdatedScene(scene.clone())),
+            ServerMessage::Notification(UpdatedSceneMode(ExecutionMode::Free)),
+            ServerMessage::Notification(UpdatedSceneMode(ExecutionMode::AtQuantum)),
+            ServerMessage::Notification(UpdatedSceneMode(ExecutionMode::LongestLine)),
+            ServerMessage::Notification(UpdatedLines(vec![(0, line.clone())])),
+            ServerMessage::Notification(UpdatedLineConfigurations(vec![(1, line.clone())])),
+            ServerMessage::Notification(AddedLine(0, line.clone())),
+            ServerMessage::Notification(RemovedLine(2)),
+            ServerMessage::Notification(UpdatedFrames(vec![(0, 0, frame.clone())])),
+            ServerMessage::Notification(AddedFrame(0, 1, frame.clone())),
+            ServerMessage::Notification(RemovedFrame(1, 2)),
+            ServerMessage::Notification(FramePositionChanged(vec![vec![(0, 1)], vec![(2, 3)]])),
+            ServerMessage::Notification(GlobalVariablesChanged(HashMap::from([
                 ("x".into(), VariableValue::Integer(42)),
                 ("y".into(), VariableValue::Float(3.14)),
                 ("z".into(), VariableValue::Bool(true)),
@@ -193,30 +179,30 @@ mod tests {
                     VariableValue::Float(2.5),
                     VariableValue::Bool(false),
                 ])),
-            ])),
+            ]))),
             // CompilationState variants — the most likely to cause issues
-            ServerMessage::CompilationUpdate(0, 0, 1, CompilationState::NotCompiled),
-            ServerMessage::CompilationUpdate(0, 0, 2, CompilationState::Compiling),
-            ServerMessage::CompilationUpdate(0, 0, 3, CompilationState::Compiled(Default::default())),
-            ServerMessage::CompilationUpdate(0, 0, 4, CompilationState::Parsed(None)),
-            ServerMessage::CompilationUpdate(0, 0, 5, CompilationState::Error(CompilationError {
+            ServerMessage::Notification(CompilationUpdated(0, 0, 1, CompilationState::NotCompiled)),
+            ServerMessage::Notification(CompilationUpdated(0, 0, 2, CompilationState::Compiling)),
+            ServerMessage::Notification(CompilationUpdated(0, 0, 3, CompilationState::Compiled(Default::default()))),
+            ServerMessage::Notification(CompilationUpdated(0, 0, 4, CompilationState::Parsed(None))),
+            ServerMessage::Notification(CompilationUpdated(0, 0, 5, CompilationState::Error(CompilationError {
                 lang: "bob".into(),
                 info: "parse error".into(),
                 from: 0,
                 to: 10,
-            })),
+            }))),
             ServerMessage::DevicesRestored {
                 missing_devices: vec!["MIDI1".into()],
             },
             ServerMessage::AudioEngineState(audio),
             ServerMessage::ScopeData(vec![0.1, -0.5, 0.9]),
             ServerMessage::PeakData(vec![0.8, 0.6]),
-            ServerMessage::Error(SovaError {
+            ServerMessage::Notification(Error(SovaError {
                 line: 0,
                 frame: 1,
                 position: None,
                 text: "runtime error".into(),
-            }),
+            })),
             ServerMessage::FeedbackEnabled {
                 scene: scene.clone(),
                 tempo: 120.0,
@@ -233,7 +219,7 @@ mod tests {
                 num_peers: 3,
             },
             ServerMessage::HydraCode("alice".into(), "osc().out()".into()),
-            ServerMessage::ScenePrelude(vec![Script::default()]),
+            ServerMessage::Notification(UpdatedScenePrelude(vec![Script::default()])),
         ];
 
         for msg in &variants {

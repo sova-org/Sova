@@ -120,9 +120,9 @@ async fn main() {
 
     sova_core::logger::init_standalone();
 
-    let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+    let (log_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
     let client_registry = ClientRegistry::new();
-    sova_core::logger::set_full_mode(update_sender.clone());
+    sova_core::logger::set_full_mode(log_sender.clone());
 
     println!("Logger initialized in full mode.");
 
@@ -230,7 +230,7 @@ async fn main() {
         clock_server.clone(),
         devices.clone(),
         sched_iface,
-        update_sender.clone(),
+        log_sender.clone(),
         client_registry.clone(),
         languages.clone(),
         audio_engine_state,
@@ -241,25 +241,15 @@ async fn main() {
         master_gain,
     );
 
+    let server = Arc::new(SovaCoreServer::new(cli.ip, cli.port, server_state));
+
     // Orchestrator thread: owns core thread handles, handles restart requests
-    let orch_sched_iface = server_state.sched_iface.clone();
-    let orch_scene_image = scene_image;
-    let orch_client_registry = client_registry;
-    let orch_is_playing = server_state.is_playing.clone();
-    let orch_clock = clock_server.clone();
-    let orch_devices = devices.clone();
-    let orch_languages = languages;
+    let server_clone = Arc::clone(&server);
     std::thread::spawn(move || {
         let mut world_handle = world_handle;
         let mut sched_handle = sched_handle;
 
-        // Start initial image maintainer
-        start_image_maintainer(
-            sched_update,
-            orch_scene_image.clone(),
-            orch_client_registry.clone(),
-            orch_is_playing.clone(),
-        );
+        server.set_scheduler_connection(sched_iface, sched_update);
 
         while let Ok(req) = core_restart_rx.recv() {
             let mut requestors = vec![req];
@@ -270,7 +260,7 @@ async fn main() {
 
             // Shut down old core
             {
-                let iface = orch_sched_iface.read().unwrap();
+                let iface = server_clone.state.sched_iface.read().unwrap();
                 let _ = iface.send(SchedulerMessage::Shutdown);
             }
             let _ = sched_handle.join();
@@ -301,16 +291,8 @@ async fn main() {
                 continue;
             }
 
-            // Swap the sender
-            *orch_sched_iface.write().unwrap() = new_iface;
-
-            // Start new image maintainer
-            start_image_maintainer(
-                new_update,
-                orch_scene_image.clone(),
-                orch_client_registry.clone(),
-                orch_is_playing.clone(),
-            );
+            // Update the server connection
+            server_clone.set_scheduler_connection(new_iface, new_update);
 
             // Broadcast CoreRestarted + scene resync to all clients
             if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
@@ -345,7 +327,7 @@ async fn main() {
         let _ = world_handle.join();
     });
 
-    let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
+    
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
     match server.start(None).await {

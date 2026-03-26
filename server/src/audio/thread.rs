@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
+use sova_core::schedule::SovaNotification;
 
 use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture};
 use crate::client::serialize_to_wire_frame;
@@ -61,7 +62,7 @@ pub fn spawn_audio_thread(
                             if let Err(e) = devices.assign_slot(1, "Doux") {
                                 eprintln!("Failed to assign Doux to Slot 1: {}", e);
                             }
-                            let msg = ServerMessage::DeviceList(devices.device_list());
+                            let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(devices.device_list()));
                             if let Ok(bytes) = serialize_to_wire_frame(&msg) {
                                 client_registry.broadcast(BroadcastItem::Raw {
                                     bytes: Arc::new(bytes),
@@ -134,7 +135,7 @@ pub fn spawn_audio_thread(
                                     if let Err(e) = devices.assign_slot(1, "Doux") {
                                         eprintln!("Failed to assign Doux to Slot 1: {}", e);
                                     }
-                                    let msg = ServerMessage::DeviceList(devices.device_list());
+                                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(devices.device_list()));
                                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
                                         client_registry.broadcast(BroadcastItem::Raw {
                                             bytes: Arc::new(bytes),

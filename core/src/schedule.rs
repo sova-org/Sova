@@ -151,17 +151,6 @@ impl Scheduler {
                     .update_notifier
                     .send(SovaNotification::UpdatedScene(scene));
             }
-            SchedulerMessage::SetScenePrelude(scripts) => {
-                self.scene.prelude = scripts;
-                let mut execs = self.scene
-                    .trigger_prelude(&self.languages, self.clock.micros())
-                    .map(|exec| (exec, 1.0))
-                    .collect();
-                self.scratchpad.append(&mut execs);
-                let _ = self
-                    .update_notifier
-                    .send(SovaNotification::UpdatedScenePrelude(self.scene.prelude.clone()));
-            }
             SchedulerMessage::DeviceMessage(id, msg, _) => {
                 let device = self.devices.get_out_device_at_slot(id);
                 if let Some(device) = device {
@@ -189,6 +178,8 @@ impl Scheduler {
                     &self.update_notifier,
                     &self.languages,
                     &self.feedback,
+                    &self.clock,
+                    &mut self.scratchpad
                 );
                 self.scene_structure = self.scene.structure();
             }

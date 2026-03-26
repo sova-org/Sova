@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::compiler::CompilationState;
 use crate::error::SovaError;
 use crate::scene::script::Script;
+use crate::vm::interpreter::Annotation;
 use crate::vm::variable::VariableValue;
 use crate::scene::{ExecutionMode, Frame, Line, Scene};
 use crate::protocol::DeviceInfo;
@@ -36,31 +37,24 @@ pub enum SovaNotification {
     AddedFrame(usize, usize, Frame),
     /// Removed a frame
     RemovedFrame(usize, usize),
-
+    /// Updates the compilation state of a frame
     CompilationUpdated(usize, usize, u64, CompilationState),
-
+    /// Updates the tempo
     TempoChanged(f64),
+    /// Updates the quantum
     QuantumChanged(f64),
+    /// Relays a log message
     Log(LogMessage),
+    /// Updates the playback state
     PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
     FramePositionChanged(Vec<Vec<(usize, usize)>>),
-    /// List of connected clients changed.
-    ClientListChanged(Vec<String>),
-    /// A chat message was received from a client.
-    ChatReceived(String, String), // (sender_name, message)
-    /// A peer started editing a specific frame.
-    PeerStartedEditingFrame(String, usize, usize),
-    /// A peer stopped editing a specific frame.
-    PeerStoppedEditingFrame(String, usize, usize),
-    /// A peer moved their cursor on the scene grid, with optional text cursor (line, col).
-    PeerCursorMoved(String, usize, usize, Option<(usize, usize)>),
     /// The list of available/connected devices changed.
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated
     GlobalVariablesChanged(HashMap<String, VariableValue>),
-    /// Raw audio samples for oscilloscope and spectrum analysis.
-    ScopeData(Vec<f32>),
+    /// Updates scene annotations
+    Annotations(Vec<Vec<Vec<Annotation>>>),
     /// An internal error occured
     Error(SovaError)
 }

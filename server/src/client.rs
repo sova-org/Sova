@@ -284,7 +284,7 @@ mod tests {
         clock::TimeSpan,
         protocol::DeviceInfo,
         scene::{Frame, Line, Scene, script::Script},
-        schedule::ActionTiming,
+        schedule::{ActionTiming, SovaNotification},
         vm::{
             language::{
                 LanguageDefinition, LanguageDocumentation, LanguageElement, LanguageSyntax,
@@ -641,7 +641,7 @@ mod tests {
         let positions: Vec<Vec<(usize, usize)>> = (0..lines)
             .map(|l| vec![(l % 8, l * 2), (l % 4, l)])
             .collect();
-        ServerMessage::FramePosition(positions)
+        ServerMessage::Notification(SovaNotification::FramePositionChanged(positions))
     }
 
     /// Serialize a ServerMessage to wire frame, read it back, deserialize, return.
@@ -686,7 +686,7 @@ mod tests {
         let msg = make_frame_position(16);
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
-            ServerMessage::FramePosition(ref positions) => assert_eq!(positions.len(), 16),
+            ServerMessage::Notification(SovaNotification::FramePositionChanged(ref positions)) => assert_eq!(positions.len(), 16),
             other => panic!("expected FramePosition, got {:?}", std::mem::discriminant(&other)),
         }
     }
@@ -926,6 +926,7 @@ mod tests {
             ClientMessage::RestoreDevices(vec![device]),
             ClientMessage::GetAudioEngineState,
             ClientMessage::RestartAudioEngine(AudioRestartConfig {
+                host: Some("Jack".into()),
                 device: Some("BlackHole 16ch".into()),
                 input_device: None,
                 channels: 2,

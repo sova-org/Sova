@@ -1,5 +1,5 @@
 use crate::{
-    scene::{Frame, Scene}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::LanguageCenter
+    clock::Clock, scene::{Frame, Scene, script::ScriptExecution}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::LanguageCenter
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -13,8 +13,20 @@ impl ActionProcessor {
         update_notifier: &Sender<SovaNotification>,
         languages: &LanguageCenter,
         feedback: &Sender<SchedulerMessage>,
+        clock: &Clock,
+        scratchpad: &mut Vec<(ScriptExecution, f64)>
     ) {
         match action {
+            SchedulerMessage::SetScenePrelude(scripts) => {
+                scene.prelude = scripts;
+                let mut execs = scene
+                    .trigger_prelude(languages, clock.micros())
+                    .map(|exec| (exec, 1.0))
+                    .collect();
+                scratchpad.append(&mut execs);
+                let _ = update_notifier
+                    .send(SovaNotification::UpdatedScenePrelude(scene.prelude.clone()));
+            }
             SchedulerMessage::SetLines(lines, _) => {
                 let mut updated = lines.clone();
                 let mut upd_index = BTreeSet::new();
@@ -133,9 +145,13 @@ impl ActionProcessor {
             SchedulerMessage::StartLineAt(line_id, frame_id, _) => {
                 scene.line_mut(line_id).start_at(frame_id);
             }
+            SchedulerMessage::GetAnnotations => {
+                let _ = update_notifier.send(
+                    SovaNotification::Annotations(scene.annotations())
+                );
+            }
             // Handled earlier by scheduler
             SchedulerMessage::TransportStart(_)
-            | SchedulerMessage::SetScenePrelude(_)
             | SchedulerMessage::TransportStop(_)
             | SchedulerMessage::SetTempo(_, _)
             | SchedulerMessage::SetQuantum(_, _)

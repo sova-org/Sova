@@ -4,7 +4,7 @@ use crate::{
     clock::NEVER,
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
-    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
+    vm::{PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory}},
 };
 
 use serde::{Deserialize, Serialize};
@@ -516,6 +516,17 @@ impl Line {
             .iter()
             .map(|s| (s.current_frame, s.current_repetition))
             .collect()
+    }
+
+    pub fn annotations(&self) -> Vec<Vec<Annotation>> {
+        let mut res = vec![Vec::new() ; self.n_frames()];
+        for (i, frame) in self.frames.iter().enumerate() {
+            let annotations = frame.annotations();
+            if !annotations.is_empty() {
+                res[i] = annotations;
+            }
+        }
+        res
     }
 }
 

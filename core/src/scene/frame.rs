@@ -3,14 +3,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{NEVER, SyncTime},
-    compiler::CompilationState,
-    vm::{
-        PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory,
+    clock::{NEVER, SyncTime}, compiler::CompilationState, log_eprintln, scene::script::{Script, ScriptExecution}, vm::{
+        PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory},
         variable::VariableStore,
-    },
-    log_eprintln,
-    scene::script::{Script, ScriptExecution},
+    }
 };
 
 #[derive(Serialize, Deserialize)]
@@ -168,6 +164,14 @@ impl Frame {
 
     pub fn has_executions(&self) -> bool {
         !self.executions.is_empty()
+    }
+
+    pub fn annotations(&self) -> Vec<Annotation> {
+        let mut total = Vec::new();
+        for e in self.executions.iter() {
+            total.append(&mut e.annotations());
+        }
+        total
     }
 }
 

@@ -54,6 +54,9 @@ pub enum SchedulerMessage {
     /// Updates the compilation status of a frame
     CompilationUpdate(usize, usize, u64, CompilationState),
 
+    /// Request the current annotations of the scene
+    GetAnnotations,
+
     /// Request the scheduler to shutdown cleanly.
     Shutdown,
 }
@@ -84,6 +87,7 @@ impl SchedulerMessage {
             SchedulerMessage::RunSnippet(_, _)
             | SchedulerMessage::SetScenePrelude(_)
             | SchedulerMessage::CompilationUpdate(_, _, _, _)
+            | SchedulerMessage::GetAnnotations
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }
     }

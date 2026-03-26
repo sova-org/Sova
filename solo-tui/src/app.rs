@@ -220,12 +220,8 @@ impl App {
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
             SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,
-            SovaNotification::ClientListChanged(_)
-            | SovaNotification::ChatReceived(_, _)
-            | SovaNotification::PeerStartedEditingFrame(_, _, _)
-            | SovaNotification::PeerStoppedEditingFrame(_, _, _)
-            | SovaNotification::PeerCursorMoved(_, _, _, _)
-            | SovaNotification::ScopeData(_) => (),
+            SovaNotification::Annotations(_) 
+                => (),
         }
         Ok(())
     }

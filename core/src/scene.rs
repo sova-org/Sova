@@ -1,7 +1,7 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime}, log_eprintln, scene::script::{Script, ScriptExecution}, schedule::ActionTiming, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}
+    clock::{Clock, NEVER, SyncTime}, log_eprintln, scene::script::{Script, ScriptExecution}, schedule::ActionTiming, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory}, variable::VariableStore}
 };
 use serde::{Deserialize, Serialize};
 use core::f64;
@@ -355,5 +355,13 @@ impl Scene {
         self.last_date = date;
 
         (next_frame_delay, positions_changed)
+    }
+
+    pub fn annotations(&self) -> Vec<Vec<Vec<Annotation>>> {
+        let mut res = vec![ Vec::new() ; self.n_lines() ];
+        for (i, line) in self.lines.iter().enumerate() {
+            res[i] = line.annotations();
+        }
+        res
     }
 }
