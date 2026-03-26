@@ -580,13 +580,68 @@ impl eframe::App for SovaApp {
                             let mut demo_submenu = |label: &str, demos: &[(&str, &[u8])]| {
                                 ui.add_enabled_ui(!demos.is_empty(), |ui| {
                                     ui.menu_button(label, |ui| {
+                                        // Split demos into groups at separator boundaries
+                                        let mut groups: Vec<Vec<(&str, &[u8])>> = vec![vec![]];
                                         for (name, bytes) in demos {
                                             if *name == "\x00" {
-                                                ui.separator();
-                                            } else if ui.button(*name).clicked() {
-                                                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
-                                                ui.close();
+                                                groups.push(vec![]);
+                                            } else {
+                                                groups.last_mut().unwrap().push((name, bytes));
                                             }
+                                        }
+                                        groups.retain(|g| !g.is_empty());
+
+                                        let total_items: usize = groups.iter().map(|g| g.len()).sum();
+                                        let n_cols = if total_items > 30 {
+                                            3
+                                        } else if total_items > 15 {
+                                            2
+                                        } else {
+                                            1
+                                        };
+
+                                        if n_cols == 1 {
+                                            for (gi, group) in groups.iter().enumerate() {
+                                                if gi > 0 {
+                                                    ui.separator();
+                                                }
+                                                for (name, bytes) in group {
+                                                    if ui.button(*name).clicked() {
+                                                        self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                                                        ui.close();
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Distribute groups across columns, balancing item count
+                                            let target = total_items.div_ceil(n_cols);
+                                            let mut columns: Vec<Vec<usize>> = vec![vec![]; n_cols];
+                                            let mut col = 0;
+                                            let mut col_count = 0;
+                                            for (gi, group) in groups.iter().enumerate() {
+                                                columns[col].push(gi);
+                                                col_count += group.len();
+                                                if col_count >= target && col + 1 < n_cols {
+                                                    col += 1;
+                                                    col_count = 0;
+                                                }
+                                            }
+
+                                            ui.columns(n_cols, |cols| {
+                                                for (ci, col_groups) in columns.iter().enumerate() {
+                                                    for (i, &gi) in col_groups.iter().enumerate() {
+                                                        if i > 0 {
+                                                            cols[ci].separator();
+                                                        }
+                                                        for (name, bytes) in &groups[gi] {
+                                                            if cols[ci].button(*name).clicked() {
+                                                                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                                                                cols[ci].close();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            });
                                         }
                                     });
                                 });
