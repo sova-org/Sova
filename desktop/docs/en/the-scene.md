@@ -99,7 +99,7 @@ There are a lot of actions that you can perform on the scene view and it is a bi
 
 ## Visual feedback
 
-The currently playing frame shows a colored accent strip on its left edge. A progress fill sweeps across the frame header and body, tracking playback position within the frame's duration. Disabled frames remain visible but visually muted. Their code stays readable, they are simply skipped during playback. In a [multiplayer](multiplayer) session, colored borders indicate where other musicians' cursors are. Colors are derived from usernames and stay consistent across sessions.
+The currently playing frame shows a colored accent strip on its left edge. A progress fill sweeps across the frame header and body, tracking playback position within the frame's duration. Disabled frames remain visible but visually muted. Their code stays readable, they are simply skipped during playback. In a [multiplayer](multiplayer) session, colored bars on the left edge of frame cells indicate where other musicians' cursors are. Colors are derived from usernames and stay consistent across sessions.
 
 ## Saving and loading
 

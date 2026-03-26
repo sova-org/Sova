@@ -775,26 +775,6 @@ impl ScenePanel {
 
             let cell_rect = frame_resp.response.rect;
 
-            // Cursor/selection border (top, right, bottom — skip left where playing strip is)
-            let user_color = bridge
-                .confirmed_username()
-                .map(|n| username_color(n))
-                .unwrap_or(accent);
-            let border_stroke = if is_cursor {
-                Some(egui::Stroke::new(2.0, user_color))
-            } else if is_selected {
-                Some(egui::Stroke::new(1.0, user_color.linear_multiply(0.5)))
-            } else {
-                None
-            };
-            if let Some(s) = border_stroke {
-                let r = cell_rect;
-                let p = ui.painter();
-                p.hline(r.x_range(), r.top(), s);    // top
-                p.hline(r.x_range(), r.bottom(), s);  // bottom
-                p.vline(r.right(), r.y_range(), s);    // right
-            }
-
             // Playing indicator
             if is_playing && frame.enabled {
                 let p = ui.painter();
