@@ -34,5 +34,5 @@ impl Display for CodePosition {
 pub enum Annotation {
     Highlight(CodePosition, CodePosition),
     InsertText(String, CodePosition),
-    InsertBitmap(Vec<u32>, CodePosition)
+    InsertBitmap(Vec<u32>, CodePosition),
 }
