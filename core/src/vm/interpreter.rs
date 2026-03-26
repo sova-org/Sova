@@ -21,7 +21,7 @@ pub trait Interpreter {
 
     fn stop(&mut self);
 
-    fn annotations(&self) -> Vec<(Annotation, SyncTime)> {
+    fn annotations(&self) -> Vec<Annotation> {
         Vec::new()
     }
 }
