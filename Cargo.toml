@@ -12,11 +12,14 @@ resolver = "3"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "unwind"
+panic = "abort"
 strip = true
 
 [profile.dev]
 opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [profile.dev.package.core]
 opt-level = 2
@@ -35,7 +38,7 @@ debug = true
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.145"
 crossbeam-channel = "0.5.15"
-lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
 pest = "2.8.3"
 pest_derive = "2.8.3"
 tokio = "1.44.1"
