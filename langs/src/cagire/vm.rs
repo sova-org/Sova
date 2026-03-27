@@ -12,7 +12,7 @@ use sova_core::vm::variable::{Variable, VariableValue};
 
 use super::compiler::{Dictionary, compile_script};
 use super::ops::Op;
-use super::types::{CagireError, CmdRegister, Span, Value};
+use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Value};
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -62,6 +62,7 @@ pub(super) struct CagireVM {
     pub dict: Dictionary,
     pub rng: StdRng,
     global_params: Vec<(&'static str, Value)>,
+    pub resolved: Vec<(Span, ResolvedValue)>,
 }
 
 impl CagireVM {
@@ -72,6 +73,7 @@ impl CagireVM {
             dict: Dictionary::new(),
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
+            resolved: Vec::new(),
         }
     }
 
@@ -81,6 +83,7 @@ impl CagireVM {
             dict,
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
+            resolved: Vec::new(),
         }
     }
 
@@ -89,6 +92,7 @@ impl CagireVM {
         script: &str,
         ctx: &mut EvaluationContext,
     ) -> Result<Vec<(ConcreteEvent, SyncTime)>, CagireError> {
+        self.resolved.clear();
         if script.trim().is_empty() {
             return Err(CagireError::new("empty script", Span::default()));
         }
@@ -368,13 +372,14 @@ impl CagireVM {
                     stack.push(val);
                 }
 
-                Op::Rand => {
+                Op::Rand(word_span) => {
                     let b = at!(pop(stack))?;
                     let a = at!(pop(stack))?;
                     match (&a, &b) {
                         (Value::Int(a_i), Value::Int(b_i)) => {
                             let (lo, hi) = if a_i <= b_i { (*a_i, *b_i) } else { (*b_i, *a_i) };
                             let val = self.rng.random_range(lo..=hi);
+                            if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(val))); }
                             stack.push(Value::Int(val));
                         }
                         _ => {
@@ -382,53 +387,60 @@ impl CagireVM {
                             let b_f = at!(b.as_float())?;
                             let (lo, hi) = if a_f <= b_f { (a_f, b_f) } else { (b_f, a_f) };
                             let val = if (hi - lo).abs() < f64::EPSILON { lo } else { self.rng.random_range(lo..hi) };
+                            if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
                             stack.push(Value::Float(val));
                         }
                     }
                 }
-                Op::ExpRand => {
+                Op::ExpRand(word_span) => {
                     let hi = at!(pop_float(stack))?;
                     let lo = at!(pop_float(stack))?;
                     if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("exprand requires positive values", op_spans.get(pc).copied().unwrap_or_default())); }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
-                    stack.push(Value::Float(lo * (hi / lo).powf(u)));
+                    let val = lo * (hi / lo).powf(u);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
+                    stack.push(Value::Float(val));
                 }
-                Op::LogRand => {
+                Op::LogRand(word_span) => {
                     let hi = at!(pop_float(stack))?;
                     let lo = at!(pop_float(stack))?;
                     if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("logrand requires positive values", op_spans.get(pc).copied().unwrap_or_default())); }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
-                    stack.push(Value::Float(hi * (lo / hi).powf(u)));
+                    let val = hi * (lo / hi).powf(u);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
+                    stack.push(Value::Float(val));
                 }
                 Op::Seed => {
                     let s = at!(pop_int(stack))?;
                     self.rng = StdRng::seed_from_u64(s as u64);
                 }
 
-                Op::Cycle | Op::PCycle => {
+                Op::Cycle(word_span) | Op::PCycle(word_span) => {
                     let count = at!(pop_int(stack))? as usize;
                     if count == 0 { return Err(CagireError::new("cycle count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let idx = match &ops[pc] {
-                        Op::Cycle => ctx.runs,
+                        Op::Cycle(_) => ctx.runs,
                         _ => ctx.iter,
                     } % count;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
                     drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
                 }
 
-                Op::Choose => {
+                Op::Choose(word_span) => {
                     let count = at!(pop_int(stack))? as usize;
                     if count == 0 { return Err(CagireError::new("choose count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let idx = self.rng.random_range(0..count);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
                     drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
                 }
 
-                Op::Bounce | Op::PBounce => {
+                Op::Bounce(word_span) | Op::PBounce(word_span) => {
                     let count = at!(pop_int(stack))? as usize;
                     if count == 0 { return Err(CagireError::new("bounce count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let counter = match &ops[pc] {
-                        Op::Bounce => ctx.runs,
+                        Op::Bounce(_) => ctx.runs,
                         _ => ctx.iter,
                     };
                     let idx = if count == 1 { 0 } else {
@@ -436,18 +448,20 @@ impl CagireVM {
                         let raw = counter % period;
                         if raw < count { raw } else { period - raw }
                     };
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
                     drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
                 }
 
-                Op::Index => {
+                Op::Index(word_span) => {
                     let idx = at!(pop_int(stack))?;
                     let count = at!(pop_int(stack))? as usize;
                     if count == 0 { return Err(CagireError::new("index count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let resolved_idx = ((idx % count as i64 + count as i64) % count as i64) as usize;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(resolved_idx as i64))); }
                     drain_select_run(count, resolved_idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
                 }
 
-                Op::WChoose => {
+                Op::WChoose(word_span) => {
                     let count = at!(pop_int(stack))? as usize;
                     if count == 0 { return Err(CagireError::new("wchoose count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let pairs_needed = count * 2;
@@ -475,77 +489,91 @@ impl CagireVM {
                             break;
                         }
                     }
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(selected_idx as i64))); }
                     let selected = values.swap_remove(selected_idx);
                     select_and_run(selected, stack, events, cmd, self, ctx, eval_ctx)?;
                 }
 
-                Op::ChanceExec | Op::ProbExec => {
+                Op::ChanceExec(word_span) | Op::ProbExec(word_span) => {
                     let threshold = at!(pop_float(stack))?;
                     let quot = at!(pop(stack))?;
                     let val: f64 = self.rng.random();
                     let limit = match &ops[pc] {
-                        Op::ChanceExec => threshold,
+                        Op::ChanceExec(_) => threshold,
                         _ => threshold / 100.0,
                     };
-                    if val < limit {
+                    let hit = val < limit;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
-                Op::Coin => {
+                Op::Coin(word_span) => {
                     let val: f64 = self.rng.random();
-                    stack.push(Value::Int(if val < 0.5 { 1 } else { 0 }));
+                    let result = val < 0.5;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(result))); }
+                    stack.push(Value::Int(if result { 1 } else { 0 }));
                 }
 
-                Op::Every => {
+                Op::Every(word_span) => {
                     let n = at!(pop_int(stack))?;
                     let quot = at!(pop(stack))?;
                     if n <= 0 { return Err(CagireError::new("every count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if ctx.iter as i64 % n == 0 {
+                    let hit = ctx.iter as i64 % n == 0;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
-                Op::Except => {
+                Op::Except(word_span) => {
                     let n = at!(pop_int(stack))?;
                     let quot = at!(pop(stack))?;
                     if n <= 0 { return Err(CagireError::new("except count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if ctx.iter as i64 % n != 0 {
+                    let hit = ctx.iter as i64 % n != 0;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
-                Op::EveryOffset => {
+                Op::EveryOffset(word_span) => {
                     let offset = at!(pop_int(stack))?;
                     let n = at!(pop_int(stack))?;
                     let quot = at!(pop(stack))?;
                     if n <= 0 { return Err(CagireError::new("every+ count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if ctx.iter as i64 % n == offset.rem_euclid(n) {
+                    let hit = ctx.iter as i64 % n == offset.rem_euclid(n);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
-                Op::ExceptOffset => {
+                Op::ExceptOffset(word_span) => {
                     let offset = at!(pop_int(stack))?;
                     let n = at!(pop_int(stack))?;
                     let quot = at!(pop(stack))?;
                     if n <= 0 { return Err(CagireError::new("except+ count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if ctx.iter as i64 % n != offset.rem_euclid(n) {
+                    let hit = ctx.iter as i64 % n != offset.rem_euclid(n);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
-                Op::Bjork | Op::PBjork => {
+                Op::Bjork(word_span) | Op::PBjork(word_span) => {
                     let n = at!(pop_int(stack))?;
                     let k = at!(pop_int(stack))?;
                     let quot = at!(pop(stack))?;
                     if n <= 0 || k < 0 { return Err(CagireError::new("bjork: n must be > 0, k must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
                     let counter = match &ops[pc] {
-                        Op::Bjork => ctx.runs,
+                        Op::Bjork(_) => ctx.runs,
                         _ => ctx.iter,
                     };
                     let pos = counter % n as usize;
                     let hit = k >= n || euclidean_hit(k as usize, n as usize, pos);
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
@@ -920,6 +948,33 @@ impl CagireVM {
                     }
                 }
 
+                Op::Subdivide => {
+                    let n = at!(pop_int(stack))?;
+                    if n < 1 { return Err(CagireError::new("div: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if n > 10_000 { return Err(CagireError::new("div: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let nf = n as f64;
+                    for i in 0..n {
+                        stack.push(Value::Float(i as f64 / nf));
+                    }
+                }
+
+                Op::Swing => {
+                    let ratio = at!(pop_float(stack))?;
+                    let n = at!(pop_int(stack))?;
+                    if n < 1 { return Err(CagireError::new("swing: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if n > 10_000 { return Err(CagireError::new("swing: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let pair_len = 2.0 / n as f64;
+                    for i in 0..n {
+                        let pair_start = (i / 2) as f64 * pair_len;
+                        let frac = if i % 2 == 0 {
+                            pair_start
+                        } else {
+                            (pair_start + ratio * pair_len).min(1.0 - f64::EPSILON)
+                        };
+                        stack.push(Value::Float(frac));
+                    }
+                }
+
                 Op::ModLfo(shape) => {
                     let period = at!(pop_float(stack))? * ctx.step_duration;
                     let max = at!(pop_float(stack))?;
@@ -1025,9 +1080,11 @@ impl CagireVM {
                     marks.push(stack.len());
                 }
 
-                Op::Count => {
+                Op::Count(word_span) => {
                     let mark = at!(marks.pop().ok_or_else(|| "count without mark".to_string()))?;
-                    stack.push(Value::Int((stack.len() - mark) as i64));
+                    let val = (stack.len() - mark) as i64;
+                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(val))); }
+                    stack.push(Value::Int(val));
                 }
 
                 Op::EmitAll => {

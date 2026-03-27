@@ -57,7 +57,7 @@ impl ToastStack {
         }
     }
 
-    pub fn poll_chat(&mut self, chat_messages: &[ChatMessage]) {
+    pub fn poll_chat(&mut self, chat_messages: &VecDeque<ChatMessage>) {
         for msg in chat_messages.iter().skip(self.chat_count) {
             if !msg.system {
                 self.push(

@@ -244,10 +244,15 @@ impl SampleTree {
 
     pub fn visible_entries(&self) -> Vec<TreeLine> {
         let mut out = Vec::new();
-        for (i, root) in self.roots.iter().enumerate() {
-            root.flatten(0, "", 0, i < self.default_root_count, &mut out);
-        }
+        self.fill_visible(&mut out);
         out
+    }
+
+    fn fill_visible(&self, out: &mut Vec<TreeLine>) {
+        out.clear();
+        for (i, root) in self.roots.iter().enumerate() {
+            root.flatten(0, "", 0, i < self.default_root_count, out);
+        }
     }
 
     fn node_at_mut(&mut self, visible_index: usize) -> Option<&mut SampleNode> {
@@ -307,15 +312,14 @@ impl SampleTree {
         }
     }
 
-    fn filtered_entries(&self, names: &[String], collapsed: bool) -> Vec<TreeLine> {
-        let mut out = Vec::new();
+    fn fill_filtered(&self, names: &[String], collapsed: bool, out: &mut Vec<TreeLine>) {
+        out.clear();
         for name in names {
             for (i, root) in self.roots.iter().enumerate() {
                 let is_default = i < self.default_root_count;
-                Self::emit_filtered(root, name, collapsed, is_default, &mut out);
+                Self::emit_filtered(root, name, collapsed, is_default, out);
             }
         }
-        out
     }
 
     fn emit_filtered(
@@ -393,10 +397,13 @@ impl SampleBrowserState {
     }
 
     fn rebuild_cache(&mut self) {
-        self.cached_entries = match &self.filter {
-            Some(names) => self.tree.filtered_entries(names, false),
-            None => self.tree.visible_entries(),
-        };
+        match &self.filter {
+            Some(names) => {
+                let names = names.clone();
+                self.tree.fill_filtered(&names, false, &mut self.cached_entries);
+            }
+            None => self.tree.fill_visible(&mut self.cached_entries),
+        }
     }
 
     pub fn entries(&self) -> &[TreeLine] {

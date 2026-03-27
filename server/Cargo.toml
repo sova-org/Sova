@@ -21,14 +21,14 @@ default-samples = ["audio", "dep:include_dir", "dep:dirs"]
 [dependencies]
 sova_core = { path = "../core", package = "core" }
 langs = { path = "../langs" }
-tokio = { version = "1.44.1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time", "signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time", "signal"] }
 clap = { version = "4.5.34", features = ["derive"] }
-thread-priority = "1.2.0"
-serde = { version = "1.0.217", features = ["derive"] }
+thread-priority = { workspace = true }
+serde = { workspace = true }
 rmp-serde = "1"
 crc32fast = "1"
-crossbeam-channel = "0.5.15"
+crossbeam-channel = { workspace = true }
 socket2 = "0.5"
-doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.20", package = "doux-sova", optional = true }
+doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.21", package = "doux-sova", optional = true }
 include_dir = { version = "0.7", optional = true }
 dirs = { version = "6", optional = true }

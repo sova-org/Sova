@@ -20,37 +20,25 @@ use sova_core::{
 #[grammar = "boinx/boinx.pest"]
 pub struct BoinxParser;
 
-lazy_static::lazy_static! {
-    static ref BOINX_PRATT_PARSER : PrattParser<Rule> = {
+static BOINX_PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> =
+    std::sync::LazyLock::new(|| {
         use pest::pratt_parser::{Assoc::*, Op};
         use Rule::*;
-        // Precedence is defined lowest to highest
         PrattParser::new()
             .op(
-                Op::infix(compo_op, Right) |
-                Op::infix(iter_op, Right) |
-                Op::infix(zip_op, Right) |
-                Op::infix(each_op, Right) |
-                Op::infix(super_each_op, Right)
+                Op::infix(compo_op, Right)
+                    | Op::infix(iter_op, Right)
+                    | Op::infix(zip_op, Right)
+                    | Op::infix(each_op, Right)
+                    | Op::infix(super_each_op, Right),
             )
-            .op(
-                Op::infix(shr, Left) |
-                Op::infix(shl, Left)
-            )
-            .op(
-                Op::infix(add, Left) |
-                Op::infix(sub, Left) |
-                Op::infix(rem, Left)
-            )
-            .op(
-                Op::infix(mul, Left) |
-                Op::infix(div, Left)
-            )
+            .op(Op::infix(shr, Left) | Op::infix(shl, Left))
+            .op(Op::infix(add, Left) | Op::infix(sub, Left) | Op::infix(rem, Left))
+            .op(Op::infix(mul, Left) | Op::infix(div, Left))
             .op(Op::infix(pow, Left))
             .op(Op::prefix(minus))
             .op(Op::prefix(escape))
-    };
-}
+    });
 
 fn parse_ident(pairs: Pairs<Rule>) -> BoinxIdent {
     pairs.as_str().to_owned().into()

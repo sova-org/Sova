@@ -7,24 +7,20 @@ edition = "2024"
 midir = "0.10.1"
 rosc = "0.10.1"
 rusty_link = "0.4.4"
-thread-priority = "1.2.0"
+thread-priority = { workspace = true }
 audio_thread_priority = "0.32"
-lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
-serde = { version = "1.0.217", features = ["derive", "rc"] }
-serde_json = "1.0.138"
+lalrpop-util = { workspace = true }
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true }
 toml = "0.8.0"
-rand = "0.9.0"
+rand = { workspace = true }
 simple-easing = "1.0.1"
-crossbeam-channel = "0.5.15"
-uuid = { version = "1.0", features = ["v4", "serde"] }
+crossbeam-channel = { workspace = true }
 dirs = "5.0"
-pest = "2.8.3"
-pest_derive = "2.8.3"
+pest = { workspace = true }
+pest_derive = { workspace = true }
 rand_chacha = "0.9.0"
-
-[dependencies.tokio]
-version = "1.44.1"
-features = ["sync"]
+tokio = { workspace = true, features = ["sync"] }
 
 [lib]
 name = "sova_core"

@@ -4,7 +4,7 @@ use sova_core::clock::{NEVER, SyncTime};
 use sova_core::error::SovaError;
 use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
-use sova_core::vm::interpreter::Interpreter;
+use sova_core::vm::interpreter::{Annotation, CodePosition, Interpreter};
 
 use super::compiler::Dictionary;
 use super::vm::CagireVM;
@@ -95,4 +95,26 @@ impl Interpreter for CagireInterpreter {
         self.terminated = true;
         self.pending = None;
     }
+
+    fn annotations(&self) -> Vec<Annotation> {
+        self.vm.resolved.iter().map(|(span, val)| {
+            let pos = byte_offset_to_position(&self.source, span.start);
+            Annotation::InsertText(val.display(), pos)
+        }).collect()
+    }
+}
+
+fn byte_offset_to_position(source: &str, offset: usize) -> CodePosition {
+    let mut line = 0;
+    let mut col = 0;
+    for (i, ch) in source.char_indices() {
+        if i >= offset { break; }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    CodePosition::at(line, col)
 }

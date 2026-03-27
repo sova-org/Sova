@@ -169,7 +169,7 @@ fn compile(
                     i += consumed;
                     push(&mut ops, &mut spans, Op::Mark, sp);
                     extend(&mut ops, &mut spans, bracket_ops, bracket_spans);
-                    push(&mut ops, &mut spans, Op::Count, sp);
+                    push(&mut ops, &mut spans, Op::Count(Some(sp)), sp);
                 } else if word == "]" {
                     return Err(err("unexpected ']'", sp));
                 } else if word == ":" {

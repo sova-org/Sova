@@ -40,7 +40,7 @@ pub fn username_color(name: &str) -> eframe::egui::Color32 {
         hash = hash.wrapping_mul(31).wrapping_add(b as u32);
     }
     let hue = (hash % 360) as f32;
-    let (r, g, b) = hsl_to_rgb(hue, 0.65, 0.55);
+    let (r, g, b) = hsl_to_rgb(hue, 0.40, 0.60);
     eframe::egui::Color32::from_rgb(r, g, b)
 }
 

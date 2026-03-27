@@ -64,7 +64,7 @@ fn hydra_articles() -> &'static [(&'static str, &'static str, &'static str)] {
     HYDRA_ARTICLES
 }
 
-const COLLAPSED_WIDTH: f32 = 24.0;
+const COLLAPSED_WIDTH: f32 = 30.0;
 const HOVER_DELAY_SECS: f64 = 0.2;
 
 fn resolve_article_link(slug: &str) -> Option<DocView> {

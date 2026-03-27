@@ -4,11 +4,15 @@ use sova_core::vm::language::LanguageDefinition;
 use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::widgets::{EditorSettings, SyntaxThemePref};
 
-pub struct OptionsPanel;
+pub struct OptionsPanel {
+    system_fonts: Option<Vec<String>>,
+}
 
 impl OptionsPanel {
     pub fn new() -> Self {
-        Self
+        Self {
+            system_fonts: None,
+        }
     }
 
     /// Returns `true` if appearance settings were changed.
@@ -22,6 +26,7 @@ impl OptionsPanel {
         languages: &[LanguageDefinition],
     ) -> bool {
         let mut changed = false;
+        let system_fonts = self.system_fonts.get_or_insert_with(crate::fonts::list_system_fonts);
 
         use crate::widgets::hint;
 
@@ -51,6 +56,27 @@ impl OptionsPanel {
                     hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
                     changed |= r.changed();
                 });
+
+                ui.add_space(4.0);
+
+                ui.label(t!("options.ui_font"));
+                let ui_display = if appearance.ui_font.is_empty() {
+                    "Default".to_string()
+                } else {
+                    appearance.ui_font.clone()
+                };
+                egui::ComboBox::from_id_salt("ui_font_selector")
+                    .selected_text(&ui_display)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut appearance.ui_font, String::new(), "Default").changed() {
+                            changed = true;
+                        }
+                        for font in system_fonts.iter() {
+                            if ui.selectable_value(&mut appearance.ui_font, font.clone(), font).changed() {
+                                changed = true;
+                            }
+                        }
+                    });
 
                 ui.add_space(4.0);
 
@@ -105,6 +131,21 @@ impl OptionsPanel {
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
                 changed |= r.changed();
 
+                ui.add_space(4.0);
+
+                let r = ui.label(t!("options.bg_brightness"));
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.bg_brightness"));
+                let mut brightness = appearance.bg_brightness as f32;
+                let r = ui.add(
+                    egui::Slider::new(&mut brightness, 10.0..=50.0)
+                        .step_by(1.0),
+                );
+                hint::on_hover(ui.ctx(), &r, t!("options.hint.bg_brightness"));
+                if r.changed() {
+                    appearance.bg_brightness = brightness as u8;
+                    changed = true;
+                }
+
                 let r = ui.checkbox(
                     &mut appearance.visuals_enabled,
                     t!("options.visuals_enabled"),
@@ -157,6 +198,30 @@ impl OptionsPanel {
                     );
                     hint::on_hover(ui.ctx(), &r, t!("options.hint.font_size"));
                 });
+
+                ui.add_space(4.0);
+
+                ui.label(t!("options.editor_font"));
+                let editor_display = if appearance.editor_font.is_empty() {
+                    "Default".to_string()
+                } else {
+                    appearance.editor_font.clone()
+                };
+                egui::ComboBox::from_id_salt("editor_font_selector")
+                    .selected_text(&editor_display)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut appearance.editor_font, String::new(), "Default").changed() {
+                            changed = true;
+                        }
+                        for font in system_fonts.iter() {
+                            if ui.selectable_value(&mut appearance.editor_font, font.clone(), font).changed() {
+                                changed = true;
+                            }
+                        }
+                    });
+
+                ui.add_space(4.0);
+
                 let r = ui.checkbox(
                     &mut editor_settings.line_numbers,
                     t!("options.line_numbers"),

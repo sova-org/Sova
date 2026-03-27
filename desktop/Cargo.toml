@@ -17,21 +17,21 @@ eframe = "0.33.3"
 sova_server = { path = "../server", package = "sova-server", features = ["audio"] }
 sova_core = { path = "../core", package = "core" }
 langs = { path = "../langs" }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
-crossbeam-channel = "0.5"
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros"] }
+crossbeam-channel = { workspace = true }
 egui_extras = { version = "0.33", default-features = false, features = ["image"] }
 rfd = "0.15"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 confy = "2"
-doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.20", features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.21", features = ["native"] }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
 rust-i18n = "3"
 regex = "1"
-glow = "0.16"
 hydra-rust = { git = "https://github.com/sova-org/hydra-rust" }
+font-kit = "0.14.3"
 
 [build-dependencies]
 winresource = "0.1"

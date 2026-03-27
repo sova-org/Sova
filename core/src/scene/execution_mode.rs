@@ -42,8 +42,8 @@ impl Display for ExecutionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
             Self::Free => "Free",
-            Self::AtQuantum => "AtQuantum",
-            Self::LongestLine => "LongestLine"
+            Self::AtQuantum => "Quantum",
+            Self::LongestLine => "Longest"
         };
         write!(f, "{name}")
     }
@@ -53,8 +53,8 @@ impl From<String> for ExecutionMode {
     fn from(value: String) -> Self {
         match value.as_str() {
             "Free" => Self::Free,
-            "AtQuantum" => Self::AtQuantum,
-            "LongestLine" => Self::LongestLine,
+            "Quantum" | "AtQuantum" => Self::AtQuantum,
+            "Longest" | "LongestLine" => Self::LongestLine,
             _ => Default::default()
         }
     }

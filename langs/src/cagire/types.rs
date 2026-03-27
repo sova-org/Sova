@@ -5,6 +5,23 @@ use sova_core::vm::variable::VariableValue;
 
 use super::ops::Op;
 
+#[derive(Clone, Debug)]
+pub(crate) enum ResolvedValue {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+}
+
+impl ResolvedValue {
+    pub(crate) fn display(&self) -> String {
+        match self {
+            ResolvedValue::Int(i) => i.to_string(),
+            ResolvedValue::Float(f) => format!("{f:.2}"),
+            ResolvedValue::Bool(b) => if *b { "yes" } else { "no" }.into(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Span {
     pub start: usize,

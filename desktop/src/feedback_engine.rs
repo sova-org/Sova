@@ -93,20 +93,24 @@ impl FeedbackEngine {
         }
     }
 
-    pub fn scope_data(&self) -> Vec<f32> {
-        self.audio_thread
-            .as_ref()
-            .and_then(|at| at.scope.lock().ok())
-            .and_then(|guard| guard.as_ref().map(|scope| scope.read_samples()))
-            .unwrap_or_default()
+    pub fn fill_scope_data(&self, buf: &mut Vec<f32>) {
+        buf.clear();
+        if let Some(at) = self.audio_thread.as_ref()
+            && let Ok(guard) = at.scope.lock()
+            && let Some(scope) = guard.as_ref()
+        {
+            buf.extend_from_slice(&scope.read_samples());
+        }
     }
 
-    pub fn peak_data(&self) -> Vec<f32> {
-        self.audio_thread
-            .as_ref()
-            .and_then(|at| at.peaks.lock().ok())
-            .and_then(|guard| guard.as_ref().map(|p| p.read_and_reset()))
-            .unwrap_or_default()
+    pub fn fill_peak_data(&self, buf: &mut Vec<f32>) {
+        buf.clear();
+        if let Some(at) = self.audio_thread.as_ref()
+            && let Ok(guard) = at.peaks.lock()
+            && let Some(p) = guard.as_ref()
+        {
+            buf.extend_from_slice(&p.read_and_reset());
+        }
     }
 }
 

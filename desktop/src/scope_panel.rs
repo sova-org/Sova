@@ -51,6 +51,10 @@ impl ScopePanel {
                 .text(t!("scope.fill").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.fill"));
+        ui.add(
+            egui::Slider::new(&mut self.settings.glow, 0.0..=1.0)
+                .text("Glow"),
+        );
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
@@ -62,6 +66,7 @@ impl ScopePanel {
         let accent = ui.visuals().selection.bg_fill;
         let stroke_width = self.settings.stroke_width;
         let fill_alpha = self.settings.fill_alpha;
+        let glow = self.settings.glow;
         let a = self.settings.smoothing;
 
         let data: &[f32] = if a > 0.0 {
@@ -74,8 +79,9 @@ impl ScopePanel {
         Waveform::new(data, accent)
             .stroke_width(stroke_width)
             .fill_alpha(fill_alpha)
+            .glow(glow)
             .show(ui);
-        ctx.request_repaint();
+        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
     fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {

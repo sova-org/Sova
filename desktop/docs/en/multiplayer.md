@@ -66,7 +66,7 @@ If a client falls behind, the server automatically sends a full snapshot to resy
 
 Three types of peer awareness in the grid:
 
-1. **Cursor position.** A colored border appears around the frame cell where another musician's cursor sits.
+1. **Cursor position.** A colored bar on the left edge of the frame cell shows where another musician's cursor sits.
 2. **Editing indicator.** Colored dots in the top-right corner of frame cells show who is currently editing that frame.
 3. **Peer list.** The bottom bar shows the number of connected musicians. Hover to see their names. The list updates on join and leave.
 

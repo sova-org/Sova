@@ -4,7 +4,7 @@ pub use syntax::syntax as hydra_syntax;
 use std::sync::Arc;
 use std::time::Instant;
 
-use eframe::egui;
+use eframe::{egui, glow};
 use hydra_rust::renderer::{self, RenderUniforms, ShaderRenderer};
 
 use crate::settings::VisualsSettings;
@@ -285,7 +285,7 @@ impl VisualsEngine {
             return;
         };
 
-        ctx.request_repaint();
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
         let rect = ctx.available_rect();
         let time = self.start_time.elapsed().as_secs_f32();
         let ppp = ctx.pixels_per_point();

@@ -59,26 +59,26 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "select" => Op::Pick,
         "sound" => Op::NewCmd,
         "." => Op::Emit,
-        "rand" => Op::Rand,
-        "exprand" => Op::ExpRand,
-        "logrand" => Op::LogRand,
+        "rand" => Op::Rand(None),
+        "exprand" => Op::ExpRand(None),
+        "logrand" => Op::LogRand(None),
         "seed" => Op::Seed,
-        "cycle" => Op::Cycle,
-        "pcycle" => Op::PCycle,
-        "choose" => Op::Choose,
-        "bounce" => Op::Bounce,
-        "pbounce" => Op::PBounce,
-        "index" => Op::Index,
-        "wchoose" => Op::WChoose,
-        "every" => Op::Every,
-        "except" => Op::Except,
-        "every+" => Op::EveryOffset,
-        "except+" => Op::ExceptOffset,
-        "bjork" => Op::Bjork,
-        "pbjork" => Op::PBjork,
-        "chance" => Op::ChanceExec,
-        "prob" => Op::ProbExec,
-        "coin" => Op::Coin,
+        "cycle" => Op::Cycle(None),
+        "pcycle" => Op::PCycle(None),
+        "choose" => Op::Choose(None),
+        "bounce" => Op::Bounce(None),
+        "pbounce" => Op::PBounce(None),
+        "index" => Op::Index(None),
+        "wchoose" => Op::WChoose(None),
+        "every" => Op::Every(None),
+        "except" => Op::Except(None),
+        "every+" => Op::EveryOffset(None),
+        "except+" => Op::ExceptOffset(None),
+        "bjork" => Op::Bjork(None),
+        "pbjork" => Op::PBjork(None),
+        "chance" => Op::ChanceExec(None),
+        "prob" => Op::ProbExec(None),
+        "coin" => Op::Coin(None),
         "mtof" => Op::Mtof,
         "ftom" => Op::Ftom,
         "inv" => Op::Invert,
@@ -117,6 +117,8 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "geom.." => Op::GeomRange,
         "euclid" => Op::Euclid,
         "euclidrot" => Op::EuclidRot,
+        "div" => Op::Subdivide,
+        "swing" => Op::Swing,
         "times" => Op::Times,
         "ccval" => Op::GetMidiCC,
         "mclock" => Op::MidiClock,
@@ -298,7 +300,8 @@ pub(crate) fn compile_word(
     if let Some(word) = lookup_word(name) {
         match &word.compile {
             Simple => {
-                if let Some(op) = simple_op(word.name) {
+                if let Some(mut op) = simple_op(word.name) {
+                    op.attach_span(span);
                     push(ops, spans, op, span);
                 }
             }
@@ -306,7 +309,7 @@ pub(crate) fn compile_word(
             Param => push(ops, spans, Op::SetParam(word.name), span),
             Probability(p) => {
                 push(ops, spans, Op::PushFloat(*p), span);
-                push(ops, spans, Op::ChanceExec, span);
+                push(ops, spans, Op::ChanceExec(Some(span)), span);
             }
         }
         return;
@@ -342,7 +345,8 @@ pub(crate) fn compile_word(
         return;
     }
 
-    if let Some(op) = simple_op(name) {
+    if let Some(mut op) = simple_op(name) {
+        op.attach_span(span);
         push(ops, spans, op, span);
         return;
     }

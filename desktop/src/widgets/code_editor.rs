@@ -87,6 +87,7 @@ pub struct CodeEditor {
     current_match: usize,
     cache_hash: u64,
     completion: Option<CompletionState>,
+    last_completion_prefix: Option<String>,
 }
 
 impl CodeEditor {
@@ -98,6 +99,7 @@ impl CodeEditor {
             current_match: 0,
             cache_hash: 0,
             completion: None,
+            last_completion_prefix: None,
         }
     }
 
@@ -323,6 +325,7 @@ impl CodeEditor {
         // Handle consumed keys
         if consumed_escape {
             self.completion = None;
+            self.last_completion_prefix = None;
         } else if let Some(state) = &mut self.completion {
             if consumed_prev && state.selected > 0 {
                 state.selected -= 1;
@@ -341,6 +344,7 @@ impl CodeEditor {
                     .set_char_range(Some(CCursorRange::one(CCursor::new(new_cursor_char))));
                 te_state.store(ui.ctx(), text_edit_id);
                 self.completion = None;
+                self.last_completion_prefix = None;
             }
         }
 
@@ -360,16 +364,21 @@ impl CodeEditor {
             }
         } else if let Some(state) = &mut self.completion {
             if let Some(ref_map) = reference {
-                let entries = compute_completions(&prefix, ref_map);
-                if entries.is_empty() {
-                    self.completion = None;
-                } else {
-                    state.entries = entries;
-                    state.prefix_start = prefix_start;
-                    state.selected = state.selected.min(state.entries.len() - 1);
+                if self.last_completion_prefix.as_deref() != Some(prefix.as_str()) {
+                    let entries = compute_completions(&prefix, ref_map);
+                    if entries.is_empty() {
+                        self.completion = None;
+                        self.last_completion_prefix = None;
+                    } else {
+                        state.entries = entries;
+                        state.prefix_start = prefix_start;
+                        state.selected = state.selected.min(state.entries.len() - 1);
+                        self.last_completion_prefix = Some(prefix.clone());
+                    }
                 }
             } else {
                 self.completion = None;
+                self.last_completion_prefix = None;
             }
         }
 
