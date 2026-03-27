@@ -170,10 +170,12 @@ impl BoinxCompo {
 impl From<VariableValue> for BoinxCompo {
     fn from(value: VariableValue) -> Self {
         let VariableValue::Map(mut map) = value else {
-            return Self::default();
+            let item = BoinxItem::from(value);
+            return BoinxCompo { item, next: None };
         };
-        let Some(item) = map.remove("_item") else {
-            return Self::default();
+        let Some(item) = map.remove("_compo_item") else {
+            let item = BoinxItem::from(VariableValue::Map(map));
+            return BoinxCompo { item, next: None };
         };
         let item = BoinxItem::from(item);
         let mut compo = BoinxCompo { item, next: None };
@@ -189,9 +191,12 @@ impl From<VariableValue> for BoinxCompo {
 
 impl From<BoinxCompo> for VariableValue {
     fn from(value: BoinxCompo) -> Self {
+        if value.next.is_none() {
+            return VariableValue::from(value.item);
+        }
         let mut map: HashMap<String, VariableValue> = HashMap::new();
         let BoinxCompo { item, next } = value;
-        map.insert("_item".to_owned(), item.into());
+        map.insert("_compo_item".to_owned(), item.into());
         if let Some((op, compo)) = next {
             map.insert("_op".to_owned(), op.to_string().into());
             map.insert("_next".to_owned(), (*compo).into());
