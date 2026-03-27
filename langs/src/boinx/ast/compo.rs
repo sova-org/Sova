@@ -191,6 +191,9 @@ impl From<VariableValue> for BoinxCompo {
 
 impl From<BoinxCompo> for VariableValue {
     fn from(value: BoinxCompo) -> Self {
+        if value.next.is_none() {
+            return VariableValue::from(value.item);
+        }
         let mut map: HashMap<String, VariableValue> = HashMap::new();
         let BoinxCompo { item, next } = value;
         map.insert("_compo_item".to_owned(), item.into());
