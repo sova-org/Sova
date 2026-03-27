@@ -1,9 +1,12 @@
 use crate::audio::{AudioCommand, AudioEngineState};
 use crate::client::{ClientMessage, serialize_to_wire_frame};
+use crate::server::image_maintainer::start_image_maintainer;
+use crate::server::message_processing::on_message;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
-use sova_core::{Scene, schedule::playback::PlaybackState, vm::LanguageCenter};
+use sova_core::{Scene, vm::LanguageCenter};
+use std::sync::OnceLock;
 use std::thread::JoinHandle;
 use std::{
     io::ErrorKind,
@@ -12,7 +15,6 @@ use std::{
         Arc, Mutex as StdMutex, RwLock,
         atomic::{AtomicBool, AtomicU32, Ordering},
     },
-    thread,
 };
 use tokio::time::{Duration, timeout};
 use tokio::{
@@ -29,6 +31,9 @@ use sova_core::{
 };
 
 use crate::message::ServerMessage;
+
+mod message_processing;
+mod image_maintainer;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -126,7 +131,6 @@ pub struct ServerState {
     pub clock_server: Arc<ClockServer>,
     pub devices: Arc<DeviceMap>,
     pub sched_iface: Arc<RwLock<Sender<SchedulerMessage>>>,
-    pub log_sender: broadcast::Sender<SovaNotification>,
     pub client_registry: ClientRegistry,
     pub clients: Arc<Mutex<Vec<String>>>,
     pub scene_image: Arc<Mutex<Scene>>,
@@ -146,10 +150,11 @@ impl ServerState {
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
-        sched_iface: Sender<SchedulerMessage>,
-        log_sender: broadcast::Sender<SovaNotification>,
+        sched_iface: Arc<RwLock<Sender<SchedulerMessage>>>,
         client_registry: ClientRegistry,
+        clients: Arc<Mutex<Vec<String>>>,
         languages: Arc<LanguageCenter>,
+        is_playing: Arc<AtomicBool>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
         audio_cmd_tx: Option<Sender<AudioCommand>>,
@@ -160,13 +165,12 @@ impl ServerState {
         ServerState {
             clock_server,
             devices,
-            sched_iface: Arc::new(RwLock::new(sched_iface)),
-            log_sender,
+            sched_iface,
             client_registry,
-            clients: Arc::new(Mutex::new(Vec::new())),
+            clients,
             scene_image,
             languages,
-            is_playing: Arc::new(AtomicBool::new(false)),
+            is_playing,
             audio_engine_state,
             audio_restart_tx,
             audio_cmd_tx,
@@ -184,12 +188,6 @@ impl ServerState {
     }
 }
 
-pub struct SovaCoreServer {
-    pub ip: String,
-    pub port: u16,
-    pub state: ServerState,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub scene: Scene,
@@ -199,485 +197,6 @@ pub struct Snapshot {
     pub quantum: f64,
     #[serde(default)]
     pub devices: Vec<sova_core::protocol::DeviceInfo>,
-}
-
-fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
-    let iface = state.sched_iface.read().unwrap();
-    if iface.send(msg.clone()).is_err() {
-        return ServerMessage::InternalError("Scheduler communication error.".into());
-    }
-    drop(iface);
-    state
-        .client_registry
-        .broadcast(BroadcastItem::Feedback(msg));
-    ServerMessage::Success
-}
-
-async fn on_message(
-    msg: ClientMessage,
-    state: &ServerState,
-    client_name: &mut String,
-) -> ServerMessage {
-    println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
-
-    match msg {
-        ClientMessage::Chat(chat_msg) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::Chat(client_name.clone(), chat_msg),
-            ));
-            ServerMessage::Success
-        }
-        ClientMessage::SetName { name: new_name, .. } => {
-            let mut clients_guard = state.clients.lock().await;
-            let old_name = client_name.clone();
-            let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
-
-            if is_new_client {
-                println!("Client identified as: {}", new_name);
-                clients_guard.push(new_name.clone());
-            } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
-                println!("Client {} changed name to {}", clients_guard[i], new_name);
-                clients_guard[i] = new_name.clone();
-            } else {
-                eprintln!(
-                    "Error: Could not find old name '{}' to replace. Adding '{}'.",
-                    old_name, new_name
-                );
-                clients_guard.push(new_name.clone());
-            }
-            *client_name = new_name;
-
-            let updated_clients = clients_guard.clone();
-            drop(clients_guard);
-
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::PeersUpdated(updated_clients),
-                false,
-            );
-
-            ServerMessage::Success
-        }
-        ClientMessage::SchedulerControl(sched_msg) => send_and_relay(state, sched_msg),
-        ClientMessage::SetTempo(tempo, timing) => {
-            send_and_relay(state, SchedulerMessage::SetTempo(tempo, timing))
-        }
-        ClientMessage::GetClock => {
-            let clock = Clock::from(&state.clock_server);
-            ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
-        }
-        ClientMessage::GetScene => {
-            ServerMessage::Notification(SovaNotification::UpdatedScene(state.scene_image.lock().await.clone()))
-        }
-        ClientMessage::GetPeers => ServerMessage::PeersUpdated(state.clients.lock().await.clone()),
-        ClientMessage::SetScene(scene, timing) => {
-            send_and_relay(state, SchedulerMessage::SetScene(scene, timing))
-        }
-        ClientMessage::RemoveFrame(line_id, position, timing) => send_and_relay(
-            state,
-            SchedulerMessage::RemoveFrame(line_id, position, timing),
-        ),
-        ClientMessage::GetSnapshot => {
-            let scene = state.scene_image.lock().await.clone();
-            let clock = Clock::from(&state.clock_server);
-            let devices = state.devices.create_device_snapshot();
-            let snapshot = Snapshot {
-                scene,
-                tempo: clock.tempo(),
-                beat: clock.beat(),
-                micros: clock.micros(),
-                quantum: clock.quantum(),
-                devices,
-            };
-            ServerMessage::Snapshot(snapshot)
-        }
-        ClientMessage::StartedEditingFrame(line_idx, frame_idx) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerStartedEditing(client_name.clone(), line_idx, frame_idx),
-            ));
-            ServerMessage::Success
-        }
-        ClientMessage::StoppedEditingFrame(line_idx, frame_idx) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerStoppedEditing(client_name.clone(), line_idx, frame_idx),
-            ));
-            ServerMessage::Success
-        }
-        ClientMessage::CursorPosition(line_idx, frame_idx, text_cursor) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerCursorMoved(client_name.clone(), line_idx, frame_idx, text_cursor),
-            ));
-            ServerMessage::Success
-        }
-        ClientMessage::TransportStart(timing) => {
-            send_and_relay(state, SchedulerMessage::TransportStart(timing))
-        }
-        ClientMessage::TransportStop(timing) => {
-            send_and_relay(state, SchedulerMessage::TransportStop(timing))
-        }
-        ClientMessage::SetSceneMode(mode, timing) => {
-            send_and_relay(state, SchedulerMessage::SetSceneMode(mode, timing))
-        }
-        ClientMessage::RequestDeviceList => {
-            println!("[ info ] Client '{}' requested device list.", client_name);
-            ServerMessage::Notification(SovaNotification::DeviceListChanged(state.devices.device_list()))
-        }
-        ClientMessage::ConnectMidiDeviceByName(device_name) => {
-            match state.devices.connect_midi_by_name(&device_name) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to connect device '{}': {}",
-                    device_name, e
-                )),
-            }
-        }
-        ClientMessage::DisconnectMidiDeviceByName(device_name) => {
-            match state.devices.disconnect_midi_by_name(&device_name) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to disconnect device '{}': {}",
-                    device_name, e
-                )),
-            }
-        }
-        ClientMessage::CreateVirtualMidiOutput(device_name) => {
-            match state.devices.create_virtual_midi_port(&device_name) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to create virtual device '{}': {}",
-                    device_name, e
-                )),
-            }
-        }
-        ClientMessage::AssignDeviceToSlot(slot_id, device_name) => {
-            match state.devices.assign_slot(slot_id, &device_name) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to assign slot {}: {}",
-                    slot_id, e
-                )),
-            }
-        }
-        ClientMessage::UnassignDeviceFromSlot(slot_id) => {
-            match state.devices.unassign_slot(slot_id) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to unassign slot {}: {}",
-                    slot_id, e
-                )),
-            }
-        }
-        ClientMessage::CreateOscDevice(name, ip, port) => {
-            match state.devices.create_osc_output_device(&name, &ip, port) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to create OSC device '{}': {}",
-                    name, e
-                )),
-            }
-        }
-        ClientMessage::RemoveOscDevice(name) => match state.devices.remove_output_device(&name) {
-            Ok(_) => {
-                let updated_list = state.devices.device_list();
-                let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-            }
-            Err(e) => ServerMessage::InternalError(format!(
-                "Failed to remove OSC device '{}': {}",
-                name, e
-            )),
-        },
-        ClientMessage::SetDeviceLatency(name, latency) => {
-            state.devices.set_latency(name, latency);
-            let updated_list = state.devices.device_list();
-            let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
-        }
-        ClientMessage::GetLine(line_id) => {
-            let scene = state.scene_image.lock().await;
-            if let Some(line) = scene.line(line_id) {
-                ServerMessage::Notification(SovaNotification::UpdatedLines(vec![(line_id, line.clone())]))
-            } else {
-                ServerMessage::InternalError(format!("No line at index {}", line_id))
-            }
-        }
-        ClientMessage::SetLines(lines, timing) => {
-            send_and_relay(state, SchedulerMessage::SetLines(lines, timing))
-        }
-        ClientMessage::ConfigureLines(lines, timing) => {
-            send_and_relay(state, SchedulerMessage::ConfigureLines(lines, timing))
-        }
-        ClientMessage::AddLine(line_id, line, timing) => {
-            send_and_relay(state, SchedulerMessage::AddLine(line_id, line, timing))
-        }
-        ClientMessage::RemoveLine(line_id, timing) => {
-            send_and_relay(state, SchedulerMessage::RemoveLine(line_id, timing))
-        }
-        ClientMessage::GetFrame(line_id, frame_id) => {
-            let scene = state.scene_image.lock().await;
-            if let Some(frame) = scene.get_frame(line_id, frame_id) {
-                ServerMessage::Notification(SovaNotification::UpdatedFrames(vec![(line_id, frame_id, frame.clone())]))
-            } else {
-                ServerMessage::InternalError(format!(
-                    "Unable to get frame {} at line {}",
-                    frame_id, line_id
-                ))
-            }
-        }
-        ClientMessage::SetFrames(frames, timing) => {
-            send_and_relay(state, SchedulerMessage::SetFrames(frames, timing))
-        }
-        ClientMessage::AddFrame(line_id, frame_id, frame, timing) => send_and_relay(
-            state,
-            SchedulerMessage::AddFrame(line_id, frame_id, frame, timing),
-        ),
-        ClientMessage::RestoreDevices(devices) => {
-            let missing_devices = state.devices.restore_from_snapshot(devices);
-            let updated_list = state.devices.device_list();
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list)),
-                false,
-            );
-            ServerMessage::DevicesRestored { missing_devices }
-        }
-        ClientMessage::PreviewSample {
-            folder,
-            index,
-            begin,
-        } => {
-            use sova_core::vm::event::ConcreteEvent;
-            use sova_core::vm::variable::VariableValue;
-
-            let mut args = std::collections::HashMap::new();
-            args.insert("s".to_string(), VariableValue::Str(folder));
-            args.insert("n".to_string(), VariableValue::Integer(index as i64));
-            args.insert("gain".to_string(), VariableValue::Float(1.0));
-            args.insert("gate".to_string(), VariableValue::Float(2.0));
-            args.insert("begin".to_string(), VariableValue::Float(begin));
-
-            let event = ConcreteEvent::Dirt { args, device_id: 0 };
-
-            let clock = Clock::from(&state.clock_server);
-            let time = clock.micros();
-            let messages = state
-                .devices
-                .map_event_for_device_name("Doux", event, time, &clock);
-
-            for timed in messages {
-                let _ = timed.message.send();
-            }
-
-            ServerMessage::Success
-        }
-        ClientMessage::GetAudioEngineState => {
-            ServerMessage::AudioEngineState(state.get_audio_engine_state())
-        }
-        ClientMessage::RestartAudioEngine(mut config) => {
-            let Some(ref restart_tx) = state.audio_restart_tx else {
-                return ServerMessage::InternalError("Audio engine not available".to_string());
-            };
-
-            #[cfg(feature = "default-samples")]
-            {
-                let default = super::audio::default_samples::ensure_default_samples();
-                if !config.sample_paths.contains(&default) {
-                    config.sample_paths.insert(0, default);
-                }
-            }
-
-            let (response_tx, response_rx) = crossbeam_channel::bounded(1);
-            let request = AudioRestartRequest {
-                config,
-                response_tx,
-            };
-
-            if restart_tx.send(request).is_err() {
-                return ServerMessage::InternalError("Failed to send restart request".to_string());
-            }
-
-            match response_rx.recv() {
-                Ok(Ok(new_state)) => ServerMessage::AudioEngineState(new_state),
-                Ok(Err(e)) => ServerMessage::InternalError(format!("Audio restart failed: {}", e)),
-                Err(_) => ServerMessage::InternalError("Audio restart channel closed".to_string()),
-            }
-        }
-        ClientMessage::ResetScene(timing) => {
-            send_and_relay(state, SchedulerMessage::SetScene(Scene::default(), timing))
-        }
-        ClientMessage::RestartCore => {
-            let Some(ref restart_tx) = state.core_restart_tx else {
-                return ServerMessage::InternalError("Core restart not available".into());
-            };
-            let restart_tx = restart_tx.clone();
-            match tokio::task::spawn_blocking(move || {
-                let (response_tx, response_rx) = crossbeam_channel::bounded(1);
-                if restart_tx.send(CoreRestartRequest { response_tx }).is_err() {
-                    return ServerMessage::InternalError("Core restart channel closed".into());
-                }
-                match response_rx.recv() {
-                    Ok(Ok(())) => ServerMessage::Success,
-                    Ok(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
-                    Err(_) => ServerMessage::InternalError("Core restart channel closed".into()),
-                }
-            }).await {
-                Ok(msg) => msg,
-                Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
-            }
-        }
-        ClientMessage::HydraCode(code) => {
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::HydraCode(client_name.clone(), code),
-                false,
-            );
-            ServerMessage::Success
-        }
-        ClientMessage::SetMasterVolume(vol) => {
-            let clamped = vol.clamp(0.0, 1.0);
-            state
-                .master_gain
-                .store(clamped.to_bits(), Ordering::Relaxed);
-            ServerMessage::Success
-        }
-        ClientMessage::EnableFeedback => {
-            let scene = state.scene_image.lock().await.clone();
-            let clock = Clock::from(&state.clock_server);
-            ServerMessage::FeedbackEnabled {
-                scene,
-                tempo: clock.tempo(),
-                quantum: clock.quantum(),
-                is_playing: state.is_playing.load(Ordering::Relaxed),
-            }
-        }
-        ClientMessage::Hush => {
-            let _ = state
-                .sched_iface
-                .read()
-                .unwrap()
-                .send(SchedulerMessage::TransportStop(ActionTiming::Immediate));
-            if let Some(ref tx) = state.audio_cmd_tx {
-                let _ = tx.send(AudioCommand::Hush);
-            }
-            state.devices.panic_all_midi_outputs();
-            ServerMessage::Success
-        }
-        ClientMessage::ScriptEdit { li, fi, ops } => {
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::ScriptEdit {
-                    sender: client_name.clone(),
-                    li,
-                    fi,
-                    ops,
-                },
-                true,
-            );
-            ServerMessage::Success
-        }
-        ClientMessage::SetLinkEnabled(enabled) => {
-            state.clock_server.link.enable(enabled);
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::LinkState {
-                    enabled,
-                    start_stop_sync: state.clock_server.link.is_start_stop_sync_enabled(),
-                    num_peers: state.clock_server.link.num_peers() as u32,
-                },
-                false,
-            );
-            ServerMessage::Success
-        }
-        ClientMessage::SetStartStopSync(enabled) => {
-            state.clock_server.link.enable_start_stop_sync(enabled);
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::LinkState {
-                    enabled: state.clock_server.link.is_enabled(),
-                    start_stop_sync: enabled,
-                    num_peers: state.clock_server.link.num_peers() as u32,
-                },
-                false,
-            );
-            ServerMessage::Success
-        }
-        ClientMessage::Panic => {
-            let _ = state
-                .sched_iface
-                .read()
-                .unwrap()
-                .send(SchedulerMessage::TransportStop(ActionTiming::Immediate));
-            if let Some(ref tx) = state.audio_cmd_tx {
-                let _ = tx.send(AudioCommand::Panic);
-            }
-            state.devices.panic_all_midi_outputs();
-            ServerMessage::Success
-        }
-    }
 }
 
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
@@ -696,40 +215,100 @@ fn broadcast_raw(registry: &ClientRegistry, msg: &ServerMessage, droppable: bool
     }
 }
 
-fn notification_to_server_message(
-    notif: SovaNotification,
-    clock: &mut Clock,
-) -> ServerMessage {
-    match notif {
-        SovaNotification::Tick
-        | SovaNotification::QuantumChanged(_)
-        | SovaNotification::TempoChanged(_) => {
-            clock.capture_app_state();
-            ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
-        }
-        notif => ServerMessage::Notification(notif)
-        
-    }
+pub struct SovaCoreServer {
+    pub ip: String,
+    pub port: u16,
+    pub clock_server: Arc<ClockServer>,
+    pub devices: Arc<DeviceMap>,
+    pub sched_iface: OnceLock<Arc<RwLock<Sender<SchedulerMessage>>>>,
+    pub log_sender: broadcast::Sender<SovaNotification>,
+    pub client_registry: ClientRegistry,
+    pub clients: Arc<Mutex<Vec<String>>>,
+    pub scene_image: Arc<Mutex<Scene>>,
+    pub languages: Arc<LanguageCenter>,
+    pub is_playing: Arc<AtomicBool>,
+    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+    pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+    pub audio_cmd_tx: Option<Sender<AudioCommand>>,
+    pub core_restart_tx: Option<Sender<CoreRestartRequest>>,
+    pub password: Option<String>,
+    pub master_gain: Arc<AtomicU32>,
 }
 
 impl SovaCoreServer {
-    pub fn new(ip: String, port: u16, state: ServerState) -> Self {
-        SovaCoreServer { ip, port, state }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        ip: String,
+        port: u16,
+        scene_image: Arc<Mutex<Scene>>,
+        clock_server: Arc<ClockServer>,
+        devices: Arc<DeviceMap>,
+        log_sender: broadcast::Sender<SovaNotification>,
+        client_registry: ClientRegistry,
+        languages: Arc<LanguageCenter>,
+        audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+        audio_restart_tx: Option<Sender<AudioRestartRequest>>,
+        audio_cmd_tx: Option<Sender<AudioCommand>>,
+        core_restart_tx: Option<Sender<CoreRestartRequest>>,
+        password: Option<String>,
+        master_gain: Arc<AtomicU32>,
+    ) -> Self {
+        SovaCoreServer {
+            ip, 
+            port,
+            clock_server,
+            devices,
+            sched_iface: OnceLock::new(),
+            log_sender,
+            client_registry,
+            clients: Arc::new(Mutex::new(Vec::new())),
+            scene_image,
+            languages,
+            is_playing: Arc::new(AtomicBool::new(false)),
+            audio_engine_state,
+            audio_restart_tx,
+            audio_cmd_tx,
+            core_restart_tx,
+            password,
+            master_gain,
+        }
+    }
+
+    pub fn state(&self) -> ServerState {
+        ServerState::new(
+            self.scene_image.clone(), 
+            self.clock_server.clone(), 
+            self.devices.clone(), 
+            self.sched_iface.get().unwrap().clone(), 
+            self.client_registry.clone(), 
+            self.clients.clone(),
+            self.languages.clone(), 
+            self.is_playing.clone(), 
+            self.audio_engine_state.clone(),
+            self.audio_restart_tx.clone(), 
+            self.audio_cmd_tx.clone(), 
+            self.core_restart_tx.clone(), 
+            self.password.clone(), 
+            self.master_gain.clone()
+        )
     }
 
     pub fn stop_core(&self) {
-        self.state.sched_iface.read().unwrap().send(SchedulerMessage::Shutdown);
-        self.state.is_playing.store(false, Ordering::Relaxed);
+        if let Some(iface) = &self.sched_iface.get() {
+            let _ = iface.read().unwrap().send(SchedulerMessage::Shutdown);
+            self.is_playing.store(false, Ordering::Relaxed);
+        }
     }
 
     pub fn start_core(&self) -> (JoinHandle<()>, JoinHandle<()>, Option<String>) {
         let (new_world, new_sched, new_iface, new_update) =
             sova_core::init::start_scheduler_and_world(
-                self.state.clock_server.clone(),
-                self.state.devices.clone(),
-                self.state.languages.clone(),
+                self.clock_server.clone(),
+                self.devices.clone(),
+                self.languages.clone(),
             );
-        let scene = self.state.scene_image.blocking_lock().clone();
+        let scene = self.scene_image.blocking_lock().clone();
         if let Err(e) = new_iface.send(SchedulerMessage::SetScene(
             scene.clone(),
             ActionTiming::Immediate,
@@ -737,9 +316,9 @@ impl SovaCoreServer {
             return (new_world, new_sched, Some(format!("Failed to set scene: {e}")));
         }
         self.set_scheduler_connection(new_iface, new_update);
-        self.state.is_playing.store(true, Ordering::Relaxed);
-        broadcast_raw(&self.state.client_registry, &ServerMessage::CoreRestarted, false);
-        broadcast_raw(&self.state.client_registry, &ServerMessage::Notification(SovaNotification::UpdatedScene(scene)), false);
+        self.is_playing.store(true, Ordering::Relaxed);
+        broadcast_raw(&self.client_registry, &ServerMessage::CoreRestarted, false);
+        broadcast_raw(&self.client_registry, &ServerMessage::Notification(SovaNotification::UpdatedScene(scene)), false);
         (new_world, new_sched, None)
     }
 
@@ -749,24 +328,26 @@ impl SovaCoreServer {
         sched_update: Receiver<SovaNotification>
     ) {
         self.start_image_maintainer(sched_update);
-        if let Ok(mut iface) = self.state.sched_iface.write() {
-            *iface = sched_iface;
-        } else {
-            eprintln!("Unable to assign new Scheduler interface to Server !");
+        match self.sched_iface.get() {
+            Some(lock) => {
+                let mut iface = lock.write().unwrap();
+                *iface = sched_iface;
+            }
+            None => {
+                let _ = self.sched_iface.set(Arc::new(RwLock::new(sched_iface)));
+            }
         }
+        
     }
 
     pub async fn start(&self) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
         println!("Server listening on {}", addr);
-        if let Some(rx) = scheduler_notifications {
-            self.start_image_maintainer(rx);
-        }
 
         // Bridge logger notifications (from core) to per-client channels
-        let mut log_rx = self.state.log_sender.subscribe();
-        let bridge_registry = self.state.client_registry.clone();
+        let mut log_rx = self.log_sender.subscribe();
+        let bridge_registry = self.client_registry.clone();
         tokio::spawn(async move {
             loop {
                 match log_rx.recv().await {
@@ -779,12 +360,12 @@ impl SovaCoreServer {
             }
         });
 
-        let mut clock = Clock::from(Arc::clone(&self.state.clock_server));
+        let mut clock = Clock::from(Arc::clone(&self.clock_server));
         loop {
             select! {
                 Ok((socket, client_addr)) = listener.accept() => {
                     println!("New connection from {}", client_addr);
-                    let client_state = self.state.clone();
+                    let client_state = self.state();
                     tokio::spawn(async move {
                         match process_client(socket, client_state).await {
                             Ok(client_name) => {
@@ -803,7 +384,7 @@ impl SovaCoreServer {
                 _ = tokio::time::sleep(Duration::from_millis(20)) => {
                     clock.capture_app_state();
                     let msg = ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum());
-                    broadcast_raw(&self.state.client_registry, &msg, true);
+                    broadcast_raw(&self.client_registry, &msg, true);
                 }
             }
         }
@@ -814,105 +395,50 @@ impl SovaCoreServer {
     pub fn start_image_maintainer(&self, scheduler_notifications: Receiver<SovaNotification>) {
         start_image_maintainer(
             scheduler_notifications,
-            self.state.scene_image.clone(),
-            self.state.client_registry.clone(),
-            self.state.is_playing.clone(),
-            Clock::from(Arc::clone(&self.state.clock_server))
+            self.scene_image.clone(),
+            self.client_registry.clone(),
+            self.is_playing.clone(),
+            Clock::from(Arc::clone(&self.clock_server))
         );
     }
 }
 
-pub fn start_image_maintainer(
-    scheduler_notifications: Receiver<SovaNotification>,
-    scene_image: Arc<Mutex<Scene>>,
-    client_registry: ClientRegistry,
-    is_playing: Arc<AtomicBool>,
-    mut clock: Clock
-) {
-    thread::spawn(move || {
-        let position_broadcast_interval =
-            std::time::Duration::from_millis(POSITION_BROADCAST_INTERVAL_MS);
-        let mut last_position_broadcast = std::time::Instant::now();
+pub fn start_core_link(
+    server: &Arc<SovaCoreServer>, 
+    core_restart_rx: Receiver<CoreRestartRequest>
+) -> JoinHandle<()> {
+    let (mut world_handle, mut sched_handle, _) = server.start_core();
+    let server_clone = Arc::clone(server);
+    std::thread::spawn(move || {
+        while let Ok(req) = core_restart_rx.recv() {
+            let mut requestors = vec![req];
+            while let Ok(extra) = core_restart_rx.try_recv() {
+                requestors.push(extra);
+            }
 
-        loop {
-            match scheduler_notifications.recv() {
-                Ok(p) => {
-                    let mut guard = scene_image.blocking_lock();
-                    match &p {
-                        SovaNotification::UpdatedScene(scene) => {
-                            *guard = scene.clone();
-                        }
-                        SovaNotification::UpdatedSceneMode(mode) => {
-                            guard.mode = *mode;
-                        }
-                        SovaNotification::UpdatedScenePrelude(prelude) => {
-                            guard.prelude = prelude.clone();
-                        }
-                        SovaNotification::UpdatedLines(lines) => {
-                            for (i, line) in lines {
-                                guard.set_line(*i, line.clone());
-                            }
-                        }
-                        SovaNotification::AddedLine(i, line) => {
-                            guard.insert_line(*i, line.clone());
-                        }
-                        SovaNotification::RemovedLine(index) => {
-                            guard.remove_line(*index);
-                        }
-                        SovaNotification::UpdatedFrames(frames) => {
-                            for (line_id, frame_id, frame) in frames.iter() {
-                                guard.line_mut(*line_id).set_frame(*frame_id, frame.clone());
-                            }
-                        }
-                        SovaNotification::AddedFrame(line_id, frame_id, frame) => {
-                            guard
-                                .line_mut(*line_id)
-                                .insert_frame(*frame_id, frame.clone());
-                        }
-                        SovaNotification::RemovedFrame(line_id, frame_id) => {
-                            guard.line_mut(*line_id).remove_frame(*frame_id);
-                        }
-                        SovaNotification::PlaybackStateChanged(state) => {
-                            let playing = match state {
-                                PlaybackState::Stopped => false,
-                                PlaybackState::Starting(_) => false,
-                                PlaybackState::Playing => true,
-                            };
-                            is_playing.store(playing, Ordering::Relaxed);
-                        }
-                        _ => (),
-                    };
-                    drop(guard);
+            server_clone.stop_core();
+            let _ = sched_handle.join();
+            let _ = world_handle.join();
 
-                    let should_broadcast = match &p {
-                        SovaNotification::FramePositionChanged(_) => {
-                            let now = std::time::Instant::now();
-                            if now.duration_since(last_position_broadcast)
-                                >= position_broadcast_interval
-                            {
-                                last_position_broadcast = now;
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        _ => true,
-                    };
+            let (new_world, new_sched, err) = server_clone.start_core();
 
-                    if should_broadcast {
-                        let msg = notification_to_server_message(p, &mut clock);
-                        let droppable = matches!(
-                            &msg, 
-                            ServerMessage::Notification(SovaNotification::FramePositionChanged(_))
-                            | ServerMessage::ClockState(..)
-                        );
-                        broadcast_raw(&client_registry, &msg, droppable);
-                    }
+            world_handle = new_world;
+            sched_handle = new_sched;
+
+            if let Some(e) = err {
+                for r in requestors {
+                    let _ = r.response_tx.send(Err(e.clone()));
                 }
-                Err(_) => break,
+                continue;
+            }
+
+            for r in requestors {
+                let _ = r.response_tx.send(Ok(()));
             }
         }
-    });
+
+        server_clone.stop_core();
+    })
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {

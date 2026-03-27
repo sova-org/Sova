@@ -3,7 +3,6 @@ use crate::message::ServerMessage;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use sova_core::protocol::DeviceInfo;
-use sova_core::scene::{ExecutionMode, Frame, Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -98,23 +97,13 @@ pub enum TextOp {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
-    SchedulerControl(SchedulerMessage),
-    SetTempo(f64, ActionTiming),
     SetName {
         name: String,
         password: Option<String>,
     },
     GetScene,
-    SetScene(Scene, ActionTiming),
     GetLine(usize),
-    SetLines(Vec<(usize, Line)>, ActionTiming),
-    ConfigureLines(Vec<(usize, Line)>, ActionTiming),
-    AddLine(usize, Line, ActionTiming),
-    RemoveLine(usize, ActionTiming),
     GetFrame(usize, usize),
-    SetFrames(Vec<(usize, usize, Frame)>, ActionTiming),
-    AddFrame(usize, usize, Frame, ActionTiming),
-    RemoveFrame(usize, usize, ActionTiming),
     GetClock,
     GetPeers,
     Chat(String),
@@ -122,9 +111,6 @@ pub enum ClientMessage {
     StartedEditingFrame(usize, usize),
     StoppedEditingFrame(usize, usize),
     CursorPosition(usize, usize, Option<(usize, usize)>),
-    TransportStart(ActionTiming),
-    TransportStop(ActionTiming),
-    SetSceneMode(ExecutionMode, ActionTiming),
     RequestDeviceList,
     ConnectMidiDeviceByName(String),
     DisconnectMidiDeviceByName(String),
@@ -156,6 +142,8 @@ pub enum ClientMessage {
     },
     SetLinkEnabled(bool),
     SetStartStopSync(bool),
+    #[serde(untagged)]
+    SchedulerControl(SchedulerMessage),
 }
 
 impl ClientMessage {
@@ -167,6 +155,12 @@ impl ClientMessage {
                 format!("MessagePack deserialization error: {}", e),
             )),
         }
+    }
+}
+
+impl From<SchedulerMessage> for ClientMessage {
+    fn from(value: SchedulerMessage) -> Self {
+        ClientMessage::SchedulerControl(value)
     }
 }
 
@@ -334,12 +328,12 @@ mod tests {
         scene.lines[0].frames.push(frame.clone());
 
         let variants: Vec<ClientMessage> = vec![
-            ClientMessage::SetScene(scene, ActionTiming::Immediate),
-            ClientMessage::SetFrames(
+            ClientMessage::SchedulerControl(SchedulerMessage::SetScene(scene, ActionTiming::Immediate)),
+            ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(
                 vec![(0, 0, frame.clone())],
                 ActionTiming::AtNextBeat,
-            ),
-            ClientMessage::AddFrame(0, 1, frame, ActionTiming::Immediate),
+            )),
+            ClientMessage::SchedulerControl(SchedulerMessage::AddFrame(0, 1, frame, ActionTiming::Immediate)),
         ];
 
         for msg in &variants {
@@ -1286,7 +1280,7 @@ mod tests {
         }
         let mut frame = Frame::default();
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
-        let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
+        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate));
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
         let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
@@ -1302,7 +1296,7 @@ mod tests {
         }
         let mut frame = Frame::default();
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
-        let msg = ClientMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate);
+        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate));
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
         let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();

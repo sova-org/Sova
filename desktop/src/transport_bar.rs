@@ -45,7 +45,7 @@ impl TransportBar {
             ui.horizontal(|ui| {
                 // Play/Pause
                 if clock.playing {
-                    let msg = ClientMessage::TransportStop(ActionTiming::Immediate);
+                    let msg = SchedulerMessage::TransportStop(ActionTiming::Immediate);
                     egui::Frame::NONE
                         .fill(egui::Color32::from_rgba_unmultiplied(
                             accent.r(),
@@ -69,7 +69,7 @@ impl TransportBar {
                         crate::widgets::hint::set(ctx, t!("transport.hint.play"));
                     }
                     if r.clicked() {
-                        bridge.send(ClientMessage::TransportStart(
+                        bridge.send(SchedulerMessage::TransportStart(
                             ActionTiming::Immediate,
                         ));
                     }
@@ -118,7 +118,7 @@ impl TransportBar {
                             && let Ok(t) = self.tempo_buf.parse::<f64>()
                         {
                             let t = t.clamp(20.0, 300.0);
-                            bridge.send(ClientMessage::SetTempo(
+                            bridge.send(SchedulerMessage::SetTempo(
                                 t,
                                 ActionTiming::Immediate,
                             ));
@@ -237,11 +237,9 @@ impl TransportBar {
                             && let Ok(q) = self.quantum_buf.parse::<u32>()
                         {
                             let q = q.clamp(1, 16);
-                            bridge.send(ClientMessage::SchedulerControl(
-                                SchedulerMessage::SetQuantum(
-                                    q as f64,
-                                    ActionTiming::Immediate,
-                                ),
+                            bridge.send(SchedulerMessage::SetQuantum(
+                                q as f64,
+                                ActionTiming::Immediate,
                             ));
                         }
                         self.editing_quantum = false;
@@ -275,7 +273,7 @@ impl TransportBar {
                         ExecutionMode::AtQuantum => ExecutionMode::LongestLine,
                         ExecutionMode::LongestLine => ExecutionMode::Free,
                     };
-                    bridge.send(ClientMessage::SetSceneMode(
+                    bridge.send(SchedulerMessage::SetSceneMode(
                         next,
                         ActionTiming::Immediate,
                     ));

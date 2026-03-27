@@ -1,17 +1,16 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
-use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
+use std::{sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc}, thread::JoinHandle};
 
 use sova_core::{
     clock::ClockServer,
     device_map::DeviceMap,
     scene::{Line, Scene},
-    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
+    schedule::SovaNotification,
 };
-use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{audio::{AudioThread, spawn_audio_thread}, start_core_link};
 use sova_server::{
-    AudioEngineState, ClientRegistry, CoreRestartRequest, ServerState, SovaCoreServer,
-    start_image_maintainer,
+    AudioEngineState, ClientRegistry, CoreRestartRequest, SovaCoreServer,
 };
 use tokio::sync::Mutex;
 
@@ -40,6 +39,7 @@ struct EmbeddedServer {
     log_forwarder: tokio::task::JoinHandle<()>,
     devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
+    core_link_handle: JoinHandle<()>
 }
 
 pub struct ServerPanel {
@@ -163,23 +163,8 @@ impl ServerPanel {
 
         let languages = Arc::new(langs::create_language_center());
 
-        let (mut world_handle, mut sched_handle, sched_iface, sched_update) =
-            sova_core::init::start_scheduler_and_world(
-                clock_server.clone(),
-                devices.clone(),
-                languages.clone(),
-            );
-
         let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
         let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
-
-        if let Err(e) = sched_iface.send(SchedulerMessage::SetScene(
-            initial_scene,
-            ActionTiming::Immediate,
-        )) {
-            self.status = ServerStatus::Error(format!("Failed to send initial scene: {}", e));
-            return;
-        }
 
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
         let audio_thread = spawn_audio_thread(
@@ -197,11 +182,12 @@ impl ServerPanel {
 
         let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
 
-        let server_state = ServerState::new(
+        let server = SovaCoreServer::new(
+            self.ip.clone(),
+            port,
             Arc::clone(&scene_image),
             clock_server.clone(),
             devices.clone(),
-            sched_iface,
             log_sender,
             client_registry.clone(),
             languages.clone(),
@@ -212,56 +198,19 @@ impl ServerPanel {
             password,
             master_gain,
         );
-
-        let ip = self.ip.clone();
-        let server = Arc::new(SovaCoreServer::new(ip, port, server_state));
-
-        // Orchestrator thread for embedded server
-        let server_clone = Arc::clone(&server);
-        std::thread::spawn(move || {
-            let mut world_handle = world_handle;
-            let mut sched_handle = sched_handle;
-
-            server_clone.start_core();
-
-            while let Ok(req) = core_restart_rx.recv() {
-                let mut requestors = vec![req];
-                while let Ok(extra) = core_restart_rx.try_recv() {
-                    requestors.push(extra);
-                }
-
-                server_clone.stop_core();
-                let _ = sched_handle.join();
-                let _ = world_handle.join();
-
-                let (new_world, new_sched, err) = server_clone.start_core();
-
-                if let Some(e) = err {
-                    for r in requestors {
-                        let _ = r.response_tx.send(Err(e));
-                    }
-                    continue;
-                }
-
-                for r in requestors {
-                    let _ = r.response_tx.send(Ok(()));
-                }
-            }
-
-            server_clone.stop_core();
-        });
-
+        let server = Arc::new(server);
         
-
+        let core_link_handle = start_core_link(&server, core_restart_rx);
         let server_task = self
             .runtime
-            .spawn(async move { server.start(None).await });
+            .spawn(async move { server.start().await });
 
         self.embedded = Some(EmbeddedServer {
             server_task,
             log_forwarder,
             devices,
             audio_thread: Some(audio_thread),
+            core_link_handle
         });
         self.status = ServerStatus::Running;
     }

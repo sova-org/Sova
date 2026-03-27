@@ -170,7 +170,7 @@ impl InlineFrameState {
     pub fn evaluate(&mut self, li: usize, fi: usize, frame: &Frame, bridge: &ClientBridge) {
         let mut f = frame.clone();
         f.set_script(Script::new(self.content.clone(), self.lang.clone()));
-        bridge.send(ClientMessage::SetFrames(
+        bridge.send(SchedulerMessage::SetFrames(
             vec![(li, fi, f)],
             ActionTiming::Immediate,
         ));
@@ -238,7 +238,7 @@ impl InlineFrameState {
         {
             let mut f = frame.clone();
             f.enabled = !enabled;
-            bridge.send(ClientMessage::SetFrames(
+            bridge.send(SchedulerMessage::SetFrames(
                 vec![(li, fi, f)],
                 ActionTiming::Immediate,
             ));
@@ -274,7 +274,7 @@ impl InlineFrameState {
         if dur_resp.changed() && dur > 0.0 {
             let mut f = frame.clone();
             f.duration = dur;
-            bridge.send(ClientMessage::SetFrames(
+            bridge.send(SchedulerMessage::SetFrames(
                 vec![(li, fi, f)],
                 ActionTiming::Immediate,
             ));
@@ -290,7 +290,7 @@ impl InlineFrameState {
         if rep_resp.changed() && rep > 0 {
             let mut f = frame.clone();
             f.repetitions = rep;
-            bridge.send(ClientMessage::SetFrames(
+            bridge.send(SchedulerMessage::SetFrames(
                 vec![(li, fi, f)],
                 ActionTiming::Immediate,
             ));
@@ -319,7 +319,7 @@ impl InlineFrameState {
             if new_name != frame.name {
                 let mut f = frame.clone();
                 f.name = new_name;
-                bridge.send(ClientMessage::SetFrames(
+                bridge.send(SchedulerMessage::SetFrames(
                     vec![(li, fi, f)],
                     ActionTiming::Immediate,
                 ));
@@ -365,14 +365,14 @@ impl InlineFrameState {
         default_lang: &str,
     ) {
         if ui.button(t!("scene.insert_frame_before")).clicked() {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi, new_frame(default_lang), ActionTiming::Immediate,
             ));
             self.menu_open = false;
             ui.close();
         }
         if ui.button(t!("scene.insert_frame_after")).clicked() {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
             ));
             self.menu_open = false;
@@ -384,7 +384,7 @@ impl InlineFrameState {
                 .and_then(|s| s.lines.get(li))
                 .and_then(|l| l.frames.get(fi))
             {
-                bridge.send(ClientMessage::AddFrame(
+                bridge.send(SchedulerMessage::AddFrame(
                     li, fi + 1, frame.clone(), ActionTiming::Immediate,
                 ));
             }
@@ -402,7 +402,7 @@ impl InlineFrameState {
             )
             .clicked()
         {
-            bridge.send(ClientMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
             self.menu_open = false;
             ui.close();
         }

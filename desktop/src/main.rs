@@ -322,9 +322,9 @@ impl SovaApp {
             {
                 let clock = self.bridge.clock();
                 let msg = if clock.playing {
-                    ClientMessage::TransportStop(ActionTiming::Immediate)
+                    SchedulerMessage::TransportStop(ActionTiming::Immediate)
                 } else {
-                    ClientMessage::TransportStart(ActionTiming::Immediate)
+                    SchedulerMessage::TransportStart(ActionTiming::Immediate)
                 };
                 self.bridge.send(msg);
             }
@@ -384,12 +384,10 @@ impl SovaApp {
             return;
         };
         self.bridge
-            .send(ClientMessage::SetScene(snapshot.scene, timing));
+            .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge
-            .send(ClientMessage::SetTempo(snapshot.tempo, timing));
-        self.bridge.send(ClientMessage::SchedulerControl(
-            SchedulerMessage::SetQuantum(snapshot.quantum, timing),
-        ));
+            .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
+        self.bridge.send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
         self.push_recent_scene(path.to_path_buf());
     }
 
@@ -398,12 +396,10 @@ impl SovaApp {
             return;
         };
         self.bridge
-            .send(ClientMessage::SetScene(snapshot.scene, timing));
+            .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge
-            .send(ClientMessage::SetTempo(snapshot.tempo, timing));
-        self.bridge.send(ClientMessage::SchedulerControl(
-            SchedulerMessage::SetQuantum(snapshot.quantum, timing),
-        ));
+            .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
+        self.bridge.send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
     }
 
     fn push_recent_scene(&mut self, path: std::path::PathBuf) {
@@ -1074,9 +1070,9 @@ impl SovaApp {
                 if self.bridge.is_connected() {
                     let clock = self.bridge.clock();
                     let msg = if clock.playing {
-                        ClientMessage::TransportStop(ActionTiming::Immediate)
+                        SchedulerMessage::TransportStop(ActionTiming::Immediate)
                     } else {
-                        ClientMessage::TransportStart(ActionTiming::Immediate)
+                        SchedulerMessage::TransportStart(ActionTiming::Immediate)
                     };
                     self.bridge.send(msg);
                 }

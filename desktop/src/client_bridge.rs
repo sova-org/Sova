@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use eframe::egui;
 use sova_core::error::SovaError;
+use sova_core::schedule::SovaNotification;
 use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
@@ -322,9 +323,9 @@ impl ClientBridge {
         self.clear_state();
     }
 
-    pub fn send(&self, msg: ClientMessage) {
+    pub fn send<T: Into<ClientMessage>>(&self, msg: T) {
         if let Some(tx) = &self.send_tx {
-            let _ = tx.send(OutgoingMessage::Send(Box::new(msg)));
+            let _ = tx.send(OutgoingMessage::Send(Box::new(msg.into())));
         }
     }
 
@@ -386,13 +387,13 @@ impl ClientBridge {
                     self.event_rx = None;
                     return;
                 }
-                ServerMessage::SceneValue(s) => {
+                ServerMessage::Notification(SovaNotification::UpdatedScene(s)) => {
                     self.scene = Some(s);
                     self.errors.clear();
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                 }
-                ServerMessage::AddLine(idx, line) => {
+                ServerMessage::Notification(SovaNotification::AddedLine(idx, line)) => {
                     if let Some(scene) = &mut self.scene
                         && idx <= scene.lines.len()
                     {
@@ -403,7 +404,7 @@ impl ClientBridge {
                         scene.lines.insert(idx, line);
                     }
                 }
-                ServerMessage::RemoveLine(idx) => {
+                ServerMessage::Notification(SovaNotification::RemovedLine(idx)) => {
                     if let Some(scene) = &mut self.scene
                         && idx < scene.lines.len()
                     {
@@ -411,7 +412,7 @@ impl ClientBridge {
                     }
                     self.mutation_flashes.retain(|&(li, _), _| li != idx);
                 }
-                ServerMessage::AddFrame(li, fi, frame) => {
+                ServerMessage::Notification(SovaNotification::AddedFrame(li, fi, frame)) => {
                     if let Some(line) = self.scene.as_mut().and_then(|s| s.lines.get_mut(li))
                         && fi <= line.frames.len()
                     {
@@ -419,7 +420,7 @@ impl ClientBridge {
                         self.mutation_flashes.insert((li, fi), Instant::now());
                     }
                 }
-                ServerMessage::RemoveFrame(li, fi) => {
+                ServerMessage::Notification(SovaNotification::RemovedFrame(li, fi)) => {
                     if let Some(line) = self.scene.as_mut().and_then(|s| s.lines.get_mut(li))
                         && fi < line.frames.len()
                     {
@@ -428,7 +429,7 @@ impl ClientBridge {
                     self.errors.remove(&(li, fi));
                     self.mutation_flashes.insert((li, fi), Instant::now());
                 }
-                ServerMessage::FrameValues(items) => {
+                ServerMessage::Notification(SovaNotification::UpdatedFrames(items)) => {
                     if let Some(scene) = &mut self.scene {
                         let now = Instant::now();
                         for (li, fi, frame) in items {
@@ -441,7 +442,8 @@ impl ClientBridge {
                         }
                     }
                 }
-                ServerMessage::LineValues(items) | ServerMessage::LineConfigurations(items) => {
+                ServerMessage::Notification(SovaNotification::UpdatedLines(items)) 
+                | ServerMessage::Notification(SovaNotification::UpdatedLineConfigurations(items)) => {
                     if let Some(scene) = &mut self.scene {
                         let now = Instant::now();
                         for (li, line) in items {
@@ -454,17 +456,17 @@ impl ClientBridge {
                         }
                     }
                 }
-                ServerMessage::SceneMode(mode) => {
+                ServerMessage::Notification(SovaNotification::UpdatedSceneMode(mode)) => {
                     if let Some(scene) = &mut self.scene {
                         scene.mode = mode;
                     }
                 }
-                ServerMessage::ScenePrelude(scripts) => {
+                ServerMessage::Notification(SovaNotification::UpdatedScenePrelude(scripts)) => {
                     if let Some(scene) = &mut self.scene {
                         scene.prelude = scripts;
                     }
                 }
-                ServerMessage::FramePosition(p) => {
+                ServerMessage::Notification(SovaNotification::FramePositionChanged(p)) => {
                     let now = Instant::now();
                     self.position_start.resize(p.len(), now);
                     for (li, new_pos) in p.iter().enumerate() {
@@ -480,14 +482,14 @@ impl ClientBridge {
                     self.clock.phase = if quantum > 0.0 { beat % quantum } else { 0.0 };
                     self.clock.quantum = quantum;
                 }
-                ServerMessage::PlaybackStateChanged(state) => {
+                ServerMessage::Notification(SovaNotification::PlaybackStateChanged(state)) => {
                     self.clock.playing = !matches!(state, PlaybackState::Stopped);
                     if !self.clock.playing {
                         self.positions.clear();
                         self.position_start.clear();
                     }
                 }
-                ServerMessage::DeviceList(devices) => {
+                ServerMessage::Notification(SovaNotification::DeviceListChanged(devices)) => {
                     self.devices = devices;
                 }
                 ServerMessage::AudioEngineState(state) => {
@@ -528,7 +530,7 @@ impl ClientBridge {
                     }
                     self.peers = new_peers;
                 }
-                ServerMessage::CompilationUpdate(li, fi, _id, state) => {
+                ServerMessage::Notification(SovaNotification::CompilationUpdated(li, fi, _id, state)) => {
                     self.errors.remove(&(li, fi));
                     match &state {
                         CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
@@ -548,7 +550,7 @@ impl ClientBridge {
                         *scene.get_frame_mut(li, fi).compilation_state_mut() = state;
                     }
                 }
-                ServerMessage::Log(msg) => {
+                ServerMessage::Notification(SovaNotification::Log(msg)) => {
                     let _ = self.log_tx.send(LogEntry {
                         source: LogSource::Client,
                         message: msg,
@@ -576,7 +578,7 @@ impl ClientBridge {
                 ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
                     self.peer_cursors.insert(name, (li, fi, tc));
                 }
-                ServerMessage::Error(e) => {
+                ServerMessage::Notification(SovaNotification::Error(e)) => {
                     self.errors.insert((e.line, e.frame), e);
                 }
                 ServerMessage::FeedbackEnabled { scene, tempo, quantum, is_playing } => {

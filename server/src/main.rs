@@ -1,8 +1,7 @@
 use sova_core::clock::ClockServer;
 use sova_core::device_map::DeviceMap;
 use sova_core::scene::{Line, Scene};
-use sova_core::schedule::ActionTiming;
-use sova_core::schedule::{SchedulerMessage, SovaNotification};
+use sova_core::schedule::SovaNotification;
 
 use clap::Parser;
 use std::io::ErrorKind;
@@ -12,8 +11,7 @@ use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
 use sova_server::{
-    AudioEngineState, AudioRestartConfig, ClientRegistry, CoreRestartRequest, ServerState,
-    SovaCoreServer, start_image_maintainer,
+    AudioEngineState, AudioRestartConfig, ClientRegistry, CoreRestartRequest, SovaCoreServer, start_core_link,
 };
 
 #[cfg(feature = "audio")]
@@ -196,23 +194,8 @@ async fn main() {
 
     let languages = Arc::new(langs::create_language_center());
 
-    let (world_handle, sched_handle, sched_iface, sched_update) =
-        sova_core::init::start_scheduler_and_world(
-            clock_server.clone(),
-            devices.clone(),
-            languages.clone(),
-        );
-
     let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
     let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
-
-    if let Err(e) = sched_iface.send(SchedulerMessage::SetScene(
-        initial_scene,
-        ActionTiming::Immediate,
-    )) {
-        eprintln!("Failed to send initial scene to scheduler: {}", e);
-        std::process::exit(1);
-    }
 
     let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
 
@@ -225,12 +208,13 @@ async fn main() {
     #[cfg(not(feature = "audio"))]
     let master_gain = Arc::new(AtomicU32::new(1.0f32.to_bits()));
 
-    let server_state = ServerState::new(
-        scene_image.clone(),
+    let server = SovaCoreServer::new(
+        cli.ip,
+        cli.port,
+        Arc::clone(&scene_image),
         clock_server.clone(),
         devices.clone(),
-        sched_iface,
-        log_sender.clone(),
+        log_sender,
         client_registry.clone(),
         languages.clone(),
         audio_engine_state,
@@ -240,97 +224,13 @@ async fn main() {
         cli.password,
         master_gain,
     );
-
-    let server = Arc::new(SovaCoreServer::new(cli.ip, cli.port, server_state));
-
-    // Orchestrator thread: owns core thread handles, handles restart requests
-    let server_clone = Arc::clone(&server);
-    std::thread::spawn(move || {
-        let mut world_handle = world_handle;
-        let mut sched_handle = sched_handle;
-
-        server.set_scheduler_connection(sched_iface, sched_update);
-
-        while let Ok(req) = core_restart_rx.recv() {
-            let mut requestors = vec![req];
-            while let Ok(extra) = core_restart_rx.try_recv() {
-                requestors.push(extra);
-            }
-            eprintln!("[orchestrator] Core restart requested ({} queued)", requestors.len());
-
-            // Shut down old core
-            {
-                let iface = server_clone.state.sched_iface.read().unwrap();
-                let _ = iface.send(SchedulerMessage::Shutdown);
-            }
-            let _ = sched_handle.join();
-            let _ = world_handle.join();
-            orch_is_playing.store(false, Ordering::Relaxed);
-
-            // Start new core
-            let (new_world, new_sched, new_iface, new_update) =
-                sova_core::init::start_scheduler_and_world(
-                    orch_clock.clone(),
-                    orch_devices.clone(),
-                    orch_languages.clone(),
-                );
-            world_handle = new_world;
-            sched_handle = new_sched;
-
-            // Resend scene to new scheduler
-            let scene = orch_scene_image.blocking_lock().clone();
-            let result = new_iface.send(SchedulerMessage::SetScene(
-                scene.clone(),
-                ActionTiming::Immediate,
-            ));
-
-            if let Err(e) = result {
-                for r in requestors {
-                    let _ = r.response_tx.send(Err(format!("Failed to set scene: {e}")));
-                }
-                continue;
-            }
-
-            // Update the server connection
-            server_clone.set_scheduler_connection(new_iface, new_update);
-
-            // Broadcast CoreRestarted + scene resync to all clients
-            if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
-                &sova_server::ServerMessage::CoreRestarted,
-            ) {
-                orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
-                    bytes: Arc::new(bytes),
-                    droppable: false,
-                });
-            }
-            if let Ok(bytes) = sova_server::client::serialize_to_wire_frame(
-                &sova_server::ServerMessage::SceneValue(scene),
-            ) {
-                orch_client_registry.broadcast(sova_server::BroadcastItem::Raw {
-                    bytes: Arc::new(bytes),
-                    droppable: false,
-                });
-            }
-
-            for r in requestors {
-                let _ = r.response_tx.send(Ok(()));
-            }
-            eprintln!("[orchestrator] Core restarted successfully");
-        }
-
-        // Channel closed — server shutting down
-        {
-            let iface = orch_sched_iface.read().unwrap();
-            let _ = iface.send(SchedulerMessage::Shutdown);
-        }
-        let _ = sched_handle.join();
-        let _ = world_handle.join();
-    });
-
+    let server = Arc::new(server);
+    
+    let core_link_handle = start_core_link(&server, core_restart_rx);
     
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
-    match server.start(None).await {
+    match server.start().await {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
@@ -356,4 +256,5 @@ async fn main() {
     }
 
     devices.panic_all_midi_outputs();
+    let _ = core_link_handle.join();
 }

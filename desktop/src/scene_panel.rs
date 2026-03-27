@@ -376,7 +376,7 @@ impl ScenePanel {
                                             .clicked()
                                         {
                                             let fi = line.frames.len();
-                                            bridge.send(ClientMessage::AddFrame(
+                                            bridge.send(SchedulerMessage::AddFrame(
                                                 li,
                                                 fi,
                                                 new_frame(&default_lang),
@@ -429,7 +429,7 @@ impl ScenePanel {
                             .clicked()
                         {
                             let li = scene.lines.len();
-                            bridge.send(ClientMessage::AddLine(
+                            bridge.send(SchedulerMessage::AddLine(
                                 li,
                                 Line::new(vec![1.0]),
                                 ActionTiming::Immediate,
@@ -999,13 +999,13 @@ impl ScenePanel {
 
                 if !multi {
                     if ui.button(t!("scene.insert_frame_before")).clicked() {
-                        bridge.send(ClientMessage::AddFrame(
+                        bridge.send(SchedulerMessage::AddFrame(
                             li, fi, new_frame(default_lang), ActionTiming::Immediate,
                         ));
                         ui.close();
                     }
                     if ui.button(t!("scene.insert_frame_after")).clicked() {
-                        bridge.send(ClientMessage::AddFrame(
+                        bridge.send(SchedulerMessage::AddFrame(
                             li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
                         ));
                         ui.close();
@@ -1028,7 +1028,7 @@ impl ScenePanel {
                             })
                             .collect();
                         for (offset, frame) in frames.iter().enumerate() {
-                            bridge.send(ClientMessage::AddFrame(
+                            bridge.send(SchedulerMessage::AddFrame(
                                 sel_li, last_fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
                             ));
                         }
@@ -1080,7 +1080,7 @@ impl ScenePanel {
                         self.selection.iter().copied().collect();
                     to_remove.sort_by(|a, b| b.1.cmp(&a.1));
                     for (rli, rfi) in to_remove {
-                        bridge.send(ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+                        bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
                     }
                     self.selection.clear();
                     self.cursor = None;
@@ -1091,13 +1091,13 @@ impl ScenePanel {
                 let num_lines = bridge.scene().map(|s| s.lines.len()).unwrap_or(0);
 
                 if ui.button(t!("scene.insert_line_before")).clicked() {
-                    bridge.send(ClientMessage::AddLine(
+                    bridge.send(SchedulerMessage::AddLine(
                         li, Line::new(vec![1.0]), ActionTiming::Immediate,
                     ));
                     ui.close();
                 }
                 if ui.button(t!("scene.insert_line_after")).clicked() {
-                    bridge.send(ClientMessage::AddLine(
+                    bridge.send(SchedulerMessage::AddLine(
                         li + 1, Line::new(vec![1.0]), ActionTiming::Immediate,
                     ));
                     ui.close();
@@ -1107,7 +1107,7 @@ impl ScenePanel {
                     .clicked()
                 {
                     if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
-                        bridge.send(ClientMessage::AddLine(
+                        bridge.send(SchedulerMessage::AddLine(
                             li + 1, line.clone(), ActionTiming::Immediate,
                         ));
                     }
@@ -1167,7 +1167,7 @@ impl ScenePanel {
                     .add(egui::Button::new(t!("scene.remove_line")).shortcut_text(format!("{m}+Del")))
                     .clicked()
                 {
-                    bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
+                    bridge.send(SchedulerMessage::RemoveLine(li, ActionTiming::Immediate));
                     ui.close();
                 }
             }
@@ -1351,7 +1351,7 @@ impl ScenePanel {
             let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
             to_remove.sort_by(|a, b| b.1.cmp(&a.1));
             for (rli, rfi) in to_remove {
-                bridge.send(ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
             }
             self.selection.clear();
             self.cursor = None;
@@ -1368,7 +1368,7 @@ impl ScenePanel {
                 })
                 .collect();
             for (offset, frame) in frames.iter().enumerate() {
-                bridge.send(ClientMessage::AddFrame(
+                bridge.send(SchedulerMessage::AddFrame(
                     sel_li, last_fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
                 ));
             }
@@ -1383,19 +1383,19 @@ impl ScenePanel {
         if cmd_shift_d
             && let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi))
         {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi, frame_data.clone(), ActionTiming::Immediate,
             ));
         }
 
         if shift_i {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
             ));
         }
 
         if cmd_shift_i {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi, new_frame(default_lang), ActionTiming::Immediate,
             ));
         }
@@ -1420,7 +1420,7 @@ impl ScenePanel {
         }
 
         if ctrl_del {
-            bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveLine(li, ActionTiming::Immediate));
             self.selection.clear();
             self.cursor = None;
         }
@@ -1434,7 +1434,7 @@ impl ScenePanel {
         {
             let mut f = frame.clone();
             f.enabled = !f.enabled;
-            bridge.send(ClientMessage::SetFrames(
+            bridge.send(SchedulerMessage::SetFrames(
                 vec![(li, fi, f)],
                 ActionTiming::Immediate,
             ));
@@ -1445,7 +1445,7 @@ impl ScenePanel {
         if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
             let mut l = line.clone();
             modify(&mut l);
-            bridge.send(ClientMessage::ConfigureLines(
+            bridge.send(SchedulerMessage::ConfigureLines(
                 vec![(li, l)],
                 ActionTiming::Immediate,
             ));
@@ -1468,7 +1468,7 @@ impl ScenePanel {
         let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
         to_remove.sort_by(|a, b| b.1.cmp(&a.1));
         for (rli, rfi) in to_remove {
-            bridge.send(ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
         }
         self.selection.clear();
         self.cursor = None;
@@ -1479,7 +1479,7 @@ impl ScenePanel {
             return;
         }
         for (offset, frame) in self.clipboard.iter().enumerate() {
-            bridge.send(ClientMessage::AddFrame(
+            bridge.send(SchedulerMessage::AddFrame(
                 li, fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
             ));
         }
@@ -1517,8 +1517,8 @@ impl ScenePanel {
                 .get(sel_li)
                 .and_then(|l| l.frames.get(min_fi - 1).cloned())
             {
-                bridge.send(ClientMessage::RemoveFrame(sel_li, min_fi - 1, ActionTiming::Immediate));
-                bridge.send(ClientMessage::AddFrame(sel_li, max_fi, frame, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(sel_li, min_fi - 1, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::AddFrame(sel_li, max_fi, frame, ActionTiming::Immediate));
             }
             self.selection.clear();
             for fi in (min_fi - 1)..=max_fi.saturating_sub(1) {
@@ -1535,8 +1535,8 @@ impl ScenePanel {
                 .get(sel_li)
                 .and_then(|l| l.frames.get(max_fi + 1).cloned())
             {
-                bridge.send(ClientMessage::RemoveFrame(sel_li, max_fi + 1, ActionTiming::Immediate));
-                bridge.send(ClientMessage::AddFrame(sel_li, min_fi, frame, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(sel_li, max_fi + 1, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::AddFrame(sel_li, min_fi, frame, ActionTiming::Immediate));
             }
             self.selection.clear();
             for fi in (min_fi + 1)..=(max_fi + 1) {
@@ -1565,8 +1565,8 @@ impl ScenePanel {
 
         if let Some(line) = scene.lines.get(li) {
             let line = line.clone();
-            bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
-            bridge.send(ClientMessage::AddLine(new_li, line, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveLine(li, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::AddLine(new_li, line, ActionTiming::Immediate));
         }
 
         if let Some((cur_li, cur_fi)) = self.cursor
