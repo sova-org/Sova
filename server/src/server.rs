@@ -316,7 +316,6 @@ impl SovaCoreServer {
             return (new_world, new_sched, Some(format!("Failed to set scene: {e}")));
         }
         self.set_scheduler_connection(new_iface, new_update);
-        self.is_playing.store(true, Ordering::Relaxed);
         broadcast_raw(&self.client_registry, &ServerMessage::CoreRestarted, false);
         broadcast_raw(&self.client_registry, &ServerMessage::Notification(SovaNotification::UpdatedScene(scene)), false);
         (new_world, new_sched, None)

@@ -39,7 +39,6 @@ struct EmbeddedServer {
     log_forwarder: tokio::task::JoinHandle<()>,
     devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
-    core_link_handle: JoinHandle<()>
 }
 
 pub struct ServerPanel {
@@ -200,7 +199,7 @@ impl ServerPanel {
         );
         let server = Arc::new(server);
         
-        let core_link_handle = start_core_link(&server, core_restart_rx);
+        let _ = start_core_link(&server, core_restart_rx);
         let server_task = self
             .runtime
             .spawn(async move { server.start().await });
@@ -210,7 +209,6 @@ impl ServerPanel {
             log_forwarder,
             devices,
             audio_thread: Some(audio_thread),
-            core_link_handle
         });
         self.status = ServerStatus::Running;
     }
