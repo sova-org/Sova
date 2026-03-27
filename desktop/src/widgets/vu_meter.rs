@@ -7,13 +7,19 @@ const DB_RANGE: f32 = DB_MAX - DB_MIN;
 const YELLOW_DB: f32 = -12.0;
 const RED_DB: f32 = -3.0;
 
-const GREEN_DIM: Color32 = Color32::from_rgb(20, 100, 40);
-const GREEN_BRIGHT: Color32 = Color32::from_rgb(50, 200, 80);
 const YELLOW_DIM: Color32 = Color32::from_rgb(120, 160, 30);
 const YELLOW_BRIGHT: Color32 = Color32::from_rgb(220, 200, 40);
 const RED_DIM: Color32 = Color32::from_rgb(200, 100, 20);
 const RED_BRIGHT: Color32 = Color32::from_rgb(220, 50, 50);
 const LANE_BG: Color32 = Color32::from_rgb(30, 30, 30);
+
+fn dim_color(c: Color32) -> Color32 {
+    Color32::from_rgb(
+        (c.r() as f32 * 0.4) as u8,
+        (c.g() as f32 * 0.4) as u8,
+        (c.b() as f32 * 0.4) as u8,
+    )
+}
 
 pub struct VuMeter {
     rms_db: f32,
@@ -26,9 +32,10 @@ impl VuMeter {
     }
 
     /// Paint just the gradient bar and peak indicator into the given rect.
-    pub fn paint_bar(&self, painter: &egui::Painter, bar_rect: egui::Rect) {
+    pub fn paint_bar(&self, painter: &egui::Painter, bar_rect: egui::Rect, accent: Color32) {
         painter.rect_filled(bar_rect, 0.0, LANE_BG);
 
+        let accent_dim = dim_color(accent);
         let rms_t = ((self.rms_db - DB_MIN) / DB_RANGE).clamp(0.0, 1.0);
         let peak_t = ((self.peak_db - DB_MIN) / DB_RANGE).clamp(0.0, 1.0);
         let yellow_t = (YELLOW_DB - DB_MIN) / DB_RANGE;
@@ -37,7 +44,7 @@ impl VuMeter {
         if rms_t > 0.0 {
             let mut mesh = egui::Mesh::default();
             let zones: &[(f32, f32, Color32, Color32)] = &[
-                (0.0, yellow_t, GREEN_DIM, GREEN_BRIGHT),
+                (0.0, yellow_t, accent_dim, accent),
                 (yellow_t, red_t, YELLOW_DIM, YELLOW_BRIGHT),
                 (red_t, 1.0, RED_DIM, RED_BRIGHT),
             ];
@@ -66,7 +73,7 @@ impl VuMeter {
             } else if self.peak_db >= YELLOW_DB {
                 YELLOW_BRIGHT
             } else {
-                GREEN_BRIGHT
+                accent
             };
             let y = bar_rect.bottom() - peak_t * bar_rect.height();
             painter.line_segment(

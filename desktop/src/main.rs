@@ -38,13 +38,15 @@ use sova_server::ClientMessage;
 include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
 
 const DEMOS_GENERAL: &[(&str, &[u8])] = &[
-    ("Evening with th4", include_bytes!("../assets/demos/demos/th4.sova")),
     ("Aliens near us", include_bytes!("../assets/demos/demos/aliens_near_us.sova")),
     ("2005 algorave", include_bytes!("../assets/demos/demos/2005_algorave.sova")),
     ("By the pond", include_bytes!("../assets/demos/demos/by_the_pond.sova")),
     ("Classic move", include_bytes!("../assets/demos/demos/classic_move.sova")),
     ("Lush elegiac stuff", include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova")),
     ("Intense boots and cats", include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova")),
+    ("Big rumble", include_bytes!("../assets/demos/demos/big_rumble.sova")),
+    ("Infinite gongs", include_bytes!("../assets/demos/demos/infinite_gongs.sova")),
+    ("Chill 808", include_bytes!("../assets/demos/demos/chill_808.sova")),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
