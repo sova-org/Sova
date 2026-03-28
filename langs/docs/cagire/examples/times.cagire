@@ -1,1 +1,5 @@
-4 ( @i 2 * pentatonic note sine snd 0.005 0.2 ad . ) times
+;; the body runs 4 times
+;; @i is the number of iterations
+4 (
+@i 4 * pentatonic note sine snd .2 decay .
+) times 

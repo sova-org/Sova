@@ -1,1 +1,4 @@
-c4 dup print note sine snd 0.01 0.2 ad .
+;; Look at your logs!
+c4 dup print note
+sine snd
+.

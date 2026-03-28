@@ -1,1 +1,7 @@
-0 1 2 3 4 5 6 7 cycle major triad note saw snd 0.01 0.3 0.6 0.2 adsr 1500 lpf .
+[ 0 4 5 2 0 ] cycle major triad
+( dinv ) sometimes
+note
+saw snd
+2 decay
+5000 50 1 slide lpf
+.

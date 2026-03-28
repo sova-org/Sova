@@ -1,1 +1,6 @@
-saw snd c3 note 0.2 att 0.8 sus 1500 lpf 20 spread 1.6 width .
+saw snd
+c3 g3 bb4 a4 0.1 slide note
+0.05 a 0.8 d
+5500 12000 2 lfo lpf
+0.0 4.0 rand width
+.

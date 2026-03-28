@@ -1,1 +1,9 @@
-tri snd c4 note 0.01 0.4 ad 0.3 verb 0.85 verbdecay .
+saw snd
+c3 note
+.5 d
+1500 8000 rand lpf
+0.5 verb
+0.9 verbdecay
+;; clear difference
+0.0 1.0 rand verbdecay 
+.

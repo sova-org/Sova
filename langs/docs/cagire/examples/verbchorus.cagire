@@ -1,1 +1,9 @@
-saw snd c3 note 0.2 att 0.8 sus 1200 lpf 0.3 verb 0.85 verbdecay 0.5 verbchorus .
+saw snd
+c3 maj6 note
+.1 att 0.5 decay
+1200 9000 rand lpf
+0.7 verb
+0.85 verbdecay
+[ 0 0.5 1 ] choose verbchorus 
+.
+

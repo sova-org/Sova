@@ -1,1 +1,8 @@
-saw snd c3 note 0.01 0.4 ad 0.3 verb 0.8 verbdecay 0.6 verbprehigh .
+saw snd
+c3 note
+.4 decay
+0.5 verb
+0.8 verbdecay
+;; notice the difference
+0.0 1.0 rand verbprehigh
+.

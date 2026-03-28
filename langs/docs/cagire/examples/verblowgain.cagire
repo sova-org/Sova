@@ -1,1 +1,8 @@
-tri snd c3 note 0.01 0.5 ad 0.3 verb 0.8 verbdecay 0.3 verblowgain .
+0 0.5 at
+saw snd
+c3 note
+.2 d
+0.7 verb
+0.8 verbdecay
+0.0 2.0 rand verblowgain
+.
