@@ -47,6 +47,8 @@ const DEMOS_GENERAL: &[(&str, &[u8])] = &[
     ("Big rumble", include_bytes!("../assets/demos/demos/big_rumble.sova")),
     ("Infinite gongs", include_bytes!("../assets/demos/demos/infinite_gongs.sova")),
     ("Chill 808", include_bytes!("../assets/demos/demos/chill_808.sova")),
+    ("Mayo sandwich", include_bytes!("../assets/demos/demos/mayo_sandwich.sova")),
+    ("First day with my modular", include_bytes!("../assets/demos/demos/first_day_with_my_modular.sova")),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
