@@ -62,7 +62,7 @@ fn generate_demos_for_dir(dir: &Path, const_name: &str, out: &mut String) {
         };
 
         let abs = path.canonicalize().unwrap();
-        let abs_str = abs.display();
+        let abs_str = abs.display().to_string().replace('\\', "/");
         writeln!(out, r#"    ("{display}", include_bytes!("{abs_str}")),"#).unwrap();
     }
 
