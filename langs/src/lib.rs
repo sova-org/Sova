@@ -2,6 +2,7 @@ pub mod bali;
 pub mod bob;
 pub mod boinx;
 pub mod cagire;
+pub mod alisp;
 
 use sova_core::vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory};
 
