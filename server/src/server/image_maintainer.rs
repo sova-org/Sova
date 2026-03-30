@@ -112,6 +112,7 @@ pub fn start_image_maintainer(
                         let droppable = matches!(
                             &msg, 
                             ServerMessage::Notification(SovaNotification::FramePositionChanged(_))
+                            | ServerMessage::Notification(SovaNotification::Annotations(_))
                             | ServerMessage::ClockState(..)
                         );
                         broadcast_raw(&client_registry, &msg, droppable);
