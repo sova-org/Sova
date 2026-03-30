@@ -134,6 +134,12 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 let ts = inner.as_str().parse::<f64>().unwrap_or_default();
                 BoinxItem::Duration(TimeSpan::Beats(ts)).into()
             }
+            Rule::frames => {
+                let mut inner = primary.into_inner();
+                let inner = inner.next().unwrap();
+                let ts = inner.as_str().parse::<f64>().unwrap_or_default();
+                BoinxItem::Duration(TimeSpan::Frames(ts)).into()
+            }
             Rule::mute => BoinxItem::Mute.into(),
             Rule::placeholder => BoinxItem::Placeholder.into(),
             Rule::sub_prog => {
