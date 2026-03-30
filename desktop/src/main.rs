@@ -44,7 +44,6 @@ const DEMOS_GENERAL: &[(&str, &[u8])] = &[
     ("Classic move", include_bytes!("../assets/demos/demos/classic_move.sova")),
     ("Lush elegiac stuff", include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova")),
     ("Intense boots and cats", include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova")),
-    ("Big rumble", include_bytes!("../assets/demos/demos/big_rumble.sova")),
     ("Infinite gongs", include_bytes!("../assets/demos/demos/infinite_gongs.sova")),
     ("Chill 808", include_bytes!("../assets/demos/demos/chill_808.sova")),
     ("Mayo sandwich", include_bytes!("../assets/demos/demos/mayo_sandwich.sova")),

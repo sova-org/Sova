@@ -156,12 +156,6 @@ impl Stack {
         Ok(self.pop()?.is_truthy())
     }
 
-    pub(super) fn pop_str(&mut self) -> Result<Arc<str>, String> {
-        match self.pop()? {
-            Value::Str(s) => Ok(s),
-            _ => Err("expected string".into()),
-        }
-    }
 
     pub(super) fn ensure(&self, n: usize) -> Result<(), String> {
         if self.values.len() < n { return Err("stack underflow".into()); }
