@@ -33,7 +33,9 @@ pub struct Frame {
     #[serde(skip)]
     pub executions: Vec<ScriptExecution>,
     #[serde(skip)]
-    pub triggers: usize
+    pub triggers: usize,
+    #[serde(skip)]
+    last_annotations: Vec<Annotation>,
 }
 
 impl Frame {
@@ -149,6 +151,13 @@ impl Frame {
                 _ => events.push(event),
             }
         }
+        // Capture annotations from terminating executions before discarding them
+        for exec in self.executions.iter().filter(|e| e.has_terminated()) {
+            let a = exec.annotations();
+            if !a.is_empty() {
+                self.last_annotations = a;
+            }
+        }
         self.executions.retain(|exec| !exec.has_terminated());
         self.executions.append(&mut new_executions);
         (events, next_wait)
@@ -170,6 +179,9 @@ impl Frame {
         let mut total = Vec::new();
         for e in self.executions.iter() {
             total.append(&mut e.annotations());
+        }
+        if total.is_empty() {
+            return self.last_annotations.clone();
         }
         total
     }
@@ -212,7 +224,8 @@ impl Default for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
-            triggers: 0
+            triggers: 0,
+            last_annotations: Default::default(),
         }
     }
 }
@@ -228,7 +241,8 @@ impl Clone for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
-            triggers: Default::default()
+            triggers: Default::default(),
+            last_annotations: Default::default(),
         }
     }
 }

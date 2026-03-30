@@ -160,7 +160,9 @@ fn compile(
                     let (quote_ops, quote_spans, consumed) =
                         compile_quotation(&tokens[i + 1..], sp, dict)?;
                     i += consumed;
-                    push(&mut ops, &mut spans, Op::Quotation(Arc::from(quote_ops), Arc::from(quote_spans)), sp);
+                    let close_span = tokens.get(i).map_or(sp, |t| t.span);
+                    let full_span = Span { start: sp.start, end: close_span.end };
+                    push(&mut ops, &mut spans, Op::Quotation(Arc::from(quote_ops), Arc::from(quote_spans)), full_span);
                 } else if word == ")" {
                     return Err(err("unexpected ')'", sp));
                 } else if word == "[" {

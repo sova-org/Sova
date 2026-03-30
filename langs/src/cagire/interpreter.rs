@@ -7,6 +7,7 @@ use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::interpreter::{Annotation, CodePosition, Interpreter};
 
 use super::compiler::Dictionary;
+use super::types::Span;
 use super::vm::CagireVM;
 
 pub struct CagireInterpreter {
@@ -97,10 +98,30 @@ impl Interpreter for CagireInterpreter {
     }
 
     fn annotations(&self) -> Vec<Annotation> {
-        self.vm.resolved.iter().map(|(span, val)| {
-            let pos = byte_offset_to_position(&self.source, span.start);
-            Annotation::InsertText(val.display(), pos)
-        }).collect()
+        use std::collections::HashMap;
+
+        // Keep only the last resolved value per span (at-loops produce duplicates)
+        let mut last_resolved: HashMap<usize, (Span, String)> = HashMap::new();
+        for (span, val) in &self.vm.resolved {
+            last_resolved.insert(span.start, (*span, val.display()));
+        }
+
+        let mut out: Vec<Annotation> = last_resolved.into_values().map(|(span, text)| {
+            let pos = byte_offset_to_position(&self.source, span.end);
+            Annotation::InsertText(format!("[{text}]"), pos)
+        }).collect();
+
+        // Keep only the last selected span per start position
+        let mut last_selected: HashMap<usize, Span> = HashMap::new();
+        for span in &self.vm.selected {
+            last_selected.insert(span.start, *span);
+        }
+        for span in last_selected.into_values() {
+            let start = byte_offset_to_position(&self.source, span.start);
+            let end = byte_offset_to_position(&self.source, span.end);
+            out.push(Annotation::Highlight(start, end));
+        }
+        out
     }
 }
 

@@ -9,6 +9,7 @@ use egui::text::{CCursor, CCursorRange, LayoutJob, LayoutSection};
 use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
+use sova_core::vm::interpreter::Annotation;
 use sova_core::vm::language::{LanguageElement, ReferenceEntry};
 
 use crate::scene_panel::SceneOpacity;
@@ -55,6 +56,7 @@ pub struct EditorContext<'a> {
     pub syntax: Option<(&'a CompiledSyntax, &'a SyntaxTheme)>,
     pub reference: Option<&'a BTreeMap<LanguageElement, ReferenceEntry>>,
     pub peer_cursors: &'a [PeerCursor],
+    pub annotations: &'a [Annotation],
     pub opacity: Option<&'a SceneOpacity>,
 }
 
@@ -306,6 +308,10 @@ impl CodeEditor {
 
         if !peer_cursors.is_empty() {
             paint_peer_cursors(ui, &edit_output, &font_id, peer_cursors);
+        }
+
+        if !ctx.annotations.is_empty() {
+            paint_annotations(ui, &edit_output, &font_id, ctx.annotations);
         }
 
         // Only show hover tooltip when completion is closed
@@ -731,15 +737,7 @@ fn paint_peer_cursors(
     let galley = &output.galley;
     let galley_pos = output.galley_pos;
     let painter = ui.painter();
-
-    // Build a map of logical line → first row index
-    let mut line_to_row: Vec<usize> = Vec::new();
-    for (i, _) in galley.rows.iter().enumerate() {
-        let is_new_line = i == 0 || galley.rows[i - 1].ends_with_newline;
-        if is_new_line {
-            line_to_row.push(i);
-        }
-    }
+    let line_to_row = build_line_to_row(galley);
 
     for peer in peers {
         let row_idx = if peer.line < line_to_row.len() {
@@ -754,19 +752,7 @@ fn paint_peer_cursors(
             continue;
         };
 
-        // Compute x position from glyph positions
-        let x = if row.glyphs.is_empty() {
-            0.0
-        } else if peer.col == 0 {
-            row.glyphs[0].pos.x
-        } else if peer.col <= row.glyphs.len() {
-            let g = &row.glyphs[peer.col - 1];
-            g.pos.x + g.advance_width
-        } else {
-            let g = row.glyphs.last().unwrap();
-            g.pos.x + g.advance_width
-        };
-
+        let x = glyph_x(&row.glyphs, peer.col);
         let screen_x = galley_pos.x + x;
         let screen_y = galley_pos.y + row.pos.y;
         let row_height = row.size.y;
@@ -811,6 +797,118 @@ fn paint_peer_cursors(
             label_galley,
             Color32::WHITE,
         );
+    }
+}
+
+fn build_line_to_row(galley: &egui::text::Galley) -> Vec<usize> {
+    let mut map = Vec::new();
+    for (i, _) in galley.rows.iter().enumerate() {
+        let is_new_line = i == 0 || galley.rows[i - 1].ends_with_newline;
+        if is_new_line {
+            map.push(i);
+        }
+    }
+    map
+}
+
+fn glyph_x(glyphs: &[egui::epaint::text::Glyph], col: usize) -> f32 {
+    if glyphs.is_empty() {
+        0.0
+    } else if col == 0 {
+        glyphs[0].pos.x
+    } else if col <= glyphs.len() {
+        let g = &glyphs[col - 1];
+        g.pos.x + g.advance_width
+    } else {
+        let g = glyphs.last().unwrap();
+        g.pos.x + g.advance_width
+    }
+}
+
+fn paint_annotations(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    font_id: &FontId,
+    annotations: &[Annotation],
+) {
+    let galley = &output.galley;
+    let galley_pos = output.galley_pos;
+    let painter = ui.painter();
+    let line_to_row = build_line_to_row(galley);
+
+    let annotation_font = FontId::monospace(font_id.size * 0.85);
+    let text_color = ui.visuals().weak_text_color();
+    let highlight_color = Color32::from_rgba_unmultiplied(255, 200, 60, 40);
+
+    // Collect InsertText annotations per line to paint at end of line
+    let mut line_texts: std::collections::BTreeMap<usize, String> = std::collections::BTreeMap::new();
+
+    for annotation in annotations {
+        match annotation {
+            Annotation::InsertText(text, pos) => {
+                let row_idx = if pos.line < line_to_row.len() {
+                    line_to_row[pos.line]
+                } else {
+                    continue;
+                };
+                if galley.rows.get(row_idx).is_none() { continue; }
+                let entry = line_texts.entry(pos.line).or_default();
+                if !entry.is_empty() { entry.push(' '); }
+                entry.push_str(text);
+            }
+            Annotation::Highlight(start, end) => {
+                let start_row = if start.line < line_to_row.len() {
+                    line_to_row[start.line]
+                } else {
+                    continue;
+                };
+                let end_row = if end.line < line_to_row.len() {
+                    line_to_row[end.line]
+                } else {
+                    continue;
+                };
+
+                for row_idx in start_row..=end_row {
+                    let Some(row) = galley.rows.get(row_idx) else { continue };
+                    let x_start = if row_idx == start_row {
+                        glyph_x(&row.glyphs, start.col.unwrap_or(0))
+                    } else {
+                        0.0
+                    };
+                    let x_end = if row_idx == end_row {
+                        glyph_x(&row.glyphs, end.col.unwrap_or(row.glyphs.len()))
+                    } else {
+                        row.rect().width()
+                    };
+
+                    let rect = egui::Rect::from_min_size(
+                        egui::pos2(galley_pos.x + x_start, galley_pos.y + row.pos.y),
+                        egui::vec2(x_end - x_start, row.size.y),
+                    );
+                    painter.rect_filled(rect, 0.0, highlight_color);
+                }
+            }
+            Annotation::InsertBitmap(..) => {}
+        }
+    }
+
+    // Paint collected InsertText at end of each line, clipped to editor width
+    let clip = ui.clip_rect();
+    for (line, text) in &line_texts {
+        let row_idx = line_to_row[*line];
+        let Some(row) = galley.rows.get(row_idx) else { continue };
+        let line_end_x = glyph_x(&row.glyphs, row.glyphs.len());
+        let screen_x = galley_pos.x + line_end_x + 8.0;
+        if screen_x >= clip.max.x { continue; }
+        let screen_y = galley_pos.y + row.pos.y;
+        let avail = clip.max.x - screen_x;
+        let galley = painter.layout(
+            text.to_string(),
+            annotation_font.clone(),
+            text_color,
+            avail,
+        );
+        painter.galley(egui::pos2(screen_x, screen_y), galley, text_color);
     }
 }
 

@@ -5,7 +5,6 @@ use crate::server::message_processing::on_message;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
-use sova_core::vm::interpreter::Annotation;
 use sova_core::{Scene, vm::LanguageCenter};
 use tokio_util::sync::CancellationToken;
 use std::sync::OnceLock;
@@ -147,7 +146,6 @@ pub struct ServerState {
     pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
-    pub annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
 }
 
 impl ServerState {
@@ -167,7 +165,6 @@ impl ServerState {
         core_restart_tx: TokioSender<CoreRestartRequest>,
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
-        annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
     ) -> Self {
         ServerState {
             clock_server,
@@ -184,7 +181,6 @@ impl ServerState {
             core_restart_tx,
             password,
             master_gain,
-            annotations
         }
     }
 
@@ -242,7 +238,6 @@ pub struct SovaCoreServer {
     pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
-    pub annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
 }
 
 impl SovaCoreServer {
@@ -283,7 +278,6 @@ impl SovaCoreServer {
             core_restart_tx,
             password,
             master_gain,
-            annotations: Default::default(),
         }
     }
 
@@ -301,9 +295,8 @@ impl SovaCoreServer {
             self.audio_restart_tx.clone(), 
             self.audio_cmd_tx.clone(), 
             self.core_restart_tx.clone(), 
-            self.password.clone(), 
+            self.password.clone(),
             self.master_gain.clone(),
-            self.annotations.clone()
         )
     }
 
@@ -476,7 +469,6 @@ impl SovaCoreServer {
             self.scene_image.clone(),
             self.client_registry.clone(),
             self.is_playing.clone(),
-            self.annotations.clone(),
             Clock::from(Arc::clone(&self.clock_server)),
         );
     }

@@ -767,6 +767,11 @@ impl ScenePanel {
                         syntax: syntax_pair,
                         reference,
                         peer_cursors: &cursors,
+                        annotations: if self.frame_states.get(&(li, fi)).is_some_and(|s| s.dirty) {
+                            &[]
+                        } else {
+                            bridge.frame_annotations(li, fi)
+                        },
                         opacity: Some(opacity),
                     };
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
@@ -1746,6 +1751,7 @@ impl ScenePanel {
                                         syntax: syntax_pair,
                                         reference,
                                         peer_cursors: &[],
+                                        annotations: &[],
                                         opacity: Some(opacity),
                                     };
                                     self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);

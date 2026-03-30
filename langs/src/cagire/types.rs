@@ -121,6 +121,118 @@ impl Value {
     }
 }
 
+pub(crate) struct Stack {
+    pub(super) values: Vec<Value>,
+    pub(super) origins: Vec<Span>,
+}
+
+impl Stack {
+    pub(super) fn new() -> Self {
+        Self {
+            values: Vec::with_capacity(16),
+            origins: Vec::with_capacity(16),
+        }
+    }
+
+    pub(super) fn push(&mut self, val: Value, origin: Span) {
+        self.values.push(val);
+        self.origins.push(origin);
+    }
+
+    pub(super) fn pop(&mut self) -> Result<Value, String> {
+        self.origins.pop();
+        self.values.pop().ok_or_else(|| "stack underflow".to_string())
+    }
+
+    pub(super) fn pop_int(&mut self) -> Result<i64, String> {
+        self.pop()?.as_int()
+    }
+
+    pub(super) fn pop_float(&mut self) -> Result<f64, String> {
+        self.pop()?.as_float()
+    }
+
+    pub(super) fn pop_bool(&mut self) -> Result<bool, String> {
+        Ok(self.pop()?.is_truthy())
+    }
+
+    pub(super) fn pop_str(&mut self) -> Result<Arc<str>, String> {
+        match self.pop()? {
+            Value::Str(s) => Ok(s),
+            _ => Err("expected string".into()),
+        }
+    }
+
+    pub(super) fn ensure(&self, n: usize) -> Result<(), String> {
+        if self.values.len() < n { return Err("stack underflow".into()); }
+        Ok(())
+    }
+
+    pub(super) fn binary_op<F>(&mut self, f: F) -> Result<(), String>
+    where F: Fn(f64, f64) -> f64 {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        let result = float_to_value(f(a.as_float()?, b.as_float()?));
+        self.values.push(result);
+        self.origins.push(Span::default());
+        Ok(())
+    }
+
+    pub(super) fn cmp_op<F>(&mut self, f: F) -> Result<(), String>
+    where F: Fn(f64, f64) -> bool {
+        let b = self.pop()?;
+        let a = self.pop()?;
+        let result = Value::Int(if f(a.as_float()?, b.as_float()?) { 1 } else { 0 });
+        self.values.push(result);
+        self.origins.push(Span::default());
+        Ok(())
+    }
+
+    #[inline]
+    pub(super) fn len(&self) -> usize { self.values.len() }
+
+    #[inline]
+    pub(super) fn last(&self) -> Option<&Value> { self.values.last() }
+
+    pub(super) fn swap(&mut self, a: usize, b: usize) {
+        self.values.swap(a, b);
+        self.origins.swap(a, b);
+    }
+
+    pub(super) fn remove(&mut self, idx: usize) -> Value {
+        self.origins.remove(idx);
+        self.values.remove(idx)
+    }
+
+    pub(super) fn insert(&mut self, idx: usize, val: Value, origin: Span) {
+        self.values.insert(idx, val);
+        self.origins.insert(idx, origin);
+    }
+
+    pub(super) fn truncate(&mut self, len: usize) {
+        self.values.truncate(len);
+        self.origins.truncate(len);
+    }
+
+    pub(super) fn origin(&self, idx: usize) -> Span {
+        self.origins.get(idx).copied().unwrap_or_default()
+    }
+
+    pub(super) fn pop_with_origin(&mut self) -> Result<(Value, Span), String> {
+        let origin = self.origins.pop().unwrap_or_default();
+        let val = self.values.pop().ok_or_else(|| "stack underflow".to_string())?;
+        Ok((val, origin))
+    }
+}
+
+pub(super) fn float_to_value(result: f64) -> Value {
+    if result.fract() == 0.0 && result.abs() < i64::MAX as f64 {
+        Value::Int(result as i64)
+    } else {
+        Value::Float(result)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct CmdRegister {
     sound: Option<Value>,

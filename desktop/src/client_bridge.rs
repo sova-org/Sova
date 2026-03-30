@@ -5,6 +5,7 @@ use std::time::Instant;
 use eframe::egui;
 use sova_core::error::SovaError;
 use sova_core::schedule::SovaNotification;
+use sova_core::vm::interpreter::Annotation;
 use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
@@ -104,6 +105,7 @@ pub struct ClientBridge {
     peer_cursors: HashMap<String, (usize, usize, Option<(usize, usize)>)>,
     chat_messages: VecDeque<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
+    annotations: Vec<Vec<Vec<Annotation>>>,
 
     // Remote Hydra code from peers
     remote_hydra: Option<(String, String)>,
@@ -156,6 +158,7 @@ impl ClientBridge {
             peer_cursors: HashMap::new(),
             chat_messages: VecDeque::new(),
             errors: HashMap::new(),
+            annotations: Vec::new(),
             remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
@@ -390,6 +393,7 @@ impl ClientBridge {
                 ServerMessage::Notification(SovaNotification::UpdatedScene(s)) => {
                     self.scene = Some(s);
                     self.errors.clear();
+                    self.annotations.clear();
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                 }
@@ -578,6 +582,9 @@ impl ClientBridge {
                 ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
                     self.peer_cursors.insert(name, (li, fi, tc));
                 }
+                ServerMessage::Notification(SovaNotification::Annotations(a)) => {
+                    self.annotations = a;
+                }
                 ServerMessage::Notification(SovaNotification::Error(e)) => {
                     self.errors.insert((e.line, e.frame), e);
                 }
@@ -609,6 +616,7 @@ impl ClientBridge {
                 }
                 ServerMessage::CoreRestarted => {
                     self.errors.clear();
+                    self.annotations.clear();
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                     self.positions.clear();
@@ -626,6 +634,7 @@ impl ClientBridge {
                     self.clock.quantum = snapshot.quantum;
                     self.devices = snapshot.devices;
                     self.errors.clear();
+                    self.annotations.clear();
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                     self.positions.clear();
@@ -663,6 +672,7 @@ impl ClientBridge {
         self.peer_editing.clear();
         self.peer_cursors.clear();
         self.chat_messages.clear();
+        self.annotations.clear();
         self.remote_hydra = None;
         self.compilation_flashes.clear();
         self.mutation_flashes.clear();
@@ -775,6 +785,10 @@ impl ClientBridge {
 
     pub fn mutation_flashes(&self) -> &HashMap<(usize, usize), Instant> {
         &self.mutation_flashes
+    }
+
+    pub fn frame_annotations(&self, li: usize, fi: usize) -> &[Annotation] {
+        self.annotations.get(li).and_then(|l| l.get(fi)).map_or(&[], |v| v.as_slice())
     }
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {

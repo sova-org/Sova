@@ -12,7 +12,7 @@ use sova_core::vm::variable::{Variable, VariableValue};
 
 use super::compiler::{Dictionary, compile_script};
 use super::ops::Op;
-use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Value};
+use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Stack, Value, float_to_value};
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -63,6 +63,7 @@ pub(super) struct CagireVM {
     pub rng: StdRng,
     global_params: Vec<(&'static str, Value)>,
     pub resolved: Vec<(Span, ResolvedValue)>,
+    pub selected: Vec<Span>,
 }
 
 impl CagireVM {
@@ -74,6 +75,7 @@ impl CagireVM {
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
             resolved: Vec::new(),
+            selected: Vec::new(),
         }
     }
 
@@ -84,6 +86,7 @@ impl CagireVM {
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
             resolved: Vec::new(),
+            selected: Vec::new(),
         }
     }
 
@@ -93,12 +96,13 @@ impl CagireVM {
         ctx: &mut EvaluationContext,
     ) -> Result<Vec<(ConcreteEvent, SyncTime)>, CagireError> {
         self.resolved.clear();
+        self.selected.clear();
         if script.trim().is_empty() {
             return Err(CagireError::new("empty script", Span::default()));
         }
         let (ops, spans) = compile_script(script, &mut self.dict)?;
         let sctx = StepContext::from_eval_ctx(ctx);
-        let mut stack = Vec::with_capacity(16);
+        let mut stack = Stack::new();
         let mut events = Vec::with_capacity(8);
         let mut cmd = CmdRegister::new();
         cmd.set_global(self.global_params.clone());
@@ -113,7 +117,7 @@ impl CagireVM {
         op_spans: &[Span],
         ctx: &StepContext,
         eval_ctx: &mut EvaluationContext,
-        stack: &mut Vec<Value>,
+        stack: &mut Stack,
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
         cmd: &mut CmdRegister,
     ) -> Result<(), CagireError> {
@@ -126,176 +130,186 @@ impl CagireVM {
             };
         }
 
+        macro_rules! span {
+            () => { op_spans.get(pc).copied().unwrap_or_default() };
+        }
+
         while pc < ops.len() {
             match &ops[pc] {
-                Op::PushInt(n) => stack.push(Value::Int(*n)),
-                Op::PushFloat(f) => stack.push(Value::Float(*f)),
-                Op::PushStr(s) => stack.push(Value::Str(s.clone())),
+                Op::PushInt(n) => stack.push(Value::Int(*n), span!()),
+                Op::PushFloat(f) => stack.push(Value::Float(*f), span!()),
+                Op::PushStr(s) => stack.push(Value::Str(s.clone()), span!()),
 
                 Op::Dup => {
-                    at!(ensure(stack, 1))?;
+                    at!(stack.ensure(1))?;
                     let v = stack.last().unwrap().clone();
-                    stack.push(v);
+                    let o = stack.origin(stack.len() - 1);
+                    stack.push(v, o);
                 }
                 Op::Dupn => {
-                    let n = at!(pop_int(stack))?;
-                    let v = at!(pop(stack))?;
+                    let n = at!(stack.pop_int())?;
+                    let o = stack.origin(stack.len() - 1);
+                    let v = at!(stack.pop())?;
                     for _ in 0..n {
-                        stack.push(v.clone());
+                        stack.push(v.clone(), o);
                     }
                 }
-                Op::Drop => { at!(pop(stack))?; }
+                Op::Drop => { at!(stack.pop())?; }
                 Op::Swap => {
-                    at!(ensure(stack, 2))?;
+                    at!(stack.ensure(2))?;
                     let len = stack.len();
                     stack.swap(len - 1, len - 2);
                 }
                 Op::Over => {
-                    at!(ensure(stack, 2))?;
-                    let v = stack[stack.len() - 2].clone();
-                    stack.push(v);
+                    at!(stack.ensure(2))?;
+                    let v = stack.values[stack.len() - 2].clone();
+                    let o = stack.origin(stack.len() - 2);
+                    stack.push(v, o);
                 }
                 Op::Rot => {
-                    at!(ensure(stack, 3))?;
-                    let v = stack.remove(stack.len() - 3);
-                    stack.push(v);
+                    at!(stack.ensure(3))?;
+                    let idx = stack.len() - 3;
+                    let o = stack.origin(idx);
+                    let v = stack.remove(idx);
+                    stack.push(v, o);
                 }
                 Op::Nip => {
-                    at!(ensure(stack, 2))?;
+                    at!(stack.ensure(2))?;
                     stack.remove(stack.len() - 2);
                 }
                 Op::Tuck => {
-                    at!(ensure(stack, 2))?;
+                    at!(stack.ensure(2))?;
                     let len = stack.len();
-                    let v = stack[len - 1].clone();
-                    stack.insert(len - 2, v);
+                    let v = stack.values[len - 1].clone();
+                    let o = stack.origin(len - 1);
+                    stack.insert(len - 2, v, o);
                 }
                 Op::Dup2 => {
-                    at!(ensure(stack, 2))?;
+                    at!(stack.ensure(2))?;
                     let len = stack.len();
-                    let a = stack[len - 2].clone();
-                    let b = stack[len - 1].clone();
-                    stack.push(a);
-                    stack.push(b);
+                    let a = stack.values[len - 2].clone();
+                    let oa = stack.origin(len - 2);
+                    let b = stack.values[len - 1].clone();
+                    let ob = stack.origin(len - 1);
+                    stack.push(a, oa);
+                    stack.push(b, ob);
                 }
                 Op::Drop2 => {
-                    at!(ensure(stack, 2))?;
-                    stack.pop();
-                    stack.pop();
+                    at!(stack.ensure(2))?;
+                    stack.pop().ok();
+                    stack.pop().ok();
                 }
                 Op::Swap2 => {
-                    at!(ensure(stack, 4))?;
+                    at!(stack.ensure(4))?;
                     let len = stack.len();
                     stack.swap(len - 4, len - 2);
                     stack.swap(len - 3, len - 1);
                 }
                 Op::Over2 => {
-                    at!(ensure(stack, 4))?;
+                    at!(stack.ensure(4))?;
                     let len = stack.len();
-                    let a = stack[len - 4].clone();
-                    let b = stack[len - 3].clone();
-                    stack.push(a);
-                    stack.push(b);
+                    let a = stack.values[len - 4].clone();
+                    let oa = stack.origin(len - 4);
+                    let b = stack.values[len - 3].clone();
+                    let ob = stack.origin(len - 3);
+                    stack.push(a, oa);
+                    stack.push(b, ob);
                 }
                 Op::Rev => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    stack[start..].reverse();
+                    stack.values[start..].reverse();
+                    stack.origins[start..].reverse();
                 }
                 Op::Shuffle => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    let slice = &mut stack[start..];
-                    for i in (1..slice.len()).rev() {
+                    let n = stack.len() - start;
+                    for i in (1..n).rev() {
                         let j = self.rng.random_range(0..=i);
-                        slice.swap(i, j);
+                        stack.values[start..].swap(i, j);
+                        stack.origins[start..].swap(i, j);
                     }
                 }
                 Op::Sort => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    stack[start..].sort_by(|a, b| {
-                        a.as_float().unwrap_or(0.0)
-                            .partial_cmp(&b.as_float().unwrap_or(0.0))
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    });
+                    sort_paired(&mut stack.values[start..], &mut stack.origins[start..], false);
                 }
                 Op::RSort => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    stack[start..].sort_by(|a, b| {
-                        b.as_float().unwrap_or(0.0)
-                            .partial_cmp(&a.as_float().unwrap_or(0.0))
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    });
+                    sort_paired(&mut stack.values[start..], &mut stack.origins[start..], true);
                 }
                 Op::Sum => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    let total: f64 = stack.drain(start..).map(|v| v.as_float().unwrap_or(0.0)).sum();
-                    stack.push(float_to_value(total));
+                    let total: f64 = stack.values.drain(start..).map(|v| v.as_float().unwrap_or(0.0)).sum();
+                    stack.origins.truncate(start);
+                    stack.push(float_to_value(total), span!());
                 }
                 Op::Prod => {
-                    let count = at!(pop_int(stack))? as usize;
-                    at!(ensure(stack, count))?;
+                    let count = at!(stack.pop_int())? as usize;
+                    at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    let product: f64 = stack.drain(start..).map(|v| v.as_float().unwrap_or(1.0)).product();
-                    stack.push(float_to_value(product));
+                    let product: f64 = stack.values.drain(start..).map(|v| v.as_float().unwrap_or(1.0)).product();
+                    stack.origins.truncate(start);
+                    stack.push(float_to_value(product), span!());
                 }
 
-                Op::Add => at!(binary_op(stack, |a, b| a + b))?,
-                Op::Sub => at!(binary_op(stack, |a, b| a - b))?,
-                Op::Mul => at!(binary_op(stack, |a, b| a * b))?,
+                Op::Add => at!(stack.binary_op(|a, b| a + b))?,
+                Op::Sub => at!(stack.binary_op(|a, b| a - b))?,
+                Op::Mul => at!(stack.binary_op(|a, b| a * b))?,
                 Op::Div => {
-                    let b = at!(pop(stack))?;
-                    let a = at!(pop(stack))?;
+                    let b = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
                     if b.as_float().map_or(true, |v| v == 0.0) {
-                        return Err(CagireError::new("division by zero", op_spans.get(pc).copied().unwrap_or_default()));
+                        return Err(CagireError::new("division by zero", span!()));
                     }
-                    stack.push(at!(lift_binary(a, b, |x, y| x / y))?);
+                    stack.push(at!(lift_binary(a, b, |x, y| x / y))?, span!());
                 }
                 Op::Mod => {
-                    let b = at!(pop(stack))?;
-                    let a = at!(pop(stack))?;
+                    let b = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
                     if b.as_float().map_or(true, |v| v == 0.0) {
-                        return Err(CagireError::new("modulo by zero", op_spans.get(pc).copied().unwrap_or_default()));
+                        return Err(CagireError::new("modulo by zero", span!()));
                     }
-                    stack.push(at!(lift_binary(a, b, |x, y| (x as i64 % y as i64) as f64))?);
+                    stack.push(at!(lift_binary(a, b, |x, y| (x as i64 % y as i64) as f64))?, span!());
                 }
-                Op::Neg => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| -x))?); }
-                Op::Abs => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.abs()))?); }
-                Op::Floor => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.floor()))?); }
-                Op::Ceil => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.ceil()))?); }
-                Op::Round => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.round()))?); }
-                Op::Min => at!(binary_op(stack, |a, b| a.min(b)))?,
-                Op::Max => at!(binary_op(stack, |a, b| a.max(b)))?,
-                Op::Pow => at!(binary_op(stack, |a, b| a.powf(b)))?,
-                Op::Sqrt => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.sqrt()))?); }
-                Op::Sin => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.sin()))?); }
-                Op::Cos => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.cos()))?); }
-                Op::Log => { let v = at!(pop(stack))?; stack.push(at!(lift_unary(v, |x| x.ln()))?); }
+                Op::Neg => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| -x))?, span!()); }
+                Op::Abs => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.abs()))?, span!()); }
+                Op::Floor => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.floor()))?, span!()); }
+                Op::Ceil => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.ceil()))?, span!()); }
+                Op::Round => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.round()))?, span!()); }
+                Op::Min => at!(stack.binary_op(|a, b| a.min(b)))?,
+                Op::Max => at!(stack.binary_op(|a, b| a.max(b)))?,
+                Op::Pow => at!(stack.binary_op(|a, b| a.powf(b)))?,
+                Op::Sqrt => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.sqrt()))?, span!()); }
+                Op::Sin => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.sin()))?, span!()); }
+                Op::Cos => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.cos()))?, span!()); }
+                Op::Log => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.ln()))?, span!()); }
 
-                Op::Eq => at!(cmp_op(stack, |a, b| (a - b).abs() < f64::EPSILON))?,
-                Op::Ne => at!(cmp_op(stack, |a, b| (a - b).abs() >= f64::EPSILON))?,
-                Op::Lt => at!(cmp_op(stack, |a, b| a < b))?,
-                Op::Gt => at!(cmp_op(stack, |a, b| a > b))?,
-                Op::Le => at!(cmp_op(stack, |a, b| a <= b))?,
-                Op::Ge => at!(cmp_op(stack, |a, b| a >= b))?,
+                Op::Eq => at!(stack.cmp_op(|a, b| (a - b).abs() < f64::EPSILON))?,
+                Op::Ne => at!(stack.cmp_op(|a, b| (a - b).abs() >= f64::EPSILON))?,
+                Op::Lt => at!(stack.cmp_op(|a, b| a < b))?,
+                Op::Gt => at!(stack.cmp_op(|a, b| a > b))?,
+                Op::Le => at!(stack.cmp_op(|a, b| a <= b))?,
+                Op::Ge => at!(stack.cmp_op(|a, b| a >= b))?,
 
-                Op::And => { let b = at!(pop_bool(stack))?; let a = at!(pop_bool(stack))?; stack.push(Value::Int(if a && b { 1 } else { 0 })); }
-                Op::Or => { let b = at!(pop_bool(stack))?; let a = at!(pop_bool(stack))?; stack.push(Value::Int(if a || b { 1 } else { 0 })); }
-                Op::Not => { let v = at!(pop_bool(stack))?; stack.push(Value::Int(if v { 0 } else { 1 })); }
-                Op::Xor => { let b = at!(pop_bool(stack))?; let a = at!(pop_bool(stack))?; stack.push(Value::Int(if a ^ b { 1 } else { 0 })); }
-                Op::Nand => { let b = at!(pop_bool(stack))?; let a = at!(pop_bool(stack))?; stack.push(Value::Int(if !(a && b) { 1 } else { 0 })); }
-                Op::Nor => { let b = at!(pop_bool(stack))?; let a = at!(pop_bool(stack))?; stack.push(Value::Int(if !(a || b) { 1 } else { 0 })); }
+                Op::And => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a && b { 1 } else { 0 }), span!()); }
+                Op::Or => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a || b { 1 } else { 0 }), span!()); }
+                Op::Not => { let v = at!(stack.pop_bool())?; stack.push(Value::Int(if v { 0 } else { 1 }), span!()); }
+                Op::Xor => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a ^ b { 1 } else { 0 }), span!()); }
+                Op::Nand => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if !(a && b) { 1 } else { 0 }), span!()); }
+                Op::Nor => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if !(a || b) { 1 } else { 0 }), span!()); }
 
                 Op::BranchIfZero(offset) => {
-                    let v = at!(pop(stack))?;
+                    let v = at!(stack.pop())?;
                     if !v.is_truthy() {
                         pc += offset;
                     }
@@ -305,10 +319,10 @@ impl CagireVM {
                 }
 
                 Op::NewCmd => {
-                    at!(ensure(stack, 1))?;
+                    at!(stack.ensure(1))?;
                     let values = drain_skip_quotations(stack);
                     if values.is_empty() {
-                        return Err(CagireError::new("expected sound name", op_spans.get(pc).copied().unwrap_or_default()));
+                        return Err(CagireError::new("expected sound name", span!()));
                     }
                     let val = if values.len() == 1 {
                         values.into_iter().next().unwrap()
@@ -318,10 +332,10 @@ impl CagireVM {
                     cmd.set_sound(val);
                 }
                 Op::SetParam(param) => {
-                    at!(ensure(stack, 1))?;
+                    at!(stack.ensure(1))?;
                     let values = drain_skip_quotations(stack);
                     if values.is_empty() {
-                        return Err(CagireError::new("expected parameter value", op_spans.get(pc).copied().unwrap_or_default()));
+                        return Err(CagireError::new("expected parameter value", span!()));
                     }
                     let val = if values.len() == 1 {
                         values.into_iter().next().unwrap()
@@ -336,19 +350,19 @@ impl CagireVM {
                 }
 
                 Op::Get => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     let name = at!(name.as_str())?;
                     let val = self.get_var(name, eval_ctx);
-                    stack.push(val);
+                    stack.push(val, span!());
                 }
                 Op::Set => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     let name = at!(name.as_str())?.to_string();
-                    let val = at!(pop(stack))?;
+                    let val = at!(stack.pop())?;
                     self.set_var(&name, val, eval_ctx);
                 }
                 Op::SetKeep => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     let name = at!(name.as_str())?.to_string();
                     let val = at!(stack.last().ok_or_else(|| "stack underflow".to_string()))?.clone();
                     self.set_var(&name, val, eval_ctx);
@@ -369,18 +383,18 @@ impl CagireVM {
                         "fill" => Value::Int(0), // deferred
                         _ => Value::Int(0),
                     };
-                    stack.push(val);
+                    stack.push(val, span!());
                 }
 
                 Op::Rand(word_span) => {
-                    let b = at!(pop(stack))?;
-                    let a = at!(pop(stack))?;
+                    let b = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
                     match (&a, &b) {
                         (Value::Int(a_i), Value::Int(b_i)) => {
                             let (lo, hi) = if a_i <= b_i { (*a_i, *b_i) } else { (*b_i, *a_i) };
                             let val = self.rng.random_range(lo..=hi);
                             if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(val))); }
-                            stack.push(Value::Int(val));
+                            stack.push(Value::Int(val), span!());
                         }
                         _ => {
                             let a_f = at!(a.as_float())?;
@@ -388,57 +402,57 @@ impl CagireVM {
                             let (lo, hi) = if a_f <= b_f { (a_f, b_f) } else { (b_f, a_f) };
                             let val = if (hi - lo).abs() < f64::EPSILON { lo } else { self.rng.random_range(lo..hi) };
                             if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
-                            stack.push(Value::Float(val));
+                            stack.push(Value::Float(val), span!());
                         }
                     }
                 }
                 Op::ExpRand(word_span) => {
-                    let hi = at!(pop_float(stack))?;
-                    let lo = at!(pop_float(stack))?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("exprand requires positive values", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let hi = at!(stack.pop_float())?;
+                    let lo = at!(stack.pop_float())?;
+                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("exprand requires positive values", span!())); }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
                     let val = lo * (hi / lo).powf(u);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
-                    stack.push(Value::Float(val));
+                    stack.push(Value::Float(val), span!());
                 }
                 Op::LogRand(word_span) => {
-                    let hi = at!(pop_float(stack))?;
-                    let lo = at!(pop_float(stack))?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("logrand requires positive values", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let hi = at!(stack.pop_float())?;
+                    let lo = at!(stack.pop_float())?;
+                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("logrand requires positive values", span!())); }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
                     let val = hi * (lo / hi).powf(u);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
-                    stack.push(Value::Float(val));
+                    stack.push(Value::Float(val), span!());
                 }
                 Op::Seed => {
-                    let s = at!(pop_int(stack))?;
+                    let s = at!(stack.pop_int())?;
                     self.rng = StdRng::seed_from_u64(s as u64);
                 }
 
                 Op::Cycle(word_span) | Op::PCycle(word_span) => {
-                    let count = at!(pop_int(stack))? as usize;
-                    if count == 0 { return Err(CagireError::new("cycle count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())? as usize;
+                    if count == 0 { return Err(CagireError::new("cycle count must be > 0", span!())); }
                     let idx = match &ops[pc] {
                         Op::Cycle(_) => ctx.runs,
                         _ => ctx.iter,
                     } % count;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
+                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
                 }
 
                 Op::Choose(word_span) => {
-                    let count = at!(pop_int(stack))? as usize;
-                    if count == 0 { return Err(CagireError::new("choose count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())? as usize;
+                    if count == 0 { return Err(CagireError::new("choose count must be > 0", span!())); }
                     let idx = self.rng.random_range(0..count);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
+                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
                 }
 
                 Op::Bounce(word_span) | Op::PBounce(word_span) => {
-                    let count = at!(pop_int(stack))? as usize;
-                    if count == 0 { return Err(CagireError::new("bounce count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())? as usize;
+                    if count == 0 { return Err(CagireError::new("bounce count must be > 0", span!())); }
                     let counter = match &ops[pc] {
                         Op::Bounce(_) => ctx.runs,
                         _ => ctx.iter,
@@ -449,36 +463,36 @@ impl CagireVM {
                         if raw < count { raw } else { period - raw }
                     };
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
+                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
                 }
 
                 Op::Index(word_span) => {
-                    let idx = at!(pop_int(stack))?;
-                    let count = at!(pop_int(stack))? as usize;
-                    if count == 0 { return Err(CagireError::new("index count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let idx = at!(stack.pop_int())?;
+                    let count = at!(stack.pop_int())? as usize;
+                    if count == 0 { return Err(CagireError::new("index count must be > 0", span!())); }
                     let resolved_idx = ((idx % count as i64 + count as i64) % count as i64) as usize;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(resolved_idx as i64))); }
-                    drain_select_run(count, resolved_idx, stack, events, cmd, self, ops, op_spans, pc, ctx, eval_ctx)?;
+                    drain_select_run(count, resolved_idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
                 }
 
                 Op::WChoose(word_span) => {
-                    let count = at!(pop_int(stack))? as usize;
-                    if count == 0 { return Err(CagireError::new("wchoose count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())? as usize;
+                    if count == 0 { return Err(CagireError::new("wchoose count must be > 0", span!())); }
                     let pairs_needed = count * 2;
-                    at!(ensure(stack, pairs_needed))?;
+                    at!(stack.ensure(pairs_needed))?;
                     let start = stack.len() - pairs_needed;
                     let mut values = Vec::with_capacity(count);
                     let mut weights = Vec::with_capacity(count);
                     for i in 0..count {
-                        let val = stack[start + i * 2].clone();
-                        let w = at!(stack[start + i * 2 + 1].as_float())?;
-                        if w < 0.0 { return Err(CagireError::new("wchoose: negative weight", op_spans.get(pc).copied().unwrap_or_default())); }
+                        let val = stack.values[start + i * 2].clone();
+                        let w = at!(stack.values[start + i * 2 + 1].as_float())?;
+                        if w < 0.0 { return Err(CagireError::new("wchoose: negative weight", span!())); }
                         values.push(val);
                         weights.push(w);
                     }
                     stack.truncate(start);
                     let total: f64 = weights.iter().sum();
-                    if total <= 0.0 { return Err(CagireError::new("wchoose: total weight must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if total <= 0.0 { return Err(CagireError::new("wchoose: total weight must be > 0", span!())); }
                     let threshold: f64 = self.rng.random::<f64>() * total;
                     let mut cumulative = 0.0;
                     let mut selected_idx = count - 1;
@@ -495,8 +509,8 @@ impl CagireVM {
                 }
 
                 Op::ChanceExec(word_span) | Op::ProbExec(word_span) => {
-                    let threshold = at!(pop_float(stack))?;
-                    let quot = at!(pop(stack))?;
+                    let threshold = at!(stack.pop_float())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
                     let val: f64 = self.rng.random();
                     let limit = match &ops[pc] {
                         Op::ChanceExec(_) => threshold,
@@ -505,6 +519,7 @@ impl CagireVM {
                     let hit = val < limit;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -513,60 +528,64 @@ impl CagireVM {
                     let val: f64 = self.rng.random();
                     let result = val < 0.5;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(result))); }
-                    stack.push(Value::Int(if result { 1 } else { 0 }));
+                    stack.push(Value::Int(if result { 1 } else { 0 }), span!());
                 }
 
                 Op::Every(word_span) => {
-                    let n = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if n <= 0 { return Err(CagireError::new("every count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 { return Err(CagireError::new("every count must be > 0", span!())); }
                     let hit = ctx.iter as i64 % n == 0;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::Except(word_span) => {
-                    let n = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if n <= 0 { return Err(CagireError::new("except count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 { return Err(CagireError::new("except count must be > 0", span!())); }
                     let hit = ctx.iter as i64 % n != 0;
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::EveryOffset(word_span) => {
-                    let offset = at!(pop_int(stack))?;
-                    let n = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if n <= 0 { return Err(CagireError::new("every+ count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let offset = at!(stack.pop_int())?;
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 { return Err(CagireError::new("every+ count must be > 0", span!())); }
                     let hit = ctx.iter as i64 % n == offset.rem_euclid(n);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::ExceptOffset(word_span) => {
-                    let offset = at!(pop_int(stack))?;
-                    let n = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if n <= 0 { return Err(CagireError::new("except+ count must be > 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let offset = at!(stack.pop_int())?;
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 { return Err(CagireError::new("except+ count must be > 0", span!())); }
                     let hit = ctx.iter as i64 % n != offset.rem_euclid(n);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::Bjork(word_span) | Op::PBjork(word_span) => {
-                    let n = at!(pop_int(stack))?;
-                    let k = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if n <= 0 || k < 0 { return Err(CagireError::new("bjork: n must be > 0, k must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let n = at!(stack.pop_int())?;
+                    let k = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 || k < 0 { return Err(CagireError::new("bjork: n must be > 0, k must be >= 0", span!())); }
                     let counter = match &ops[pc] {
                         Op::Bjork(_) => ctx.runs,
                         _ => ctx.iter,
@@ -575,219 +594,225 @@ impl CagireVM {
                     let hit = k >= n || euclidean_hit(k as usize, n as usize, pos);
                     if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
                     if hit {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::Quotation(quote_ops, quote_spans) => {
-                    stack.push(Value::Quotation(quote_ops.clone(), quote_spans.clone()));
+                    stack.push(Value::Quotation(quote_ops.clone(), quote_spans.clone()), span!());
                 }
 
                 Op::When | Op::Unless => {
-                    let cond = at!(pop(stack))?;
-                    let quot = at!(pop(stack))?;
+                    let cond = at!(stack.pop())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
                     let should_run = match &ops[pc] {
                         Op::When => cond.is_truthy(),
                         _ => !cond.is_truthy(),
                     };
                     if should_run {
+                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::IfElse => {
-                    let cond = at!(pop(stack))?;
-                    let false_quot = at!(pop(stack))?;
-                    let true_quot = at!(pop(stack))?;
+                    let cond = at!(stack.pop())?;
+                    let false_quot = at!(stack.pop())?;
+                    let true_quot = at!(stack.pop())?;
                     let quot = if cond.is_truthy() { true_quot } else { false_quot };
                     run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                 }
 
                 Op::Pick => {
-                    let idx_i = at!(pop_int(stack))?;
-                    if idx_i < 0 { return Err(CagireError::new(format!("pick index must be >= 0, got {idx_i}"), op_spans.get(pc).copied().unwrap_or_default())); }
+                    let idx_i = at!(stack.pop_int())?;
+                    if idx_i < 0 { return Err(CagireError::new(format!("pick index must be >= 0, got {idx_i}"), span!())); }
                     let idx = idx_i as usize;
                     let mut quots: Vec<Value> = Vec::new();
-                    while let Some(val) = stack.pop() {
+                    while let Ok(val) = stack.pop() {
                         if matches!(&val, Value::Quotation(..)) {
                             quots.push(val);
                         } else {
-                            stack.push(val);
+                            stack.push(val, Span::default());
                             break;
                         }
                     }
                     quots.reverse();
                     if idx >= quots.len() {
-                        return Err(CagireError::new(format!("pick index {} out of range (have {} quotations)", idx, quots.len()), op_spans.get(pc).copied().unwrap_or_default()));
+                        return Err(CagireError::new(format!("pick index {} out of range (have {} quotations)", idx, quots.len()), span!()));
                     }
                     run_quotation(quots.swap_remove(idx), stack, events, cmd, self, ctx, eval_ctx)?;
                 }
 
                 Op::Mtof => {
-                    let note = at!(pop_float(stack))?;
-                    stack.push(Value::Float(440.0 * 2.0_f64.powf((note - 69.0) / 12.0)));
+                    let note = at!(stack.pop_float())?;
+                    stack.push(Value::Float(440.0 * 2.0_f64.powf((note - 69.0) / 12.0)), span!());
                 }
                 Op::Ftom => {
-                    let freq = at!(pop_float(stack))?;
-                    stack.push(Value::Float(69.0 + 12.0 * (freq / 440.0).log2()));
+                    let freq = at!(stack.pop_float())?;
+                    stack.push(Value::Float(69.0 + 12.0 * (freq / 440.0).log2()), span!());
                 }
 
                 Op::Degree(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
                     let key = self.read_key();
                     let len = pattern.len() as i64;
-                    at!(ensure(stack, 1))?;
-                    let values = std::mem::take(stack);
-                    for val in values {
+                    at!(stack.ensure(1))?;
+                    let values = std::mem::take(&mut stack.values);
+                    let origins = std::mem::take(&mut stack.origins);
+                    for (val, origin) in values.into_iter().zip(origins) {
                         let result = at!(lift_unary_int(val, |degree| {
                             let octave_offset = degree.div_euclid(len);
                             let idx = degree.rem_euclid(len) as usize;
                             key + octave_offset * 12 + pattern[idx]
                         }))?;
-                        stack.push(result);
+                        stack.push(result, origin);
                     }
                 }
 
                 Op::Chord(intervals) => {
-                    let root = at!(pop_int(stack))?;
+                    let root = at!(stack.pop_int())?;
                     for &interval in *intervals {
-                        stack.push(Value::Int(root + interval));
+                        stack.push(Value::Int(root + interval), span!());
                     }
                 }
 
                 Op::Transpose => {
-                    let n = at!(pop_int(stack))?;
-                    for val in stack.iter_mut() {
+                    let n = at!(stack.pop_int())?;
+                    for val in stack.values.iter_mut() {
                         if let Value::Int(v) = val { *v += n; }
                     }
                 }
 
                 Op::Invert => {
-                    at!(ensure(stack, 2))?;
-                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
-                    let bottom = at!(stack[start].as_int())? + 12;
+                    at!(stack.ensure(2))?;
+                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let bottom = at!(stack.values[start].as_int())? + 12;
                     stack.remove(start);
-                    stack.push(Value::Int(bottom));
+                    stack.push(Value::Int(bottom), span!());
                 }
 
                 Op::DownInvert => {
-                    at!(ensure(stack, 2))?;
-                    let top = at!(pop_int(stack))? - 12;
-                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(top));
+                    at!(stack.ensure(2))?;
+                    let top = at!(stack.pop_int())? - 12;
+                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(top), span!());
                 }
 
                 Op::VoiceDrop2 => {
-                    at!(ensure(stack, 3))?;
+                    at!(stack.ensure(3))?;
                     let len = stack.len();
-                    let note = at!(stack[len - 2].as_int())? - 12;
+                    let note = at!(stack.values[len - 2].as_int())? - 12;
                     stack.remove(len - 2);
-                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(note));
+                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(note), span!());
                 }
 
                 Op::VoiceDrop3 => {
-                    at!(ensure(stack, 4))?;
+                    at!(stack.ensure(4))?;
                     let len = stack.len();
-                    let note = at!(stack[len - 3].as_int())? - 12;
+                    let note = at!(stack.values[len - 3].as_int())? - 12;
                     stack.remove(len - 3);
-                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(note));
+                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(note), span!());
                 }
 
                 Op::SetKey => {
-                    let key = at!(pop_int(stack))?;
+                    let key = at!(stack.pop_int())?;
                     self.vars.insert("__key__".to_string(), Value::Int(key));
                 }
 
                 Op::DiatonicTriad(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", op_spans.get(pc).copied().unwrap_or_default())); }
-                    let degree = at!(pop_int(stack))?;
+                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
+                    let degree = at!(stack.pop_int())?;
                     let key = self.read_key();
                     let len = pattern.len() as i64;
                     for offset in [0, 2, 4] {
                         let d = degree + offset;
                         let octave_offset = d.div_euclid(len);
                         let idx = d.rem_euclid(len) as usize;
-                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]));
+                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]), span!());
                     }
                 }
 
                 Op::DiatonicSeventh(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", op_spans.get(pc).copied().unwrap_or_default())); }
-                    let degree = at!(pop_int(stack))?;
+                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
+                    let degree = at!(stack.pop_int())?;
                     let key = self.read_key();
                     let len = pattern.len() as i64;
                     for offset in [0, 2, 4, 6] {
                         let d = degree + offset;
                         let octave_offset = d.div_euclid(len);
                         let idx = d.rem_euclid(len) as usize;
-                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]));
+                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]), span!());
                     }
                 }
 
                 Op::Oct => {
-                    let shift = at!(pop(stack))?;
-                    let note = at!(pop(stack))?;
-                    stack.push(at!(lift_binary(note, shift, |n, s| n + s * 12.0))?);
+                    let shift = at!(stack.pop())?;
+                    let note = at!(stack.pop())?;
+                    stack.push(at!(lift_binary(note, shift, |n, s| n + s * 12.0))?, span!());
                 }
 
                 Op::SetTempo => {
-                    let tempo = at!(pop_float(stack))?;
+                    let tempo = at!(stack.pop_float())?;
                     let clamped = tempo.clamp(20.0, 300.0);
                     self.vars.insert("__tempo__".to_string(), Value::Float(clamped));
                 }
 
                 Op::SetSpeed => {
-                    let speed = at!(pop_float(stack))?;
+                    let speed = at!(stack.pop_float())?;
                     let clamped = speed.clamp(0.125, 8.0);
                     self.vars.insert("__speed__".to_string(), Value::Float(clamped));
                 }
 
                 Op::Loop => {
-                    let steps = at!(pop_float(stack))?;
+                    let steps = at!(stack.pop_float())?;
                     let dur = steps * ctx.step_duration;
                     cmd.set_param("fit", Value::Float(dur));
                     cmd.set_param("gate", Value::Float(dur));
                 }
 
                 Op::LinMap => {
-                    let out_hi = at!(pop_float(stack))?;
-                    let out_lo = at!(pop_float(stack))?;
-                    let in_hi = at!(pop_float(stack))?;
-                    let in_lo = at!(pop_float(stack))?;
-                    let val = at!(pop_float(stack))?;
+                    let out_hi = at!(stack.pop_float())?;
+                    let out_lo = at!(stack.pop_float())?;
+                    let in_hi = at!(stack.pop_float())?;
+                    let in_lo = at!(stack.pop_float())?;
+                    let val = at!(stack.pop_float())?;
                     let t = if (in_hi - in_lo).abs() < f64::EPSILON { 0.0 }
                             else { (val - in_lo) / (in_hi - in_lo) };
-                    stack.push(Value::Float(out_lo + t * (out_hi - out_lo)));
+                    stack.push(Value::Float(out_lo + t * (out_hi - out_lo)), span!());
                 }
 
                 Op::ExpMap => {
-                    let hi = at!(pop_float(stack))?;
-                    let lo = at!(pop_float(stack))?;
-                    let val = at!(pop_float(stack))?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("expmap requires positive bounds", op_spans.get(pc).copied().unwrap_or_default())); }
-                    stack.push(Value::Float(lo * (hi / lo).powf(val)));
+                    let hi = at!(stack.pop_float())?;
+                    let lo = at!(stack.pop_float())?;
+                    let val = at!(stack.pop_float())?;
+                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("expmap requires positive bounds", span!())); }
+                    stack.push(Value::Float(lo * (hi / lo).powf(val)), span!());
                 }
 
                 Op::Map => {
-                    let quot = at!(pop(stack))?;
-                    let items = std::mem::take(stack);
-                    for item in items {
-                        stack.push(item);
+                    let quot = at!(stack.pop())?;
+                    let items = std::mem::take(&mut stack.values);
+                    let item_origins = std::mem::take(&mut stack.origins);
+                    for (item, origin) in items.into_iter().zip(item_origins) {
+                        stack.push(item, origin);
                         run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::At => {
-                    at!(ensure(stack, 1))?;
-                    let deltas = std::mem::take(stack);
+                    at!(stack.ensure(1))?;
+                    let deltas = std::mem::take(&mut stack.values);
+                    stack.origins.clear();
                     cmd.set_deltas(deltas);
                 }
 
                 Op::AtLoop(body_ops, body_spans) => {
-                    at!(ensure(stack, 1))?;
-                    let deltas = std::mem::take(stack);
+                    at!(stack.ensure(1))?;
+                    let deltas = std::mem::take(&mut stack.values);
+                    stack.origins.clear();
                     let n = deltas.len();
 
                     for (i, delta_val) in deltas.iter().enumerate() {
@@ -817,10 +842,10 @@ impl CagireVM {
                 }
 
                 Op::Adsr => {
-                    let r = at!(pop(stack))?;
-                    let s = at!(pop(stack))?;
-                    let d = at!(pop(stack))?;
-                    let a = at!(pop(stack))?;
+                    let r = at!(stack.pop())?;
+                    let s = at!(stack.pop())?;
+                    let d = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
                     cmd.set_param("attack", a);
                     cmd.set_param("decay", d);
                     cmd.set_param("sustain", s);
@@ -828,89 +853,92 @@ impl CagireVM {
                 }
 
                 Op::Ad => {
-                    let d = at!(pop(stack))?;
-                    let a = at!(pop(stack))?;
+                    let d = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
                     cmd.set_param("attack", a);
                     cmd.set_param("decay", d);
                     cmd.set_param("sustain", Value::Int(0));
                 }
 
                 Op::Apply => {
-                    let quot = at!(pop(stack))?;
+                    let quot = at!(stack.pop())?;
                     run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                 }
 
                 Op::Ramp => {
-                    let curve = at!(pop_float(stack))?;
-                    let freq = at!(pop_float(stack))?;
+                    let curve = at!(stack.pop_float())?;
+                    let freq = at!(stack.pop_float())?;
                     let phase = (freq * ctx.beat).fract();
                     let phase = if phase < 0.0 { phase + 1.0 } else { phase };
-                    stack.push(Value::Float(phase.powf(curve)));
+                    stack.push(Value::Float(phase.powf(curve)), span!());
                 }
                 Op::Triangle => {
-                    let freq = at!(pop_float(stack))?;
+                    let freq = at!(stack.pop_float())?;
                     let phase = (freq * ctx.beat).fract();
                     let phase = if phase < 0.0 { phase + 1.0 } else { phase };
-                    stack.push(Value::Float(1.0 - (2.0 * phase - 1.0).abs()));
+                    stack.push(Value::Float(1.0 - (2.0 * phase - 1.0).abs()), span!());
                 }
                 Op::Range => {
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
-                    let val = at!(pop_float(stack))?;
-                    stack.push(Value::Float(min + val * (max - min)));
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
+                    let val = at!(stack.pop_float())?;
+                    stack.push(Value::Float(min + val * (max - min)), span!());
                 }
                 Op::Perlin => {
-                    let freq = at!(pop_float(stack))?;
-                    stack.push(Value::Float(perlin_noise_1d(freq * ctx.beat)));
+                    let freq = at!(stack.pop_float())?;
+                    stack.push(Value::Float(perlin_noise_1d(freq * ctx.beat)), span!());
                 }
 
                 Op::ClearCmd => { cmd.clear(); }
 
                 Op::IntRange => {
-                    let end = at!(pop_int(stack))?;
-                    let start = at!(pop_int(stack))?;
+                    let end = at!(stack.pop_int())?;
+                    let start = at!(stack.pop_int())?;
                     let count = (end - start).unsigned_abs() + 1;
-                    if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", span!())); }
+                    let sp = span!();
                     if start <= end {
-                        for i in start..=end { stack.push(Value::Int(i)); }
+                        for i in start..=end { stack.push(Value::Int(i), sp); }
                     } else {
-                        for i in (end..=start).rev() { stack.push(Value::Int(i)); }
+                        for i in (end..=start).rev() { stack.push(Value::Int(i), sp); }
                     }
                 }
 
                 Op::StepRange => {
-                    let step = at!(pop_float(stack))?;
-                    let end = at!(pop_float(stack))?;
-                    let start = at!(pop_float(stack))?;
-                    if step == 0.0 { return Err(CagireError::new("step cannot be zero", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let step = at!(stack.pop_float())?;
+                    let end = at!(stack.pop_float())?;
+                    let start = at!(stack.pop_float())?;
+                    if step == 0.0 { return Err(CagireError::new("step cannot be zero", span!())); }
                     let ascending = step > 0.0;
                     let mut val = start;
                     let mut count = 0u32;
+                    let sp = span!();
                     loop {
                         if (ascending && val > end) || (!ascending && val < end) { break; }
                         count += 1;
-                        if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
-                        stack.push(float_to_value(val));
+                        if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", span!())); }
+                        stack.push(float_to_value(val), sp);
                         val += step;
                     }
                 }
 
                 Op::Generate => {
-                    let count = at!(pop_int(stack))?;
-                    let quot = at!(pop(stack))?;
-                    if count < 0 { return Err(CagireError::new("gen count must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())?;
+                    let quot = at!(stack.pop())?;
+                    if count < 0 { return Err(CagireError::new("gen count must be >= 0", span!())); }
                     let mut results = Vec::with_capacity(count as usize);
                     for _ in 0..count {
                         run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
-                        results.push(at!(stack.pop().ok_or_else(|| "gen: quotation must produce a value".to_string()))?);
+                        results.push(at!(stack.pop())?);
                     }
-                    for val in results { stack.push(val); }
+                    let sp = span!();
+                    for val in results { stack.push(val, sp); }
                 }
 
                 Op::Times => {
-                    let quot = at!(pop(stack))?;
-                    let count = at!(pop_int(stack))?;
-                    if count < 0 { return Err(CagireError::new("times count must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let quot = at!(stack.pop())?;
+                    let count = at!(stack.pop_int())?;
+                    if count < 0 { return Err(CagireError::new("times count must be >= 0", span!())); }
                     for i in 0..count {
                         self.vars.insert("i".to_string(), Value::Int(i));
                         run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
@@ -918,52 +946,57 @@ impl CagireVM {
                 }
 
                 Op::GeomRange => {
-                    let count = at!(pop_int(stack))?;
-                    let ratio = at!(pop_float(stack))?;
-                    let start = at!(pop_float(stack))?;
-                    if count < 0 { return Err(CagireError::new("geom.. count must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let count = at!(stack.pop_int())?;
+                    let ratio = at!(stack.pop_float())?;
+                    let start = at!(stack.pop_float())?;
+                    if count < 0 { return Err(CagireError::new("geom.. count must be >= 0", span!())); }
+                    let sp = span!();
                     let mut val = start;
                     for _ in 0..count {
-                        stack.push(float_to_value(val));
+                        stack.push(float_to_value(val), sp);
                         val *= ratio;
                     }
                 }
 
                 Op::Euclid => {
-                    let n = at!(pop_int(stack))?;
-                    let k = at!(pop_int(stack))?;
-                    if k < 0 || n < 0 { return Err(CagireError::new("euclid: k and n must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let n = at!(stack.pop_int())?;
+                    let k = at!(stack.pop_int())?;
+                    if k < 0 || n < 0 { return Err(CagireError::new("euclid: k and n must be >= 0", span!())); }
+                    let sp = span!();
                     for val in euclidean_rhythm(k as usize, n as usize, 0) {
-                        stack.push(Value::Float(val));
+                        stack.push(Value::Float(val), sp);
                     }
                 }
 
                 Op::EuclidRot => {
-                    let r = at!(pop_int(stack))?;
-                    let n = at!(pop_int(stack))?;
-                    let k = at!(pop_int(stack))?;
-                    if k < 0 || n < 0 || r < 0 { return Err(CagireError::new("euclidrot: k, n, and r must be >= 0", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let r = at!(stack.pop_int())?;
+                    let n = at!(stack.pop_int())?;
+                    let k = at!(stack.pop_int())?;
+                    if k < 0 || n < 0 || r < 0 { return Err(CagireError::new("euclidrot: k, n, and r must be >= 0", span!())); }
+                    let sp = span!();
                     for val in euclidean_rhythm(k as usize, n as usize, r as usize) {
-                        stack.push(Value::Float(val));
+                        stack.push(Value::Float(val), sp);
                     }
                 }
 
                 Op::Subdivide => {
-                    let n = at!(pop_int(stack))?;
-                    if n < 1 { return Err(CagireError::new("div: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if n > 10_000 { return Err(CagireError::new("div: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let n = at!(stack.pop_int())?;
+                    if n < 1 { return Err(CagireError::new("div: n must be >= 1", span!())); }
+                    if n > 10_000 { return Err(CagireError::new("div: n too large (max 10000)", span!())); }
                     let nf = n as f64;
+                    let sp = span!();
                     for i in 0..n {
-                        stack.push(Value::Float(i as f64 / nf));
+                        stack.push(Value::Float(i as f64 / nf), sp);
                     }
                 }
 
                 Op::Swing => {
-                    let ratio = at!(pop_float(stack))?;
-                    let n = at!(pop_int(stack))?;
-                    if n < 1 { return Err(CagireError::new("swing: n must be >= 1", op_spans.get(pc).copied().unwrap_or_default())); }
-                    if n > 10_000 { return Err(CagireError::new("swing: n too large (max 10000)", op_spans.get(pc).copied().unwrap_or_default())); }
+                    let ratio = at!(stack.pop_float())?;
+                    let n = at!(stack.pop_int())?;
+                    if n < 1 { return Err(CagireError::new("swing: n must be >= 1", span!())); }
+                    if n > 10_000 { return Err(CagireError::new("swing: n too large (max 10000)", span!())); }
                     let pair_len = 2.0 / n as f64;
+                    let sp = span!();
                     for i in 0..n {
                         let pair_start = (i / 2) as f64 * pair_len;
                         let frac = if i % 2 == 0 {
@@ -971,68 +1004,68 @@ impl CagireVM {
                         } else {
                             (pair_start + ratio * pair_len).min(1.0 - f64::EPSILON)
                         };
-                        stack.push(Value::Float(frac));
+                        stack.push(Value::Float(frac), sp);
                     }
                 }
 
                 Op::ModLfo(shape) => {
-                    let period = at!(pop_float(stack))? * ctx.step_duration;
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let period = at!(stack.pop_float())? * ctx.step_duration;
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     let suffix = match shape { 1 => "t", 2 => "w", 3 => "q", _ => "" };
-                    stack.push(Value::Str(format!("{min}~{max}:{period}{suffix}").into()));
+                    stack.push(Value::Str(format!("{min}~{max}:{period}{suffix}").into()), span!());
                 }
                 Op::ModSlide(curve) => {
-                    let dur = at!(pop_float(stack))? * ctx.step_duration;
-                    let end = at!(pop_float(stack))?;
-                    let start = at!(pop_float(stack))?;
+                    let dur = at!(stack.pop_float())? * ctx.step_duration;
+                    let end = at!(stack.pop_float())?;
+                    let start = at!(stack.pop_float())?;
                     let suffix = match curve { 1 => "e", 2 => "s", 3 => "i", 4 => "o", 5 => "p", _ => "" };
-                    stack.push(Value::Str(format!("{start}>{end}:{dur}{suffix}").into()));
+                    stack.push(Value::Str(format!("{start}>{end}:{dur}{suffix}").into()), span!());
                 }
                 Op::ModRnd(dist) => {
-                    let period = at!(pop_float(stack))? * ctx.step_duration;
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let period = at!(stack.pop_float())? * ctx.step_duration;
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     let suffix = match dist { 1 => "s", 2 => "d", _ => "" };
-                    stack.push(Value::Str(format!("{min}?{max}:{period}{suffix}").into()));
+                    stack.push(Value::Str(format!("{min}?{max}:{period}{suffix}").into()), span!());
                 }
                 Op::ModEnv => {
-                    let release = at!(pop_float(stack))? * ctx.step_duration;
-                    let sustain = at!(pop_float(stack))?;
-                    let decay = at!(pop_float(stack))? * ctx.step_duration;
-                    let attack = at!(pop_float(stack))? * ctx.step_duration;
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let release = at!(stack.pop_float())? * ctx.step_duration;
+                    let sustain = at!(stack.pop_float())?;
+                    let decay = at!(stack.pop_float())? * ctx.step_duration;
+                    let attack = at!(stack.pop_float())? * ctx.step_duration;
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     use std::fmt::Write;
                     let mut s = String::new();
                     let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:{sustain}:{release}");
-                    stack.push(Value::Str(s.into()));
+                    stack.push(Value::Str(s.into()), span!());
                 }
                 Op::ModEnvAd => {
-                    let decay = at!(pop_float(stack))? * ctx.step_duration;
-                    let attack = at!(pop_float(stack))? * ctx.step_duration;
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let decay = at!(stack.pop_float())? * ctx.step_duration;
+                    let attack = at!(stack.pop_float())? * ctx.step_duration;
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     use std::fmt::Write;
                     let mut s = String::new();
                     let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:0");
-                    stack.push(Value::Str(s.into()));
+                    stack.push(Value::Str(s.into()), span!());
                 }
                 Op::ModEnvAdr => {
-                    let release = at!(pop_float(stack))? * ctx.step_duration;
-                    let decay = at!(pop_float(stack))? * ctx.step_duration;
-                    let attack = at!(pop_float(stack))? * ctx.step_duration;
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let release = at!(stack.pop_float())? * ctx.step_duration;
+                    let decay = at!(stack.pop_float())? * ctx.step_duration;
+                    let attack = at!(stack.pop_float())? * ctx.step_duration;
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     use std::fmt::Write;
                     let mut s = String::new();
                     let _ = write!(&mut s, "{min}^{max}:{attack}:{decay}:0:{release}");
-                    stack.push(Value::Str(s.into()));
+                    stack.push(Value::Str(s.into()), span!());
                 }
                 Op::Lpg => {
-                    let depth = at!(pop_float(stack))?.clamp(0.0, 1.0);
-                    let max = at!(pop_float(stack))?;
-                    let min = at!(pop_float(stack))?;
+                    let depth = at!(stack.pop_float())?.clamp(0.0, 1.0);
+                    let max = at!(stack.pop_float())?;
+                    let min = at!(stack.pop_float())?;
                     let effective_max = min + (max - min) * depth;
                     let sd = ctx.step_duration;
                     let a = cmd.get_param_float("attack").unwrap_or(0.0) * sd;
@@ -1046,8 +1079,8 @@ impl CagireVM {
                 }
 
                 Op::GetMidiCC => {
-                    let chan = at!(pop_int(stack))?;
-                    let cc = at!(pop_int(stack))?;
+                    let chan = at!(stack.pop_int())?;
+                    let cc = at!(stack.pop_int())?;
                     let device_id = cmd.params().iter()
                         .find(|(k, _)| *k == "device")
                         .and_then(|(_, v)| v.as_int().ok())
@@ -1056,7 +1089,7 @@ impl CagireVM {
                     let cc_value = eval_ctx.device_map.get_input_cc(
                         device_id, cc as i8, chan as i8
                     ).unwrap_or_default();
-                    stack.push(Value::Int(cc_value));
+                    stack.push(Value::Int(cc_value), span!());
                 }
 
                 Op::MidiClock => {
@@ -1080,11 +1113,10 @@ impl CagireVM {
                     marks.push(stack.len());
                 }
 
-                Op::Count(word_span) => {
+                Op::Count(_) => {
                     let mark = at!(marks.pop().ok_or_else(|| "count without mark".to_string()))?;
                     let val = (stack.len() - mark) as i64;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(val))); }
-                    stack.push(Value::Int(val));
+                    stack.push(Value::Int(val), span!());
                 }
 
                 Op::EmitAll => {
@@ -1115,42 +1147,42 @@ impl CagireVM {
                 }
 
                 Op::Rec => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}", at!(name.as_str())?);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
 
                 Op::Overdub => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}/overdub/1", at!(name.as_str())?);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
 
                 Op::Orec => {
-                    let orbit = at!(pop_int(stack))?;
-                    let name = at!(pop(stack))?;
+                    let orbit = at!(stack.pop_int())?;
+                    let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}/orbit/{}", at!(name.as_str())?, orbit);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
 
                 Op::Odub => {
-                    let orbit = at!(pop_int(stack))?;
-                    let name = at!(pop(stack))?;
+                    let orbit = at!(stack.pop_int())?;
+                    let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}/overdub/1/orbit/{}", at!(name.as_str())?, orbit);
                     let message = OSCMessage::new(path, vec![]);
                     events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
                 }
 
                 Op::Forget => {
-                    let name = at!(pop(stack))?;
+                    let name = at!(stack.pop())?;
                     self.dict.remove(at!(name.as_str())?);
                 }
 
                 Op::Print => {
-                    let val = at!(pop(stack))?;
+                    let val = at!(stack.pop())?;
                     events.push((ConcreteEvent::Print(val.to_param_string()), 0));
                 }
             }
@@ -1449,7 +1481,7 @@ fn resolve_cycling(val: &Value, emit_idx: usize) -> Cow<'_, Value> {
 
 fn run_quotation(
     quot: Value,
-    stack: &mut Vec<Value>,
+    stack: &mut Stack,
     events: &mut Vec<(ConcreteEvent, SyncTime)>,
     cmd: &mut CmdRegister,
     vm: &mut CagireVM,
@@ -1466,7 +1498,7 @@ fn run_quotation(
 
 fn select_and_run(
     selected: Value,
-    stack: &mut Vec<Value>,
+    stack: &mut Stack,
     events: &mut Vec<(ConcreteEvent, SyncTime)>,
     cmd: &mut CmdRegister,
     vm: &mut CagireVM,
@@ -1476,7 +1508,7 @@ fn select_and_run(
     if matches!(selected, Value::Quotation(..)) {
         run_quotation(selected, stack, events, cmd, vm, ctx, eval_ctx)
     } else {
-        stack.push(selected);
+        stack.push(selected, Span::default());
         Ok(())
     }
 }
@@ -1485,64 +1517,38 @@ fn select_and_run(
 fn drain_select_run(
     count: usize,
     idx: usize,
-    stack: &mut Vec<Value>,
+    stack: &mut Stack,
     events: &mut Vec<(ConcreteEvent, SyncTime)>,
     cmd: &mut CmdRegister,
     vm: &mut CagireVM,
-    _ops: &[Op],
     op_spans: &[Span],
     pc: usize,
     ctx: &StepContext,
     eval_ctx: &mut EvaluationContext,
 ) -> Result<(), CagireError> {
-    ensure(stack, count).map_err(|msg| CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default()))?;
+    stack.ensure(count).map_err(|msg| CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default()))?;
     let start = stack.len() - count;
-    let selected = stack[start + idx].clone();
+    let selected = stack.values[start + idx].clone();
+    let origin = stack.origin(start + idx);
+    if origin != Span::default() {
+        vm.selected.push(origin);
+    }
     stack.truncate(start);
     select_and_run(selected, stack, events, cmd, vm, ctx, eval_ctx)
 }
 
-fn drain_skip_quotations(stack: &mut Vec<Value>) -> Vec<Value> {
-    let values = std::mem::take(stack);
+fn drain_skip_quotations(stack: &mut Stack) -> Vec<Value> {
+    let values = std::mem::take(&mut stack.values);
+    let origins = std::mem::take(&mut stack.origins);
     let mut result = Vec::new();
-    for v in values {
+    for (v, o) in values.into_iter().zip(origins) {
         if matches!(v, Value::Quotation(..)) {
-            stack.push(v);
+            stack.push(v, o);
         } else {
             result.push(v);
         }
     }
     result
-}
-
-fn pop(stack: &mut Vec<Value>) -> Result<Value, String> {
-    stack.pop().ok_or_else(|| "stack underflow".to_string())
-}
-
-
-fn pop_int(stack: &mut Vec<Value>) -> Result<i64, String> {
-    pop(stack)?.as_int()
-}
-
-fn pop_float(stack: &mut Vec<Value>) -> Result<f64, String> {
-    pop(stack)?.as_float()
-}
-
-fn pop_bool(stack: &mut Vec<Value>) -> Result<bool, String> {
-    Ok(pop(stack)?.is_truthy())
-}
-
-fn ensure(stack: &[Value], n: usize) -> Result<(), String> {
-    if stack.len() < n { return Err("stack underflow".into()); }
-    Ok(())
-}
-
-fn float_to_value(result: f64) -> Value {
-    if result.fract() == 0.0 && result.abs() < i64::MAX as f64 {
-        Value::Int(result as i64)
-    } else {
-        Value::Float(result)
-    }
 }
 
 fn lift_unary<F>(val: Value, f: F) -> Result<Value, String>
@@ -1560,20 +1566,21 @@ where F: Fn(f64, f64) -> f64 {
     Ok(float_to_value(f(a.as_float()?, b.as_float()?)))
 }
 
-fn binary_op<F>(stack: &mut Vec<Value>, f: F) -> Result<(), String>
-where F: Fn(f64, f64) -> f64 + Copy {
-    let b = pop(stack)?;
-    let a = pop(stack)?;
-    stack.push(lift_binary(a, b, f)?);
-    Ok(())
-}
-
-fn cmp_op<F>(stack: &mut Vec<Value>, f: F) -> Result<(), String>
-where F: Fn(f64, f64) -> bool {
-    let b = pop(stack)?;
-    let a = pop(stack)?;
-    stack.push(Value::Int(if f(a.as_float()?, b.as_float()?) { 1 } else { 0 }));
-    Ok(())
+fn sort_paired(values: &mut [Value], origins: &mut [Span], reverse: bool) {
+    let mut indices: Vec<usize> = (0..values.len()).collect();
+    indices.sort_by(|&a, &b| {
+        let af = values[a].as_float().unwrap_or(0.0);
+        let bf = values[b].as_float().unwrap_or(0.0);
+        if reverse {
+            bf.partial_cmp(&af).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            af.partial_cmp(&bf).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
+    let sorted_vals: Vec<Value> = indices.iter().map(|&i| values[i].clone()).collect();
+    let sorted_origins: Vec<Span> = indices.iter().map(|&i| origins[i]).collect();
+    values.clone_from_slice(&sorted_vals);
+    origins.copy_from_slice(&sorted_origins);
 }
 
 fn euclidean_hit(k: usize, n: usize, pos: usize) -> bool {
@@ -1709,12 +1716,12 @@ mod tests {
         let sctx = StepContext::from_eval_ctx(&ctx);
         let mut dict = Dictionary::new();
         let (ops, spans) = compile_script("3 4 + 10 *", &mut dict).unwrap();
-        let mut stack = Vec::new();
+        let mut stack = Stack::new();
         let mut events = Vec::new();
         let mut cmd = CmdRegister::new();
         vm.execute_ops(&ops, &spans, &sctx, &mut ctx, &mut stack, &mut events, &mut cmd).unwrap();
         assert_eq!(stack.len(), 1);
-        assert_eq!(stack[0], Value::Int(70));
+        assert_eq!(stack.values[0], Value::Int(70));
     }
 
     #[test]

@@ -173,6 +173,7 @@ impl VisualsEngine {
             syntax: syn,
             reference: None,
             peer_cursors: &[],
+            annotations: &[],
             opacity: None,
         };
         egui::ScrollArea::vertical()
