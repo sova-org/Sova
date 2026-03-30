@@ -4,6 +4,7 @@ use sova_core::scene::{Line, Scene};
 use sova_core::schedule::SovaNotification;
 
 use clap::Parser;
+use tokio_util::sync::CancellationToken;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -11,7 +12,7 @@ use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
 use sova_server::{
-    AudioEngineState, AudioRestartConfig, ClientRegistry, CoreRestartRequest, SovaCoreServer, start_core_link,
+    AudioEngineState, AudioRestartConfig, ClientRegistry, SovaCoreServer,
 };
 
 #[cfg(feature = "audio")]
@@ -197,8 +198,6 @@ async fn main() {
     let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
     let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
 
-    let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
-
     #[cfg(feature = "audio")]
     let master_gain = audio_thread
         .as_ref()
@@ -208,7 +207,7 @@ async fn main() {
     #[cfg(not(feature = "audio"))]
     let master_gain = Arc::new(AtomicU32::new(1.0f32.to_bits()));
 
-    let server = SovaCoreServer::new(
+    let mut server = SovaCoreServer::new(
         cli.ip,
         cli.port,
         Arc::clone(&scene_image),
@@ -220,17 +219,14 @@ async fn main() {
         audio_engine_state,
         audio_restart_tx,
         audio_cmd_tx,
-        Some(core_restart_tx),
         cli.password,
         master_gain,
     );
-    let server = Arc::new(server);
-    
-    let core_link_handle = start_core_link(&server, core_restart_rx);
     
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
-    match server.start().await {
+    let token = CancellationToken::new();
+    match server.start(token).await {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
@@ -256,5 +252,4 @@ async fn main() {
     }
 
     devices.panic_all_midi_outputs();
-    let _ = core_link_handle.join();
 }
