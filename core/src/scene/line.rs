@@ -247,9 +247,11 @@ impl Line {
     /// Although the code prints an error, it does not panic if `position > self.frames.len()`.
     /// It simply returns early in that case. Insertion is allowed at `position == self.frames.len()`.
     pub fn insert_frame(&mut self, position: usize, value: Frame) {
-        if position > self.frames.len() {
+        if position > self.n_frames() {
             // Allow inserting at the end (position == len)
             log_eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
+            self.frames.resize(position, Frame::default());
+            self.make_consistent();
             return;
         }
         // Insert into frames
