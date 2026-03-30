@@ -88,6 +88,8 @@ pub struct CodeEditor {
     cache_hash: u64,
     completion: Option<CompletionState>,
     last_completion_prefix: Option<String>,
+    prev_text_hash: u64,
+    suppress_completion: bool,
 }
 
 impl CodeEditor {
@@ -100,6 +102,8 @@ impl CodeEditor {
             cache_hash: 0,
             completion: None,
             last_completion_prefix: None,
+            prev_text_hash: 0,
+            suppress_completion: false,
         }
     }
 
@@ -310,6 +314,16 @@ impl CodeEditor {
         }
 
         // --- Completion logic ---
+        let mut hasher = DefaultHasher::new();
+        text.hash(&mut hasher);
+        let text_hash = hasher.finish();
+        let text_changed = text_hash != self.prev_text_hash;
+        self.prev_text_hash = text_hash;
+
+        if text_changed {
+            self.suppress_completion = false;
+        }
+
         let cursor_char = edit_output
             .cursor_range
             .as_ref()
@@ -321,6 +335,13 @@ impl CodeEditor {
                 (start_char, end_byte, text[start_byte..end_byte].to_owned())
             })
             .unwrap_or((0, 0, String::new()));
+
+        let cursor_at_word_end = cursor_char
+            .map(|cc| {
+                let cursor_byte = char_to_byte(text, cc);
+                cursor_byte >= text.len() || !is_word_byte(text.as_bytes()[cursor_byte])
+            })
+            .unwrap_or(true);
 
         // Handle consumed keys
         if consumed_escape {
@@ -345,13 +366,23 @@ impl CodeEditor {
                 te_state.store(ui.ctx(), text_edit_id);
                 self.completion = None;
                 self.last_completion_prefix = None;
+                self.suppress_completion = true;
+                // Update hash to reflect the Tab insertion
+                let mut hasher = DefaultHasher::new();
+                text.hash(&mut hasher);
+                self.prev_text_hash = hasher.finish();
             }
         }
 
         // Open or recompute completions
         if self.completion.is_none() && !self.search_open {
-            let should_open =
-                ctrl_space || (ctx.settings.code_completion && prefix.len() >= 2 && reference.is_some());
+            let should_open = ctrl_space
+                || (ctx.settings.code_completion
+                    && text_changed
+                    && !self.suppress_completion
+                    && cursor_at_word_end
+                    && prefix.len() >= 2
+                    && reference.is_some());
             if should_open && let Some(ref_map) = reference {
                 let entries = compute_completions(&prefix, ref_map);
                 if !entries.is_empty() {
