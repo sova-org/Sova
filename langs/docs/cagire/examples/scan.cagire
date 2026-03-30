@@ -1,1 +1,6 @@
-wt snd c4 note 0.01 0.5 ad 0.5 scan .
+c2 note
+tables sound
+1024 wtlen
+0.0 1.0 rand scan
+1 decay
+.

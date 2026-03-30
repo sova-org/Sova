@@ -1,1 +1,5 @@
-0 major seventh note saw snd 0.01 0.4 0.7 0.2 adsr 1200 lpf 0.2 verb .
+0 major seventh note
+saw snd 2 decay
+8000 200 0.125 lfo lpf
+0.2 verb
+.

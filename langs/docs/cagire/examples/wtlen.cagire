@@ -1,1 +1,8 @@
-wt snd c4 note 0.01 0.4 ad 2048 wtlen 0.3 scan .
+c2 note
+tables sound
+;; table is 1024 samples long
+1024 wtlen
+;; scanning over it
+0.1 0.3 2.0 8.0 rand slide scan
+1 decay
+.

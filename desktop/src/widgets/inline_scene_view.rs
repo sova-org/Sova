@@ -187,6 +187,11 @@ impl InlineFrameState {
         _opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
+        // Subdued style: transparent backgrounds so the header doesn't compete with the code
+        let wv = &mut ui.style_mut().visuals.widgets;
+        wv.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+        wv.inactive.bg_stroke = egui::Stroke::NONE;
+
         // Cmd/Ctrl+L shortcut — only for the frame whose editor has focus
         if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
@@ -245,13 +250,14 @@ impl InlineFrameState {
         }
 
         // Language selector
-        let btn_fill = ui.visuals().widgets.inactive.bg_fill;
+        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
                 egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
-                    .small(),
+                    .small()
+                    .color(weak),
             )
-            .fill(btn_fill),
+            .fill(egui::Color32::TRANSPARENT),
         );
         if lang_btn.clicked() {
             self.lang_popup_open = !self.lang_popup_open;
@@ -269,7 +275,8 @@ impl InlineFrameState {
             egui::DragValue::new(&mut dur)
                 .range(0.001..=f64::MAX)
                 .speed(0.1)
-                .prefix("dur: "),
+                .prefix("dur: ")
+                .custom_formatter(|v, _| format!("{v:.1}")),
         );
         if dur_resp.changed() && dur > 0.0 {
             let mut f = frame.clone();
@@ -675,6 +682,11 @@ impl InlineScriptState {
         opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
+        // Subdued style
+        let wv = &mut ui.style_mut().visuals.widgets;
+        wv.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+        wv.inactive.bg_stroke = egui::Stroke::NONE;
+
         // Cmd/Ctrl+L shortcut — only for the script whose editor has focus
         if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
@@ -690,13 +702,14 @@ impl InlineScriptState {
         }
 
         // Language selector
-        let btn_fill = ui.visuals().widgets.inactive.bg_fill;
+        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
                 egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
-                    .small(),
+                    .small()
+                    .color(weak),
             )
-            .fill(btn_fill),
+            .fill(egui::Color32::TRANSPARENT),
         );
         if lang_btn.clicked() {
             self.lang_popup_open = !self.lang_popup_open;

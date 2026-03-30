@@ -34,7 +34,6 @@ pub const MODIFIED: &str = "\u{F069}";
 
 // Log
 pub const TRASH: &str = "\u{EA81}";
-pub const OUTPUT: &str = "\u{EB9D}";
 
 // Doc panel
 pub const BOOK: &str = "\u{EAA4}";

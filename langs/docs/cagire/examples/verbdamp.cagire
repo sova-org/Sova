@@ -1,1 +1,7 @@
-sine snd c3 note 0.01 0.5 ad 0.35 verb 0.85 verbdecay 0.8 verbdamp .
+hat snd
+c3 note
+.5 d
+0.65 verb
+0.85 verbdecay
+0.0 1.0 rand verbdamp
+.

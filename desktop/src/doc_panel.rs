@@ -237,10 +237,6 @@ impl DocPanel {
     }
 
     fn show_collapsed(&mut self, ctx: &egui::Context, side: Side) {
-        let mut top_rect = egui::Rect::NOTHING;
-        let mut mid_rect = egui::Rect::NOTHING;
-        let mut bottom_rect = egui::Rect::NOTHING;
-
         let panel = egui::SidePanel::new(side, "doc_panel_collapsed")
             .exact_width(COLLAPSED_WIDTH)
             .resizable(false)
@@ -249,100 +245,42 @@ impl DocPanel {
 
         let r = panel.show(ctx, |ui| {
             let rect = ui.max_rect();
-            let third = rect.height() / 3.0;
-
-            top_rect = egui::Rect::from_min_max(
-                rect.min,
-                egui::pos2(rect.max.x, rect.min.y + third),
-            );
-            mid_rect = egui::Rect::from_min_max(
-                egui::pos2(rect.min.x, rect.min.y + third),
-                egui::pos2(rect.max.x, rect.min.y + 2.0 * third),
-            );
-            bottom_rect = egui::Rect::from_min_max(
-                egui::pos2(rect.min.x, rect.min.y + 2.0 * third),
-                rect.max,
-            );
-
             let icon_size = egui::vec2(COLLAPSED_WIDTH, 24.0);
             let weak = ui.visuals().weak_text_color();
-
-            let book = egui::RichText::new(icons::BOOK).color(weak).size(16.0);
+            let icon = egui::RichText::new(icons::BOOK).color(weak).size(16.0);
             ui.put(
-                egui::Rect::from_center_size(top_rect.center(), icon_size),
-                egui::Label::new(book),
-            );
-
-            let gear = egui::RichText::new(icons::GEAR).color(weak).size(16.0);
-            ui.put(
-                egui::Rect::from_center_size(mid_rect.center(), icon_size),
-                egui::Label::new(gear),
-            );
-
-            let output = egui::RichText::new(icons::OUTPUT).color(weak).size(16.0);
-            ui.put(
-                egui::Rect::from_center_size(bottom_rect.center(), icon_size),
-                egui::Label::new(output),
+                egui::Rect::from_center_size(rect.center(), icon_size),
+                egui::Label::new(icon),
             );
         });
 
         let hover_pos = ctx.input(|i| i.pointer.hover_pos().unwrap_or_default());
         let strip_rect = r.response.rect;
-        let hovering_strip = strip_rect.contains(hover_pos);
-        let hovering_top = top_rect.contains(hover_pos);
-        let hovering_mid = mid_rect.contains(hover_pos);
-        let hovering_bottom = bottom_rect.contains(hover_pos);
-        let clicked = hovering_strip && ctx.input(|i| i.pointer.primary_clicked());
-
-        let open_settings_tab = |s: &mut DocSettings, tab: SettingsTab| {
-            s.mode = SidebarMode::Settings as u8;
-            s.settings_tab = tab as u8;
-        };
+        let hovering = strip_rect.contains(hover_pos);
+        let clicked = hovering && ctx.input(|i| i.pointer.primary_clicked());
 
         match self.settings.trigger {
             DocTrigger::Click => {
-                if hovering_strip {
+                if hovering {
                     ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
-                if clicked && hovering_top {
-                    self.settings.mode = SidebarMode::Docs as u8;
-                    self.settings.collapsed = false;
-                    self.settings.pinned = true;
-                }
-                if clicked && hovering_mid {
-                    open_settings_tab(&mut self.settings, SettingsTab::Config);
-                    self.settings.collapsed = false;
-                    self.settings.pinned = true;
-                }
-                if clicked && hovering_bottom {
-                    open_settings_tab(&mut self.settings, SettingsTab::Logs);
+                if clicked {
                     self.settings.collapsed = false;
                     self.settings.pinned = true;
                 }
             }
             DocTrigger::Hover => {
-                let start_hover = |me: &mut Self, ctx: &egui::Context| {
+                if hovering {
                     let now = ctx.input(|i| i.time);
-                    if let Some(start) = me.hover_timer {
+                    if let Some(start) = self.hover_timer {
                         if now - start >= HOVER_DELAY_SECS {
-                            me.hover_expanded = true;
-                            me.hover_timer = None;
+                            self.hover_expanded = true;
+                            self.hover_timer = None;
                         }
                     } else {
-                        me.hover_timer = Some(now);
+                        self.hover_timer = Some(now);
                     }
                     ctx.request_repaint();
-                };
-
-                if hovering_top {
-                    self.settings.mode = SidebarMode::Docs as u8;
-                    start_hover(self, ctx);
-                } else if hovering_mid {
-                    open_settings_tab(&mut self.settings, SettingsTab::Config);
-                    start_hover(self, ctx);
-                } else if hovering_bottom {
-                    open_settings_tab(&mut self.settings, SettingsTab::Logs);
-                    start_hover(self, ctx);
                 } else {
                     self.hover_timer = None;
                 }
@@ -366,6 +304,63 @@ impl DocPanel {
             .resizable(true);
 
         let r = panel.show(ctx, |ui| {
+            egui::TopBottomPanel::top("sidebar_mode_tabs").show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let mode = self.mode();
+                    let doc_r = ui.selectable_label(mode == SidebarMode::Docs, t!("doc.title").as_ref());
+                    if mode == SidebarMode::Docs {
+                        let accent = ui.visuals().selection.bg_fill;
+                        ui.painter().line_segment(
+                            [doc_r.rect.left_bottom(), doc_r.rect.right_bottom()],
+                            egui::Stroke::new(2.0, accent),
+                        );
+                    }
+                    if doc_r.clicked() {
+                        self.settings.mode = SidebarMode::Docs as u8;
+                    }
+
+                    let settings_r = ui.selectable_label(mode == SidebarMode::Settings, t!("config.title").as_ref());
+                    if mode == SidebarMode::Settings {
+                        let accent = ui.visuals().selection.bg_fill;
+                        ui.painter().line_segment(
+                            [settings_r.rect.left_bottom(), settings_r.rect.right_bottom()],
+                            egui::Stroke::new(2.0, accent),
+                        );
+                    }
+                    if settings_r.clicked() {
+                        self.settings.mode = SidebarMode::Settings as u8;
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let collapse_icon = match self.settings.side {
+                            DocSide::Left => icons::CHEVRON_LEFT,
+                            DocSide::Right => icons::CHEVRON_RIGHT,
+                        };
+                        if ui
+                            .button(collapse_icon)
+                            .on_hover_text(t!("doc.collapse"))
+                            .clicked()
+                        {
+                            if self.hover_expanded {
+                                self.hover_expanded = false;
+                            } else {
+                                self.settings.collapsed = true;
+                            }
+                        }
+                        if ui
+                            .button(icons::SWAP)
+                            .on_hover_text(t!("doc.swap_side"))
+                            .clicked()
+                        {
+                            self.settings.side = match self.settings.side {
+                                DocSide::Left => DocSide::Right,
+                                DocSide::Right => DocSide::Left,
+                            };
+                        }
+                    });
+                });
+            });
+
             match self.mode() {
                 SidebarMode::Docs => {
                     self.show_content(ui, bridge, settings.editor_settings);
@@ -421,34 +416,6 @@ impl DocPanel {
                         self.settings.settings_tab = tab as u8;
                     }
                 }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let collapse_icon = match self.settings.side {
-                        DocSide::Left => icons::CHEVRON_LEFT,
-                        DocSide::Right => icons::CHEVRON_RIGHT,
-                    };
-                    if ui
-                        .button(collapse_icon)
-                        .on_hover_text(t!("doc.collapse"))
-                        .clicked()
-                    {
-                        if self.hover_expanded {
-                            self.hover_expanded = false;
-                        } else {
-                            self.settings.collapsed = true;
-                        }
-                    }
-                    if ui
-                        .button(icons::SWAP)
-                        .on_hover_text(t!("doc.swap_side"))
-                        .clicked()
-                    {
-                        self.settings.side = match self.settings.side {
-                            DocSide::Left => DocSide::Right,
-                            DocSide::Right => DocSide::Left,
-                        };
-                    }
-                });
             });
         });
 
@@ -607,34 +574,6 @@ impl DocPanel {
                     self.edited_example.clear();
                     self.scroll_to_top = true;
                 }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let collapse_icon = match self.settings.side {
-                        DocSide::Left => icons::CHEVRON_LEFT,
-                        DocSide::Right => icons::CHEVRON_RIGHT,
-                    };
-                    if ui
-                        .button(collapse_icon)
-                        .on_hover_text(t!("doc.collapse"))
-                        .clicked()
-                    {
-                        if self.hover_expanded {
-                            self.hover_expanded = false;
-                        } else {
-                            self.settings.collapsed = true;
-                        }
-                    }
-                    if ui
-                        .button(icons::SWAP)
-                        .on_hover_text(t!("doc.swap_side"))
-                        .clicked()
-                    {
-                        self.settings.side = match self.settings.side {
-                            DocSide::Left => DocSide::Right,
-                            DocSide::Right => DocSide::Left,
-                        };
-                    }
-                });
             });
 
             ui.add_space(4.0);

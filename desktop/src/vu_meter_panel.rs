@@ -104,6 +104,7 @@ impl VuMeterPanel {
                 let painter = ui.painter_at(rect);
 
                 let bg = ui.visuals().extreme_bg_color;
+                let accent = ui.visuals().selection.bg_fill;
                 painter.rect_filled(rect, 0.0, bg);
 
                 let usable_width = rect.width() - 2.0 * PADDING;
@@ -116,7 +117,7 @@ impl VuMeterPanel {
                         egui::pos2(x, rect.top()),
                         egui::pos2(x + bar_width, rect.bottom()),
                     );
-                    VuMeter::new(ch.rms_db, ch.peak_db).paint_bar(&painter, bar_rect);
+                    VuMeter::new(ch.rms_db, ch.peak_db).paint_bar(&painter, bar_rect, accent);
                 }
 
                 ctx.request_repaint_after(std::time::Duration::from_millis(33));
