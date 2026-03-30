@@ -1235,7 +1235,7 @@ fn paint_completion_popup(
                                         egui::Align2::RIGHT_TOP,
                                         cat,
                                         small_font.clone(),
-                                        weak_color,
+                                        if selected { ui.visuals().selection.stroke.color.gamma_multiply(0.7) } else { weak_color },
                                     );
                                 }
 
@@ -1245,7 +1245,7 @@ fn paint_completion_popup(
                                     egui::Align2::LEFT_TOP,
                                     truncate_str(&entry.description, 60),
                                     small_font.clone(),
-                                    weak_color,
+                                    if selected { ui.visuals().selection.stroke.color.gamma_multiply(0.7) } else { weak_color },
                                 );
 
                                 if selected {
