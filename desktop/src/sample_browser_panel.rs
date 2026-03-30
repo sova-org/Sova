@@ -251,7 +251,9 @@ impl SampleBrowserPanel {
                         }
                     }
 
-                    let color = if entry.is_default {
+                    let color = if entry.is_default
+                        && matches!(entry.kind, TreeLineKind::Root { .. })
+                    {
                         ui.visuals().weak_text_color()
                     } else if is_file {
                         ui.visuals().text_color()
