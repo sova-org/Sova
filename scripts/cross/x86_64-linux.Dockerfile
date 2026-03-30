@@ -18,4 +18,6 @@ RUN apt-get update && \
         libxrandr-dev \
         libxi-dev \
         libwayland-dev \
+        libfontconfig1-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*

@@ -19,4 +19,6 @@ RUN dpkg --add-architecture arm64 && \
         libxrandr-dev:arm64 \
         libxi-dev:arm64 \
         libwayland-dev:arm64 \
+        libfontconfig1-dev:arm64 \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
