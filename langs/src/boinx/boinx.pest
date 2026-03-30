@@ -1,7 +1,7 @@
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
 
-note_letter = { 'A'..'G' }
+note_letter = { 'A'..'G' | 'a'..'g' }
 letter = _{ ASCII_ALPHA }
 digit = _{ ASCII_DIGIT }
 int = @{ digit+ }
