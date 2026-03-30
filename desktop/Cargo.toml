@@ -32,6 +32,7 @@ rust-i18n = "3"
 regex = "1"
 hydra-rust = { git = "https://github.com/sova-org/hydra-rust" }
 font-kit = "0.14.3"
+tokio-util = "0.7.18"
 
 [build-dependencies]
 winresource = "0.1"

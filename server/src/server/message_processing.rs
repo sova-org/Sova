@@ -335,23 +335,15 @@ pub async fn on_message(
             send_and_relay(state, SchedulerMessage::SetScene(Scene::default(), timing))
         }
         ClientMessage::RestartCore => {
-            let Some(ref restart_tx) = state.core_restart_tx else {
-                return ServerMessage::InternalError("Core restart not available".into());
-            };
-            let restart_tx = restart_tx.clone();
-            match tokio::task::spawn_blocking(move || {
-                let (response_tx, response_rx) = crossbeam_channel::bounded(1);
-                if restart_tx.send(CoreRestartRequest { response_tx }).is_err() {
-                    return ServerMessage::InternalError("Core restart channel closed".into());
-                }
-                match response_rx.recv() {
-                    Ok(Ok(())) => ServerMessage::Success,
-                    Ok(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
-                    Err(_) => ServerMessage::InternalError("Core restart channel closed".into()),
-                }
-            }).await {
-                Ok(msg) => msg,
-                Err(e) => ServerMessage::InternalError(format!("Restart task panicked: {e}")),
+            let restart_tx = state.core_restart_tx.clone();
+            let (response_tx, mut response_rx) = tokio::sync::mpsc::channel(1);
+            if restart_tx.send(CoreRestartRequest { response_tx }).await.is_err() {
+                return ServerMessage::InternalError("Core restart channel closed".into());
+            }
+            match response_rx.recv().await {
+                Some(Ok(())) => ServerMessage::Success,
+                Some(Err(e)) => ServerMessage::InternalError(format!("Core restart failed: {e}")),
+                None => ServerMessage::InternalError("Core restart channel closed".into()),
             }
         }
         ClientMessage::HydraCode(code) => {

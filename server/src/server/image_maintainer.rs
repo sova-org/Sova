@@ -1,7 +1,7 @@
 use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, thread};
 
 use crossbeam_channel::Receiver;
-use sova_core::{Scene, clock::Clock, schedule::{SovaNotification, playback::PlaybackState}};
+use sova_core::{Scene, clock::Clock, schedule::{SovaNotification, playback::PlaybackState}, vm::interpreter::Annotation};
 use tokio::sync::Mutex;
 
 use crate::{ClientRegistry, ServerMessage, server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw}};
@@ -9,15 +9,20 @@ use crate::{ClientRegistry, ServerMessage, server::{POSITION_BROADCAST_INTERVAL_
 fn notification_to_server_message(
     notif: SovaNotification,
     clock: &mut Clock,
-) -> ServerMessage {
+    annotations: &Mutex<Vec<Vec<Vec<Annotation>>>>,
+) -> Option<ServerMessage> {
     match notif {
         SovaNotification::Tick
         | SovaNotification::QuantumChanged(_)
         | SovaNotification::TempoChanged(_) => {
             clock.capture_app_state();
-            ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
+            Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
         }
-        notif => ServerMessage::Notification(notif)
+        SovaNotification::Annotations(a) => {
+            *annotations.blocking_lock() = a;
+            None
+        }
+        notif => Some(ServerMessage::Notification(notif))
         
     }
 }
@@ -27,6 +32,7 @@ pub fn start_image_maintainer(
     scene_image: Arc<Mutex<Scene>>,
     client_registry: ClientRegistry,
     is_playing: Arc<AtomicBool>,
+    annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>,
     mut clock: Clock
 ) {
     thread::spawn(move || {
@@ -100,7 +106,9 @@ pub fn start_image_maintainer(
                     };
 
                     if should_broadcast {
-                        let msg = notification_to_server_message(p, &mut clock);
+                        let Some(msg) = notification_to_server_message(p, &mut clock, &annotations) else {
+                            continue;
+                        };
                         let droppable = matches!(
                             &msg, 
                             ServerMessage::Notification(SovaNotification::FramePositionChanged(_))

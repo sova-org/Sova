@@ -32,3 +32,4 @@ socket2 = "0.5"
 doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.21", package = "doux-sova", optional = true }
 include_dir = { version = "0.7", optional = true }
 dirs = { version = "6", optional = true }
+tokio-util = "0.7.18"

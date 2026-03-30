@@ -1,6 +1,7 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
-use std::{sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc}, thread::JoinHandle};
+use tokio_util::sync::CancellationToken;
+use std::{sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc}};
 
 use sova_core::{
     clock::ClockServer,
@@ -8,9 +9,9 @@ use sova_core::{
     scene::{Line, Scene},
     schedule::SovaNotification,
 };
-use sova_server::{audio::{AudioThread, spawn_audio_thread}, start_core_link};
+use sova_server::{audio::{AudioThread, spawn_audio_thread}};
 use sova_server::{
-    AudioEngineState, ClientRegistry, CoreRestartRequest, SovaCoreServer,
+    AudioEngineState, ClientRegistry, SovaCoreServer,
 };
 use tokio::sync::Mutex;
 
@@ -36,6 +37,7 @@ enum ServerStatus {
 
 struct EmbeddedServer {
     server_task: tokio::task::JoinHandle<std::io::Result<()>>,
+    cancel_token: CancellationToken,
     log_forwarder: tokio::task::JoinHandle<()>,
     devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
@@ -179,9 +181,7 @@ impl ServerPanel {
 
         let password = if self.password.is_empty() { None } else { Some(self.password.clone()) };
 
-        let (core_restart_tx, core_restart_rx) = crossbeam_channel::unbounded::<CoreRestartRequest>();
-
-        let server = SovaCoreServer::new(
+        let mut server = SovaCoreServer::new(
             self.ip.clone(),
             port,
             Arc::clone(&scene_image),
@@ -193,21 +193,22 @@ impl ServerPanel {
             audio_engine_state,
             audio_restart_tx,
             audio_cmd_tx,
-            Some(core_restart_tx),
             password,
             master_gain,
         );
-        let server = Arc::new(server);
         
-        let _ = start_core_link(&server, core_restart_rx);
+        let cancel_token = CancellationToken::new();
+
+        let server_token = cancel_token.clone();
         let server_task = self
             .runtime
-            .spawn(async move { server.start().await });
+            .spawn(async move { server.start(server_token).await });
 
         self.embedded = Some(EmbeddedServer {
             server_task,
             log_forwarder,
             devices,
+            cancel_token,
             audio_thread: Some(audio_thread),
         });
         self.status = ServerStatus::Running;
@@ -225,7 +226,9 @@ impl ServerPanel {
                 let _ = at.thread_handle.join();
             }
 
-            embedded.server_task.abort();
+            embedded.cancel_token.cancel();
+            //embedded.server_task.abort();
+            
             embedded.log_forwarder.abort();
             // Orchestrator thread will handle scheduler/world shutdown
             // when the core_restart_tx channel drops

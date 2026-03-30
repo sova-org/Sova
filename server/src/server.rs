@@ -5,7 +5,9 @@ use crate::server::message_processing::on_message;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
+use sova_core::vm::interpreter::Annotation;
 use sova_core::{Scene, vm::LanguageCenter};
+use tokio_util::sync::CancellationToken;
 use std::sync::OnceLock;
 use std::thread::JoinHandle;
 use std::{
@@ -16,7 +18,7 @@ use std::{
         atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
-use tokio::time::{Duration, timeout};
+use tokio::time::{self, Duration, timeout};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
@@ -29,6 +31,9 @@ use sova_core::{
     device_map::DeviceMap,
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
+
+pub type TokioReceiver<T> = tokio::sync::mpsc::Receiver<T>;
+pub type TokioSender<T> = tokio::sync::mpsc::Sender<T>;
 
 use crate::message::ServerMessage;
 
@@ -53,7 +58,7 @@ pub struct AudioRestartRequest {
 }
 
 pub struct CoreRestartRequest {
-    pub response_tx: crossbeam_channel::Sender<Result<(), String>>,
+    pub response_tx: TokioSender<Result<(), String>>,
 }
 
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
@@ -139,9 +144,10 @@ pub struct ServerState {
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
     pub audio_cmd_tx: Option<Sender<AudioCommand>>,
-    pub core_restart_tx: Option<Sender<CoreRestartRequest>>,
+    pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
+    pub annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
 }
 
 impl ServerState {
@@ -158,9 +164,10 @@ impl ServerState {
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
         audio_cmd_tx: Option<Sender<AudioCommand>>,
-        core_restart_tx: Option<Sender<CoreRestartRequest>>,
+        core_restart_tx: TokioSender<CoreRestartRequest>,
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
+        annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
     ) -> Self {
         ServerState {
             clock_server,
@@ -177,6 +184,7 @@ impl ServerState {
             core_restart_tx,
             password,
             master_gain,
+            annotations
         }
     }
 
@@ -230,9 +238,11 @@ pub struct SovaCoreServer {
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
     pub audio_cmd_tx: Option<Sender<AudioCommand>>,
-    pub core_restart_tx: Option<Sender<CoreRestartRequest>>,
+    pub core_restart_rx: TokioReceiver<CoreRestartRequest>,
+    pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
+    pub annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>
 }
 
 impl SovaCoreServer {
@@ -250,10 +260,10 @@ impl SovaCoreServer {
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
         audio_cmd_tx: Option<Sender<AudioCommand>>,
-        core_restart_tx: Option<Sender<CoreRestartRequest>>,
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
     ) -> Self {
+        let (core_restart_tx, core_restart_rx) = tokio::sync::mpsc::channel(128);
         SovaCoreServer {
             ip, 
             port,
@@ -262,16 +272,18 @@ impl SovaCoreServer {
             sched_iface: OnceLock::new(),
             log_sender,
             client_registry,
-            clients: Arc::new(Mutex::new(Vec::new())),
+            clients: Default::default(),
             scene_image,
             languages,
             is_playing: Arc::new(AtomicBool::new(false)),
             audio_engine_state,
             audio_restart_tx,
             audio_cmd_tx,
+            core_restart_rx,
             core_restart_tx,
             password,
             master_gain,
+            annotations: Default::default(),
         }
     }
 
@@ -290,7 +302,8 @@ impl SovaCoreServer {
             self.audio_cmd_tx.clone(), 
             self.core_restart_tx.clone(), 
             self.password.clone(), 
-            self.master_gain.clone()
+            self.master_gain.clone(),
+            self.annotations.clone()
         )
     }
 
@@ -301,14 +314,14 @@ impl SovaCoreServer {
         }
     }
 
-    pub fn start_core(&self) -> (JoinHandle<()>, JoinHandle<()>, Option<String>) {
+    pub async fn start_core(&self) -> (JoinHandle<()>, JoinHandle<()>, Option<String>) {
         let (new_world, new_sched, new_iface, new_update) =
             sova_core::init::start_scheduler_and_world(
                 self.clock_server.clone(),
                 self.devices.clone(),
                 self.languages.clone(),
             );
-        let scene = self.scene_image.blocking_lock().clone();
+        let scene = self.scene_image.lock().await.clone();
         if let Err(e) = new_iface.send(SchedulerMessage::SetScene(
             scene.clone(),
             ActionTiming::Immediate,
@@ -339,10 +352,12 @@ impl SovaCoreServer {
         
     }
 
-    pub async fn start(&self) -> io::Result<()> {
+    pub async fn start(&mut self, token: CancellationToken) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
         println!("Server listening on {}", addr);
+
+        let (mut world_handle, mut sched_handle, _) = self.start_core().await;
 
         // Bridge logger notifications (from core) to per-client channels
         let mut log_rx = self.log_sender.subscribe();
@@ -359,7 +374,44 @@ impl SovaCoreServer {
             }
         });
 
+        let mut annotations_interval = time::interval(Duration::from_millis(20));
+        let annotations_token = token.child_token();
+        let sched_iface = self.sched_iface.clone();
+        tokio::task::spawn(async move {
+            loop {
+                select! {
+                    _ = annotations_token.cancelled() => {
+                        break;
+                    }
+                    _ = annotations_interval.tick() => {
+                        let Some(iface) = sched_iface.get() else {
+                            continue;
+                        };
+                        let _ = iface.read().unwrap().send(SchedulerMessage::GetAnnotations);
+                    }
+                }
+            }
+        });
+
+        let mut tick_interval = time::interval(Duration::from_millis(20));
+        let tick_token = token.child_token();
         let mut clock = Clock::from(Arc::clone(&self.clock_server));
+        let tick_registry = self.client_registry.clone();
+        tokio::task::spawn(async move {
+            loop {
+                select! {
+                    _ = tick_token.cancelled() => {
+                        break;
+                    }
+                    _ = tick_interval.tick() => {
+                        clock.capture_app_state();
+                        let msg = ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum());
+                        broadcast_raw(&tick_registry, &msg, true);
+                    }
+                }
+            }
+        });
+
         loop {
             select! {
                 Ok((socket, client_addr)) = listener.accept() => {
@@ -368,7 +420,7 @@ impl SovaCoreServer {
                     tokio::spawn(async move {
                         match process_client(socket, client_state).await {
                             Ok(client_name) => {
-                            println!("Client '{}' disconnected.", client_name);
+                                println!("Client '{}' disconnected.", client_name);
                             },
                             Err(e) => {
                                 eprintln!("Error handling client {}: {}", client_addr, e);
@@ -376,18 +428,47 @@ impl SovaCoreServer {
                         }
                     });
                 }
-                _ = signal::ctrl_c() => {
-                    println!("\n[!] Ctrl+C received, shutting down server...");
+                Some(req) = self.core_restart_rx.recv() => {
+                    let mut requestors = vec![req];
+                    while let Ok(extra) = self.core_restart_rx.try_recv() {
+                        requestors.push(extra);
+                    }
+
+                    self.stop_core();
+                    let _ = sched_handle.join();
+                    let _ = world_handle.join();
+
+                    let (new_world, new_sched, err) = self.start_core().await;
+
+                    world_handle = new_world;
+                    sched_handle = new_sched;
+
+                    if let Some(e) = err {
+                        for r in requestors {
+                            let _ = r.response_tx.send(Err(e.clone()));
+                        }
+                        continue;
+                    }
+
+                    for r in requestors {
+                        let _ = r.response_tx.send(Ok(()));
+                    }
+                }
+                _ = token.cancelled() => {
+                    println!("\n[!] Server task cancelled, shutting down server...");
                     break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(20)) => {
-                    clock.capture_app_state();
-                    let msg = ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum());
-                    broadcast_raw(&self.client_registry, &msg, true);
+                _ = signal::ctrl_c() => {
+                    token.cancel();
+                    println!("\n[!] Ctrl+C received, shutting down server...");
+                    break;
                 }
             }
         }
 
+        self.stop_core();
+        let _ = world_handle.join();
+        let _ = sched_handle.join();
         Ok(())
     }
 
@@ -397,47 +478,10 @@ impl SovaCoreServer {
             self.scene_image.clone(),
             self.client_registry.clone(),
             self.is_playing.clone(),
-            Clock::from(Arc::clone(&self.clock_server))
+            self.annotations.clone(),
+            Clock::from(Arc::clone(&self.clock_server)),
         );
     }
-}
-
-pub fn start_core_link(
-    server: &Arc<SovaCoreServer>, 
-    core_restart_rx: Receiver<CoreRestartRequest>
-) -> JoinHandle<()> {
-    let (mut world_handle, mut sched_handle, _) = server.start_core();
-    let server_clone = Arc::clone(server);
-    std::thread::spawn(move || {
-        while let Ok(req) = core_restart_rx.recv() {
-            let mut requestors = vec![req];
-            while let Ok(extra) = core_restart_rx.try_recv() {
-                requestors.push(extra);
-            }
-
-            server_clone.stop_core();
-            let _ = sched_handle.join();
-            let _ = world_handle.join();
-
-            let (new_world, new_sched, err) = server_clone.start_core();
-
-            world_handle = new_world;
-            sched_handle = new_sched;
-
-            if let Some(e) = err {
-                for r in requestors {
-                    let _ = r.response_tx.send(Err(e.clone()));
-                }
-                continue;
-            }
-
-            for r in requestors {
-                let _ = r.response_tx.send(Ok(()));
-            }
-        }
-
-        server_clone.stop_core();
-    })
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {

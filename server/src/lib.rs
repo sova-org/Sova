@@ -8,5 +8,5 @@ pub use client::{ClientMessage, SovaClient, TextOp, read_server_message};
 pub use message::ServerMessage;
 pub use server::{
     AudioRestartConfig, AudioRestartRequest, BroadcastItem, ClientRegistry, CoreRestartRequest,
-    DEFAULT_CLIENT_NAME, ServerState, Snapshot, SovaCoreServer, start_core_link
+    DEFAULT_CLIENT_NAME, ServerState, Snapshot, SovaCoreServer
 };
