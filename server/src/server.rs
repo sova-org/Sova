@@ -374,7 +374,7 @@ impl SovaCoreServer {
             }
         });
 
-        let mut annotations_interval = time::interval(Duration::from_millis(20));
+        let mut annotations_interval = time::interval(Duration::from_millis(33));
         let annotations_token = token.child_token();
         let sched_iface = self.sched_iface.clone();
         tokio::task::spawn(async move {
@@ -439,7 +439,6 @@ impl SovaCoreServer {
                     let _ = world_handle.join();
 
                     let (new_world, new_sched, err) = self.start_core().await;
-
                     world_handle = new_world;
                     sched_handle = new_sched;
 
@@ -449,7 +448,6 @@ impl SovaCoreServer {
                         }
                         continue;
                     }
-
                     for r in requestors {
                         let _ = r.response_tx.send(Ok(()));
                     }
