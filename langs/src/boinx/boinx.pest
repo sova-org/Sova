@@ -33,6 +33,7 @@ number = _{ real | int }
 micros = ${ int ~ "u" } 
 semibeats = ${ number ~ "''" } 
 beats = ${ number ~ "'" } 
+frames = ${ number ~ "f" } 
 
 str = @{ 
 	("\"" ~ (!"\"" ~ ANY)* ~ "\"") |
@@ -66,7 +67,7 @@ name = @{ (letter | digit | "_")+ }
 ident = ${ !int ~ !note ~ qualif? ~ name }
 func = { name ~ "(" ~ li ~ ("," ~ li)* ~ ")"  } 
 
-duration = _{ micros | semibeats | beats }
+duration = _{ micros | semibeats | beats | frames }
 
 mute = { "_" }
 placeholder = { "." }

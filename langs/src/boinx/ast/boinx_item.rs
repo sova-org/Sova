@@ -394,7 +394,7 @@ impl BoinxItem {
                 }
                 Box::new(v.iter_mut().map(|i| i.slots()).flatten())
             }
-            Self::Duration(_) | Self::Number(_) | Self::Placeholder | Self::Str(_) => {
+            Self::Duration(_) | Self::Placeholder | Self::Str(_) => {
                 Box::new(iter::once(self))
             }
             Self::Condition(c, prog1, prog2) => {
@@ -414,9 +414,9 @@ impl BoinxItem {
     pub fn receive(&mut self, other: BoinxItem) {
         match self {
             BoinxItem::Placeholder => *self = other,
-            BoinxItem::Number(f) => {
-                *self = BoinxItem::WithDuration(Box::new(other), TimeSpan::Frames(*f))
-            }
+            // BoinxItem::Number(f) => {
+            //     *self = BoinxItem::WithDuration(Box::new(other), TimeSpan::Frames(*f))
+            // }
             BoinxItem::Duration(d) => *self = BoinxItem::WithDuration(Box::new(other), *d),
             BoinxItem::Str(s) => {
                 let mut value_map = HashMap::new();
