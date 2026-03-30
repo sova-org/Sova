@@ -86,11 +86,12 @@ impl ActionProcessor {
                 let updated = frame.clone();
                 let line = scene.line_mut(line_id);
                 let pos = line.position();
+                let script = frame.script().clone();
                 line.insert_frame(frame_id, frame);
                 languages.process_script(
                     line_id,
                     frame_id,
-                    line.frame(frame_id).unwrap().script(),
+                    script,
                     feedback.clone(),
                 );
                 let _ =
@@ -114,8 +115,8 @@ impl ActionProcessor {
             }
             SchedulerMessage::SetScript(line_id, frame_id, script, _) => {
                 let frame = scene.get_frame_mut(line_id, frame_id);
-                frame.set_script(script);
-                languages.process_script(line_id, frame_id, frame.script(), feedback.clone());
+                frame.set_script(script.clone());
+                languages.process_script(line_id, frame_id, script, feedback.clone());
                 let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(
                     line_id,
                     frame_id,
@@ -175,11 +176,12 @@ impl ActionProcessor {
         for (line_id, frame_id, frame) in frames {
             upd_index.insert((line_id, frame_id));
             let line = scene.line_mut(line_id);
+            let script = frame.script().clone();
             line.set_frame(frame_id, frame);
             languages.process_script(
                 line_id,
                 frame_id,
-                line.frame(frame_id).unwrap().script(),
+                script,
                 feedback.clone(),
             );
         }

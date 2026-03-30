@@ -77,7 +77,7 @@ impl LanguageCenter {
         &self, 
         line_id: usize, 
         frame_id: usize, 
-        script: &Script, 
+        script: Script, 
         notifier: Sender<SchedulerMessage>
     ) {
         if script.is_empty() {
@@ -89,7 +89,6 @@ impl LanguageCenter {
             line_id, frame_id, script.id(), CompilationState::Compiling)
         );
         if let Some(compiler) = self.transcoder.get_compiler(lang) {
-            let script = script.clone();
             thread::spawn(move || {
                 let state = match compiler.compile(script.content(), &script.args) {
                     Ok(prog) => 
@@ -100,7 +99,6 @@ impl LanguageCenter {
                 let _ = notifier.send(SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state));
             });
         } else if let Some(factory) = self.interpreters.get_factory(lang) {
-            let script = script.clone();
             thread::spawn(move || {
                 let state = factory.check(&script);
                 let _ = notifier.send(SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state));
@@ -114,7 +112,7 @@ impl LanguageCenter {
 
     pub fn process_line(&self, line_id: usize, line : &Line, notifier: Sender<SchedulerMessage>) {
         for (frame_id, frame) in line.frames.iter().enumerate() {
-            self.process_script(line_id, frame_id, frame.script(), notifier.clone());
+            self.process_script(line_id, frame_id, frame.script().clone(), notifier.clone());
         }
     }
 
