@@ -12,11 +12,12 @@ name = "sova_server"
 path = "src/main.rs"
 
 [features]
-default = ["audio", "soundfont", "default-samples"]
+default = ["audio", "soundfont", "default-samples", "default-soundfont"]
 audio = ["dep:doux-sova"]
 soundfont = ["audio", "doux-sova/soundfont"]
 asio = ["doux-sova/asio"]
 default-samples = ["audio", "dep:include_dir", "dep:dirs"]
+default-soundfont = ["soundfont", "dep:include_dir", "dep:dirs"]
 
 [dependencies]
 sova_core = { path = "../core", package = "core" }

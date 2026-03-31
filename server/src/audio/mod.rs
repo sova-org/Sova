@@ -9,6 +9,9 @@ pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, PeakCapture, Scop
 #[cfg(feature = "default-samples")]
 pub mod default_samples;
 
+#[cfg(feature = "default-soundfont")]
+pub mod default_soundfont;
+
 #[cfg(feature = "audio")]
 mod thread;
 
