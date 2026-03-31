@@ -1229,7 +1229,7 @@ impl ScenePanel {
             up, down, left, right, shift,
             key_delete, cmd_d, cmd_shift_d, shift_i, cmd_shift_i,
             key_shift_j, key_shift_k,
-            key_e, key_dot, key_comma,
+            key_e, key_dot, key_comma, key_p,
             key_enter, key_i, key_escape,
             ctrl_a, ctrl_del, alt_h, alt_l,
         ) = ui.input(|i| {
@@ -1254,6 +1254,7 @@ impl ScenePanel {
                 no_mod && i.key_pressed(egui::Key::E),
                 no_mod && i.key_pressed(egui::Key::Period),
                 no_mod && i.key_pressed(egui::Key::Comma),
+                no_mod && i.key_pressed(egui::Key::P),
                 // Mode switch
                 i.key_pressed(egui::Key::Enter) && !i.modifiers.command && !i.modifiers.ctrl,
                 no_mod && i.key_pressed(egui::Key::I),
@@ -1396,6 +1397,16 @@ impl ScenePanel {
         }
         if key_comma {
             self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
+        }
+
+        // Preview frame
+        if key_p {
+            if let Some(frame) = scene.lines.get(li).and_then(|l| l.frames.get(fi)) {
+                bridge.send(SchedulerMessage::RunSnippet(
+                    frame.script().clone(),
+                    frame.duration,
+                ));
+            }
         }
 
         // Ctrl combos
