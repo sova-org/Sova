@@ -568,7 +568,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
-            let available_languages = state.languages.definitions().collect();
+            let mut available_languages: Vec<_> = state.languages.definitions().collect();
+            #[cfg(feature = "audio")]
+            enrich_with_sound_docs(&mut available_languages);
 
             println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
@@ -818,4 +820,47 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     };
 
     ClientMessage::deserialize(&payload)
+}
+
+#[cfg(feature = "audio")]
+fn enrich_with_sound_docs(languages: &mut [sova_core::vm::language::LanguageDefinition]) {
+    use sova_core::vm::language::{LanguageElement, ReferenceEntry};
+
+    let sources = doux_sova::types::Source::all_source_docs();
+    let gm_presets = doux_sova::soundfont::gm_preset_docs();
+
+    for lang in languages.iter_mut() {
+        let ref_map = &mut lang.documentation.reference;
+
+        for src in &sources {
+            let sig = if src.params.is_empty() {
+                None
+            } else {
+                Some(src.params.iter()
+                    .map(|(name, desc)| format!("{name}: {desc}"))
+                    .collect::<Vec<_>>()
+                    .join(", "))
+            };
+            let mut entry = ReferenceEntry::new(src.description)
+                .with_category(format!("Sound: {}", src.category));
+            if let Some(s) = sig {
+                entry = entry.with_signature(s);
+            }
+            if !src.aliases.is_empty() {
+                entry = entry.with_aliases(src.aliases);
+            }
+            ref_map.insert(LanguageElement::Word(src.name.to_string()), entry);
+        }
+
+        for preset in &gm_presets {
+            let desc = format!("GM {} (program {})", preset.family, preset.program);
+            let mut entry = ReferenceEntry::new(desc)
+                .with_category("Sound: GM");
+            if !preset.aliases.is_empty() {
+                let aliases: Vec<&str> = preset.aliases.iter().copied().collect();
+                entry = entry.with_aliases(&aliases);
+            }
+            ref_map.insert(LanguageElement::Word(preset.name.to_string()), entry);
+        }
+    }
 }

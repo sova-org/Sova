@@ -34,6 +34,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "tempo!", aliases: &[], category: "Time", stack: "(bpm --)", desc: "Set global tempo", example: include_str!("../../../docs/cagire/examples/tempo_set.cagire"), compile: Simple, varargs: false },
     Word { name: "speed!", aliases: &[], category: "Time", stack: "(multiplier --)", desc: "Set pattern speed multiplier", example: include_str!("../../../docs/cagire/examples/speed_set.cagire"), compile: Simple, varargs: false },
     Word { name: "at", aliases: &[], category: "Time", stack: "(v1..vn --)", desc: "Looping block: re-executes body per delta. Close with . or done", example: include_str!("../../../docs/cagire/examples/at.cagire"), compile: Simple, varargs: true },
+    Word { name: "pat", aliases: &[], category: "Time", stack: "(\"pattern\" --)", desc: "Rhythm pattern loop. x=hit .=rest -=extend []=subdivide. Close with . or done", example: include_str!("../../../docs/cagire/examples/pat.cagire"), compile: Simple, varargs: false },
     // Context
     Word { name: "step", aliases: &[], category: "Context", stack: "(-- n)", desc: "Current step index", example: include_str!("../../../docs/cagire/examples/step.cagire"), compile: Context("step"), varargs: false },
     Word { name: "beat", aliases: &[], category: "Context", stack: "(-- f)", desc: "Current beat position", example: include_str!("../../../docs/cagire/examples/beat.cagire"), compile: Context("beat"), varargs: false },

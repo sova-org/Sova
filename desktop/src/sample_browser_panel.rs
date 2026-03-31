@@ -50,6 +50,10 @@ impl SampleBrowserPanel {
         }
     }
 
+    pub fn sample_names(&self) -> Vec<String> {
+        self.state.as_ref().map(|s| s.tree.sample_names()).unwrap_or_default()
+    }
+
     pub fn show(
         &mut self,
         ctx: &egui::Context,

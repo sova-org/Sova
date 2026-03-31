@@ -12,7 +12,14 @@ use sova_core::vm::variable::{Variable, VariableValue};
 
 use super::compiler::{Dictionary, compile_script};
 use super::ops::Op;
+use super::pattern::{PatHit, parse_pattern};
 use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Stack, Value, float_to_value};
+
+fn pop_pattern(stack: &mut Stack) -> Result<Arc<[PatHit]>, String> {
+    let val = stack.pop()?;
+    let s = val.as_str()?;
+    parse_pattern(s)
+}
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -838,6 +845,53 @@ impl CagireVM {
                         self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
                         cmd.clear_params();
                         cmd.clear_sound();
+                    }
+                }
+
+                Op::PatLoop(body_ops, body_spans) => {
+                    let hits = at!(pop_pattern(stack))?;
+                    let n = hits.len();
+                    for (i, hit) in hits.iter().enumerate() {
+                        if let Some(alt) = &hit.alt {
+                            if ctx.runs % alt.count as usize != alt.index as usize {
+                                continue;
+                            }
+                        }
+                        let delta_secs = ctx.nudge_secs + hit.position * ctx.step_duration;
+
+                        let iter_ctx = StepContext {
+                            step: ctx.step,
+                            beat: ctx.beat,
+                            tempo: ctx.tempo,
+                            phase: ctx.phase,
+                            slot: ctx.slot,
+                            runs: ctx.runs * n + i,
+                            iter: ctx.iter,
+                            speed: ctx.speed,
+                            step_duration: ctx.step_duration,
+                            frame_index: ctx.frame_index,
+                            nudge_secs: ctx.nudge_secs,
+                            default_device: ctx.default_device,
+                        };
+
+                        cmd.set_delta_secs(delta_secs);
+                        cmd.set_param("gate", Value::Float(hit.gate));
+                        self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
+                        cmd.clear_params();
+                        cmd.clear_sound();
+                    }
+                }
+
+                Op::PatPush => {
+                    let hits = at!(pop_pattern(stack))?;
+                    let origin = span!();
+                    for hit in hits.iter() {
+                        if let Some(alt) = &hit.alt {
+                            if ctx.runs % alt.count as usize != alt.index as usize {
+                                continue;
+                            }
+                        }
+                        stack.push(Value::Float(hit.position), origin);
                     }
                 }
 

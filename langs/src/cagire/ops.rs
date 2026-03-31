@@ -104,6 +104,8 @@ pub enum Op {
     SetSpeed,
     At,
     AtLoop(Arc<[Op]>, Arc<[Span]>),
+    PatLoop(Arc<[Op]>, Arc<[Span]>),
+    PatPush,
     IntRange,
     StepRange,
     Generate,

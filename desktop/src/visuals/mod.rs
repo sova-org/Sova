@@ -175,6 +175,7 @@ impl VisualsEngine {
             peer_cursors: &[],
             annotations: &[],
             opacity: None,
+            sample_names: &[],
         };
         egui::ScrollArea::vertical()
             .auto_shrink(false)

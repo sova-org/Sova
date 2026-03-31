@@ -977,7 +977,8 @@ impl eframe::App for SovaApp {
                 .frame(central_frame)
                 .show(ctx, |ui| {
                     let pending_edits: Vec<_> = self.bridge.pending_script_edits.drain(..).collect();
-                    self.scene_panel.show(ui, &self.bridge, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits);
+                    let sample_names = self.sample_browser_panel.sample_names();
+                    self.scene_panel.show(ui, &self.bridge, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits, &sample_names);
                 });
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {

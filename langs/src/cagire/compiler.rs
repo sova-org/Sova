@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::ops::Op;
+use super::pattern;
 use super::types::{CagireError, Span};
 use super::words::compile_word;
 
@@ -206,6 +207,24 @@ fn compile(
                         );
                     } else {
                         compile_word(word, sp, &mut ops, &mut spans, dict);
+                    }
+                } else if word == "pat" {
+                    if let Some(Op::PushStr(s)) = ops.last() {
+                        pattern::parse_pattern(s)
+                            .map_err(|e| err(format!("pat: {e}"), sp))?;
+                    }
+                    if let Some((body_ops, body_spans, consumed)) =
+                        compile_at(&tokens[i + 1..], dict)?
+                    {
+                        i += consumed;
+                        push(
+                            &mut ops,
+                            &mut spans,
+                            Op::PatLoop(Arc::from(body_ops), Arc::from(body_spans)),
+                            sp,
+                        );
+                    } else {
+                        push(&mut ops, &mut spans, Op::PatPush, sp);
                     }
                 } else if word == "case" {
                     let (case_ops, case_spans, consumed) =

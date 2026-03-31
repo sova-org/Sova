@@ -501,9 +501,11 @@ impl ClientBridge {
                 }
                 ServerMessage::ScopeData(data) => {
                     self.scope_data = data;
+                    self.audio_state.running = true;
                 }
                 ServerMessage::PeakData(data) => {
                     self.peak_data = data;
+                    self.audio_state.running = true;
                 }
                 ServerMessage::PeersUpdated(new_peers) => {
                     let time = now_hhmm();

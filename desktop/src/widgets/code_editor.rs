@@ -58,6 +58,7 @@ pub struct EditorContext<'a> {
     pub peer_cursors: &'a [PeerCursor],
     pub annotations: &'a [Annotation],
     pub opacity: Option<&'a SceneOpacity>,
+    pub sample_names: &'a [String],
 }
 
 struct CompletionEntry {
@@ -316,7 +317,7 @@ impl CodeEditor {
 
         // Only show hover tooltip when completion is closed
         if self.completion.is_none() && let Some(ref_map) = reference {
-            show_hover_tooltip(ui, &edit_output, text, ref_map, syntax);
+            show_hover_tooltip(ui, &edit_output, text, ref_map, syntax, ctx.sample_names);
         }
 
         // --- Completion logic ---
@@ -390,7 +391,7 @@ impl CodeEditor {
                     && prefix.len() >= 2
                     && reference.is_some());
             if should_open && let Some(ref_map) = reference {
-                let entries = compute_completions(&prefix, ref_map);
+                let entries = compute_completions(&prefix, ref_map, ctx.sample_names);
                 if !entries.is_empty() {
                     self.completion = Some(CompletionState {
                         entries,
@@ -402,7 +403,7 @@ impl CodeEditor {
         } else if let Some(state) = &mut self.completion {
             if let Some(ref_map) = reference {
                 if self.last_completion_prefix.as_deref() != Some(prefix.as_str()) {
-                    let entries = compute_completions(&prefix, ref_map);
+                    let entries = compute_completions(&prefix, ref_map, ctx.sample_names);
                     if entries.is_empty() {
                         self.completion = None;
                         self.last_completion_prefix = None;
@@ -1006,6 +1007,7 @@ fn show_hover_tooltip(
     text: &str,
     reference: &BTreeMap<LanguageElement, ReferenceEntry>,
     syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+    sample_names: &[String],
 ) {
     if !output.response.hovered() {
         return;
@@ -1019,33 +1021,47 @@ fn show_hover_tooltip(
     let Some(word) = word_at_byte_offset(text, offset) else {
         return;
     };
-    let Some(entry) = lookup_reference(word, reference) else {
-        return;
-    };
 
-    egui::Tooltip::always_open(
-        ui.ctx().clone(),
-        ui.layer_id(),
-        egui::Id::new("doc_tooltip"),
-        output.response.rect,
-    )
-    .at_pointer()
-    .show(|ui| {
-        ui.set_min_width(350.0);
-        if let Some(cat) = &entry.category {
-            ui.label(egui::RichText::new(cat).small().weak());
-        }
-        ui.label(&entry.description);
-        if let Some(example) = &entry.example {
-            ui.add_space(4.0);
-            if let Some((cs, theme)) = syntax {
-                let job = syntax_layout_job(example, cs, theme, ui);
-                ui.label(job);
-            } else {
-                ui.label(egui::RichText::new(example).monospace().small());
+    if let Some(entry) = lookup_reference(word, reference) {
+        egui::Tooltip::always_open(
+            ui.ctx().clone(),
+            ui.layer_id(),
+            egui::Id::new("doc_tooltip"),
+            output.response.rect,
+        )
+        .at_pointer()
+        .show(|ui| {
+            ui.set_min_width(350.0);
+            if let Some(cat) = &entry.category {
+                ui.label(egui::RichText::new(cat).small().weak());
             }
-        }
-    });
+            if let Some(sig) = &entry.signature {
+                ui.label(egui::RichText::new(sig).monospace().small().weak());
+            }
+            ui.label(&entry.description);
+            if let Some(example) = &entry.example {
+                ui.add_space(4.0);
+                if let Some((cs, theme)) = syntax {
+                    let job = syntax_layout_job(example, cs, theme, ui);
+                    ui.label(job);
+                } else {
+                    ui.label(egui::RichText::new(example).monospace().small());
+                }
+            }
+        });
+    } else if sample_names.iter().any(|n| n.eq_ignore_ascii_case(word)) {
+        egui::Tooltip::always_open(
+            ui.ctx().clone(),
+            ui.layer_id(),
+            egui::Id::new("doc_tooltip"),
+            output.response.rect,
+        )
+        .at_pointer()
+        .show(|ui| {
+            ui.label(egui::RichText::new("Sample").small().weak());
+            ui.label(word);
+        });
+    }
 }
 
 fn char_to_byte(text: &str, char_offset: usize) -> usize {
@@ -1071,6 +1087,7 @@ fn word_prefix_at_cursor(text: &str, cursor_char: usize) -> (usize, usize, usize
 fn compute_completions(
     prefix: &str,
     reference: &BTreeMap<LanguageElement, ReferenceEntry>,
+    sample_names: &[String],
 ) -> Vec<CompletionEntry> {
     let mut entries = Vec::new();
 
@@ -1118,6 +1135,20 @@ fn compute_completions(
                 score,
                 label_matches,
             });
+        }
+    }
+
+    if !prefix.is_empty() {
+        for name in sample_names {
+            if let Some((score, indices)) = super::fuzzy_score(prefix, name) {
+                entries.push(CompletionEntry {
+                    label: name.clone(),
+                    description: "User sample".into(),
+                    category: Some("Sample".into()),
+                    score,
+                    label_matches: indices,
+                });
+            }
         }
     }
 

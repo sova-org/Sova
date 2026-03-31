@@ -242,6 +242,43 @@ impl SampleTree {
         })
     }
 
+    /// Collects sample names as doux sees them:
+    /// top-level audio files -> filename (no extension),
+    /// folders with audio files -> folder name (index chosen via `n:`).
+    pub fn sample_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for root in &self.roots {
+            Self::collect_names(root, &mut names);
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn collect_names(node: &SampleNode, out: &mut Vec<String>) {
+        match node {
+            SampleNode::Root { children, .. } => {
+                for child in children {
+                    match child {
+                        SampleNode::File { name } => {
+                            if let Some(stem) = name.rsplit_once('.').map(|(s, _)| s) {
+                                out.push(stem.to_string());
+                            }
+                        }
+                        SampleNode::Folder { name, .. } => {
+                            out.push(name.clone());
+                        }
+                        SampleNode::Root { .. } => {}
+                    }
+                }
+            }
+            SampleNode::Folder { name, .. } => {
+                out.push(name.clone());
+            }
+            SampleNode::File { .. } => {}
+        }
+    }
+
     pub fn visible_entries(&self) -> Vec<TreeLine> {
         let mut out = Vec::new();
         self.fill_visible(&mut out);

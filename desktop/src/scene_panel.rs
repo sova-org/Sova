@@ -153,6 +153,7 @@ impl ScenePanel {
         scene_opacity: f32,
         editor_settings: &EditorSettings,
         pending_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
+        sample_names: &[String],
     ) {
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, t!("scene.no_scene"));
@@ -228,7 +229,7 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
                     // Prelude column
-                    self.show_prelude_column(ui, available_height, accent, &opacity, &theme, editor_settings, bridge, &default_lang);
+                    self.show_prelude_column(ui, available_height, accent, &opacity, &theme, editor_settings, bridge, &default_lang, sample_names);
 
                     for li in 0..scene.lines.len() {
                       ui.push_id(("line_col", li), |ui| {
@@ -280,6 +281,7 @@ impl ScenePanel {
                                                 &theme,
                                                 bridge,
                                                 &default_lang,
+                                                sample_names,
                                             );
 
                                             // Scroll cursor into view (only on cursor change)
@@ -619,6 +621,7 @@ impl ScenePanel {
         theme: &SyntaxTheme,
         bridge: &ClientBridge,
         default_lang: &str,
+        sample_names: &[String],
     ) -> egui::Response {
         // Background color — scaled by opacity
         let bg = if !frame.enabled {
@@ -773,6 +776,7 @@ impl ScenePanel {
                             bridge.frame_annotations(li, fi)
                         },
                         opacity: Some(opacity),
+                        sample_names,
                     };
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
                         state.show_body(ui, li, fi, &editor_ctx, bridge);
@@ -1627,6 +1631,7 @@ impl ScenePanel {
         editor_settings: &EditorSettings,
         bridge: &ClientBridge,
         default_lang: &str,
+        sample_names: &[String],
     ) {
         // Collapsed strip
         if self.prelude_collapsed {
@@ -1764,6 +1769,7 @@ impl ScenePanel {
                                         peer_cursors: &[],
                                         annotations: &[],
                                         opacity: Some(opacity),
+                                        sample_names,
                                     };
                                     self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
                                 });
