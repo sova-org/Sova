@@ -28,7 +28,7 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
                 ui.label(format!("{} @ {}", name, client.address));
             }
             if client.has_feedback {
-                ui.label(t!("bottom.local_audio"));
+                ui.label(t!("bottom.audio_feedback"));
             }
             if !client.peers.is_empty() {
                 let tooltip = client.peers.join(", ");

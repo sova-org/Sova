@@ -14,6 +14,7 @@ pub struct ClientInfo {
 
 pub struct SplashAction {
     pub start_server: bool,
+    pub stop_server: bool,
     pub open_server_config: bool,
     pub start_feedback: bool,
 }
@@ -64,6 +65,7 @@ impl ClientPanel {
     ) -> SplashAction {
         let avail = ui.available_size();
         let mut start_server = false;
+        let mut stop_server = false;
         let mut open_server_config = false;
 
         ui.vertical_centered(|ui| {
@@ -130,12 +132,16 @@ impl ClientPanel {
                                 }
                                 ui.end_row();
 
-                                ui.label("");
-                                let r = ui.checkbox(&mut self.feedback, t!("client.local_audio"));
-                                if r.hovered() {
-                                    crate::widgets::hint::set(ui.ctx(), t!("client.hint.local_audio"));
+                                if server_running {
+                                    self.feedback = false;
+                                } else {
+                                    ui.label("");
+                                    let r = ui.checkbox(&mut self.feedback, t!("client.audio_feedback"));
+                                    if r.hovered() {
+                                        crate::widgets::hint::set(ui.ctx(), t!("client.hint.audio_feedback"));
+                                    }
+                                    ui.end_row();
                                 }
-                                ui.end_row();
                             });
                     });
                 });
@@ -153,13 +159,18 @@ impl ClientPanel {
                 ui.add_space(offset);
 
                 if server_running {
-                    ui.add_enabled(
-                        false,
+                    let r = ui.add(
                         egui::Button::new(
                             egui::RichText::new(t!("client.server_running")).color(COLOR_OK),
                         )
                         .min_size(egui::vec2(button_width, 0.0)),
                     );
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), t!("client.hint.stop_server"));
+                    }
+                    if r.clicked() {
+                        stop_server = true;
+                    }
                 } else {
                     let r = ui.add(
                         egui::Button::new(t!("client.start_server"))
@@ -245,6 +256,7 @@ impl ClientPanel {
 
         SplashAction {
             start_server,
+            stop_server,
             open_server_config,
             start_feedback: self.feedback,
         }
