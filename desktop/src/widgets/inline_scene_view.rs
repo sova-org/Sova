@@ -250,12 +250,11 @@ impl InlineFrameState {
         }
 
         // Language selector
-        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
                 egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
                     .small()
-                    .color(weak),
+                    .color(ui.visuals().text_color()),
             )
             .fill(egui::Color32::TRANSPARENT),
         );
@@ -702,12 +701,11 @@ impl InlineScriptState {
         }
 
         // Language selector
-        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
                 egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
                     .small()
-                    .color(weak),
+                    .color(ui.visuals().text_color()),
             )
             .fill(egui::Color32::TRANSPARENT),
         );
