@@ -50,13 +50,13 @@ fn parse_note(pairs: Pairs<Rule>) -> i64 {
         match pair.as_rule() {
             Rule::note_letter => {
                 i = match pair.as_str() {
-                    "C" => 0,
-                    "D" => 2,
-                    "E" => 4,
-                    "F" => 5,
-                    "G" => 7,
-                    "A" => 9,
-                    "B" => 11,
+                    "C" | "c" => 0,
+                    "D" | "d" => 2,
+                    "E" | "e" => 4,
+                    "F" | "f" => 5,
+                    "G" | "g" => 7,
+                    "A" | "a" => 9,
+                    "B" | "b" => 11,
                     _ => unreachable!(),
                 }
             }
