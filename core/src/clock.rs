@@ -1,9 +1,8 @@
 use std::{
-    sync::{
+    fmt::Display, sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
-    },
-    time::{Duration, SystemTime},
+    }, time::{Duration, SystemTime}
 };
 
 use rusty_link::{AblLink, SessionState};
@@ -28,6 +27,16 @@ pub enum TimeSpan {
 impl Default for TimeSpan {
     fn default() -> Self {
         TimeSpan::Beats(1.0)
+    }
+}
+
+impl Display for TimeSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TimeSpan::Micros(m) => write!(f, "{m}micros"),
+            TimeSpan::Beats(b) => write!(f, "{b}beats"),
+            TimeSpan::Frames(b) => write!(f, "{b}frames"),
+        }
     }
 }
 

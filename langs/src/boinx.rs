@@ -2,7 +2,7 @@ use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use sova_core::{
     clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
-        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, language::{LanguageDocumentation, LanguageSyntax}, variable::VariableValue
+        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Annotation, Interpreter, InterpreterFactory}, language::{LanguageDocumentation, LanguageSyntax}, variable::VariableValue
     }
 };
 
@@ -29,6 +29,7 @@ pub struct BoinxLine {
     next_date: SyncTime,
     out_buffer: VecDeque<ConcreteEvent>,
     previous: Option<BoinxItem>,
+    pub annotations: Vec<(Annotation, SyncTime)>
 }
 
 impl BoinxLine {
@@ -47,6 +48,7 @@ impl BoinxLine {
             next_date: start_date,
             out_buffer: VecDeque::new(),
             previous: None,
+            annotations: Vec::new()
         }
     }
 
@@ -71,10 +73,10 @@ impl BoinxLine {
         let addr = channel.clone().as_str(ctx);
 
         match item {
-            BoinxItem::Note(n) => {
+            BoinxItem::Note(n, _) => {
                 Some(ConcreteEvent::Generic(VariableValue::from(*n), dur, addr, device))
             }
-            BoinxItem::Number(f) => {
+            BoinxItem::Number(f, _) => {
                 Some(ConcreteEvent::Generic(VariableValue::from(*f), dur, addr, device))
             }
             BoinxItem::ArgMap(map) => {
@@ -88,7 +90,7 @@ impl BoinxLine {
                     }).collect();
                 Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
             }
-            BoinxItem::Str(s) => {
+            BoinxItem::Str(s, _) => {
                 Some(ConcreteEvent::Generic(s.clone().into(), dur, addr, device))
             }
             _ => None,
@@ -107,8 +109,8 @@ impl BoinxLine {
             items
                 .into_iter()
                 .map(|i| match i {
-                    BoinxItem::Note(n) => n as usize,
-                    BoinxItem::Str(s) => ctx.device_map.get_slot_for_name(&s).unwrap_or(1),
+                    BoinxItem::Note(n, _) => n as usize,
+                    BoinxItem::Str(s, _) => ctx.device_map.get_slot_for_name(&s).unwrap_or(1),
                     _ => 1,
                 })
                 .collect()
@@ -151,6 +153,7 @@ impl BoinxLine {
     /// Updates the position of the line, and refresh the buffer of events with newly triggered ones.
     pub fn update(&mut self, ctx: &mut EvaluationContext) -> Vec<BoinxLine> {
         let date = ctx.logic_date;
+        self.annotations.retain_mut(|(_, d)| *d > date);
         if !self.ready(date) {
             return Vec::new();
         }
@@ -173,8 +176,12 @@ impl BoinxLine {
         let items = item.at(&mut sub_ctx, delta);
         let mut new_lines = Vec::new();
         for (item, dur) in items {
+            for a in item.annotations() {
+                let life_limit = date.saturating_add(dur.as_micros(ctx.clock, ctx.frame_len));
+                self.annotations.push((a, life_limit));
+            }
             match item {
-                BoinxItem::SubProg(prog) => {
+                BoinxItem::SubProg(prog, _) => {
                     let mut prog_lines = self.start_subprog(*prog, ctx, dur, self.next_date);
                     new_lines.append(&mut prog_lines);
                 }
@@ -255,6 +262,14 @@ impl Interpreter for BoinxInterpreter {
         (event, wait)
     }
 
+    fn annotations(&self) -> Vec<Annotation> {
+        self.execution_lines
+            .iter()
+            .map(|line| line.annotations.iter().map(|(a,_)| a.clone()))
+            .flatten()
+            .collect()
+    }
+
     fn has_terminated(&self) -> bool {
         self.started && self.execution_lines.is_empty()
     }
@@ -316,10 +331,10 @@ impl Language for BoinxInterpreterFactory {
 impl InterpreterFactory for BoinxInterpreterFactory {
 
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
-        if let Some(prog_var) = script.compilation_state().cache() {
-            let prog = BoinxProg::from(prog_var.clone());
-            return Ok(Box::new(BoinxInterpreter::from(prog)));
-        }
+        // if let Some(prog_var) = script.compilation_state().cache() {
+        //     let prog = BoinxProg::from(prog_var.clone());
+        //     return Ok(Box::new(BoinxInterpreter::from(prog)));
+        // }
         match parse_boinx(script.content()) {
             Ok(prog) => Ok(Box::new(BoinxInterpreter::from(prog))),
             Err(e) => Err(e.to_string()),

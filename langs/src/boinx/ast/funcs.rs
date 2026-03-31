@@ -24,12 +24,12 @@ pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>)
     for (key, value) in map.into_iter() {
         let mut to_add = value;
         for atom in to_add.atomic_items_mut() {
-            let obj = std::mem::replace(atom, BoinxItem::Str(key.clone()));
+            let obj = std::mem::replace(atom, BoinxItem::Str(key.clone(), None));
             atom.receive(obj);
         }
         if let Some(i) = &mut items {
             let value = std::mem::take(i);
-            *i = BoinxItem::Arithmetic(Box::new(to_add), BoinxArithmeticOp::Add, Box::new(value));
+            *i = BoinxItem::Arithmetic(Box::new(to_add), BoinxArithmeticOp::Add, Box::new(value), None);
         } else {
             items = Some(to_add)
         }
@@ -62,7 +62,7 @@ pub fn audio_rate_modulation_string(
         3 => {
             let period = args.pop().unwrap();
             let period = match period {
-                BoinxItem::Number(f) => TimeSpan::Frames(f),
+                BoinxItem::Number(f, _) => TimeSpan::Frames(f),
                 BoinxItem::Duration(time_span) => time_span,
                 x => VariableValue::from(x).as_dur(ctx),
             };
@@ -146,7 +146,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let a = a.as_integer(ctx);
                 (0, a)
             };
-            Sequence((i1..i2).map(|i| Note(i)).collect())
+            Sequence((i1..i2).map(|i| Note(i, None)).collect())
         }
     ));
     funcs.insert("randrange".to_owned(), ItemFunc::define(
@@ -167,7 +167,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let a = a.as_float(ctx);
                 (0.0, a)
             };
-            Number(rand::random_range(i1..i2))
+            Number(rand::random_range(i1..i2), None)
         }
     ));
     funcs.insert("irandrange".to_owned(), ItemFunc::define(
@@ -188,7 +188,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 let a = a.as_integer(ctx);
                 (0, a)
             };
-            Note(rand::random_range(i1..i2))
+            Note(rand::random_range(i1..i2), None)
         }
     ));
     funcs.insert("maybe".to_owned(), ItemFunc::define(
@@ -218,7 +218,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
-                Number(f) => TimeSpan::Frames(f),
+                Number(f, _) => TimeSpan::Frames(f),
                 _ => {
                     ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'after' is not a duration !"));
                     TimeSpan::default()
@@ -235,13 +235,13 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
-                Number(f) => TimeSpan::Frames(f),
+                Number(f, _) => TimeSpan::Frames(f),
                 _ => {
                     ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'secs' is not a duration !"));
                     TimeSpan::default()
                 }
             };
-            Number(dur.as_secs(ctx.clock, ctx.frame_len))
+            Number(dur.as_secs(ctx.clock, ctx.frame_len), None)
         }
     ));
     funcs.insert("frames".to_owned(), ItemFunc::define(
@@ -256,8 +256,8 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                     let f_relative = beats / ctx.frame_len;
                     TimeSpan::Frames(f_relative)
                 }
-                Number(f) => TimeSpan::Frames(f),
-                Note(i) => TimeSpan::Frames(i as f64),
+                Number(f, _) => TimeSpan::Frames(f),
+                Note(i, _) => TimeSpan::Frames(i as f64),
                 _ => {
                     ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'frames' is not a number !"));
                     TimeSpan::Frames(1.0)
@@ -274,7 +274,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
-                Number(f) => TimeSpan::Frames(f),
+                Number(f, _) => TimeSpan::Frames(f),
                 _ => {
                     ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'len' is not a duration !"));
                     TimeSpan::default()
@@ -291,8 +291,8 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                 return Mute;
             }
             let index = match args.pop().unwrap() {
-                Note(i) => i as usize,
-                Number(f) => f as usize,
+                Note(i, _) => i as usize,
+                Number(f, _) => f as usize,
                 _ => {
                     ctx.errors.throw(SovaError::from(ctx).message("Argument for 'at' is not an index !"));
                     0
@@ -336,79 +336,79 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     funcs.insert("lfo".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (sine)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "", "~"))
+            Str(audio_rate_modulation_string(ctx, args, "", "~"), None)
         } 
     ));
     funcs.insert("tlfo".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (triangle)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "t", "~"))
+            Str(audio_rate_modulation_string(ctx, args, "t", "~"), None)
         } 
     ));
     funcs.insert("wlfo".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (saw)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "w", "~"))
+            Str(audio_rate_modulation_string(ctx, args, "w", "~"), None)
         } 
     ));
     funcs.insert("qlfo".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (square)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "q", "~"))
+            Str(audio_rate_modulation_string(ctx, args, "q", "~"), None)
         } 
     ));
     funcs.insert("slide".to_owned(), ItemFunc::define(
         "Audio rate modulation slide for Doux (linear)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "", ">"), None)
         } 
     ));
     funcs.insert("expslide".to_owned(), ItemFunc::define(
         "Audio rate modulation slide for Doux (exponential)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "e", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "e", ">"), None)
         } 
     ));
     funcs.insert("sslide".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (smooth)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "s", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "s", ">"), None)
         } 
     ));
     funcs.insert("easein".to_owned(), ItemFunc::define(
         "Audio rate modulation slide for Doux (linear)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "i", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "i", ">"), None)
         } 
     ));
     funcs.insert("easeout".to_owned(), ItemFunc::define(
         "Audio rate modulation slide for Doux (exponential)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "o", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "o", ">"), None)
         } 
     ));
     funcs.insert("stair".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (smooth)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "p", ">"))
+            Str(audio_rate_modulation_string(ctx, args, "p", ">"), None)
         } 
     ));
     funcs.insert("jit".to_owned(), ItemFunc::define(
         "Audio rate modulation randomization for Doux (sample & hold)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "", "?"))
+            Str(audio_rate_modulation_string(ctx, args, "", "?"), None)
         } 
     ));
     funcs.insert("sjit".to_owned(), ItemFunc::define(
         "Audio rate modulation slide for Doux (smooth interpolation)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "s", "?"))
+            Str(audio_rate_modulation_string(ctx, args, "s", "?"), None)
         } 
     ));
     funcs.insert("drunk".to_owned(), ItemFunc::define(
         "Audio rate modulation oscillator for Doux (Random walk)",
         |ctx, args| {
-            Str(audio_rate_modulation_string(ctx, args, "d", "?"))
+            Str(audio_rate_modulation_string(ctx, args, "d", "?"), None)
         } 
     ));
     funcs.insert("euclid".to_owned(), ItemFunc::define(
@@ -473,7 +473,7 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             };
             let cc = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8;
 
-            Note(ctx.device_map.get_input_cc(device_id, cc, channel).unwrap_or_default())
+            Note(ctx.device_map.get_input_cc(device_id, cc, channel).unwrap_or_default(), None)
         } 
     ));
     funcs
