@@ -394,12 +394,17 @@ impl CommandPalette {
                             }
 
                             // Description
+                            let desc_color = if selected {
+                                ui.visuals().selection.stroke.color.gamma_multiply(0.6)
+                            } else {
+                                weak_color
+                            };
                             ui.painter().text(
                                 rect.min + egui::vec2(label_x + text_offset, 20.0),
                                 egui::Align2::LEFT_TOP,
                                 &cmd.desc,
                                 egui::FontId::proportional(11.0),
-                                weak_color,
+                                desc_color,
                             );
 
                             if selected && selection_changed {

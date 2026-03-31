@@ -1006,6 +1006,9 @@ impl eframe::App for SovaApp {
             if action.start_server {
                 self.server.start(self.audio.generate_audio_config());
             }
+            if action.stop_server {
+                self.server.stop();
+            }
             if action.open_server_config {
                 self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
             }
