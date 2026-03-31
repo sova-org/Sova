@@ -23,7 +23,6 @@ impl Language for ALispCompiler {
     fn documentation(&self) -> LanguageDocumentation { Default::default() }
     
     fn syntax(&self) -> Option<LanguageSyntax> { None }
-    
 }
 
 impl Compiler for ALispCompiler {

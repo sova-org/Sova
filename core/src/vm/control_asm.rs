@@ -70,9 +70,9 @@ pub enum ControlASM {
     // AsMicros(Variable, Variable),
     // AsFrames(Variable, Variable),
     // Memory manipulation
-    /// Moves 0 into 1 while erasing 1's type
-    Mov(Variable, Variable),
     /// Moves 0 into 1 while preserving 1's type
+    Mov(Variable, Variable),
+    /// Moves 0 into 1 while erasing 1's type
     Redefine(Variable, Variable),
     IsSet(Variable, Variable),
     // Stack operations
@@ -80,6 +80,7 @@ pub enum ControlASM {
     Pop(Variable),
     PushFront(Variable),
     PopFront(Variable),
+    StackLen(Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
@@ -344,6 +345,11 @@ impl ControlASM {
                 } else {
                     log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
+                ReturnInfo::None
+            }
+            ControlASM::StackLen(x) => {
+                let len = ctx.stack.len() as i64;
+                ctx.set_var(x, len);
                 ReturnInfo::None
             }
             ControlASM::Insert(cont, key, val, res) => {
