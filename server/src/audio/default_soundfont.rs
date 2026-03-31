@@ -1,13 +1,13 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-static SOUNDFONT: &[u8] = include_bytes!("../../assets/soundfont/chaos_bank.sf2");
-const FILENAME: &str = "chaos_bank.sf2";
+static SOUNDFONT: &[u8] = include_bytes!("../../assets/soundfont/generaluser_gs.sf2");
+const FILENAME: &str = "generaluser_gs.sf2";
 
 /// Extracts the embedded soundfont to the config directory and returns the
 /// **parent directory** (suitable for `load_soundfont_from_paths`).
 ///
-/// Target: `~/.config/sova/soundfont/chaos_bank.sf2` (or platform equivalent).
+/// Target: `~/.config/sova/soundfont/generaluser_gs.sf2` (or platform equivalent).
 /// Re-extracts only when the embedded content changes.
 pub fn ensure_default_soundfont() -> PathBuf {
     let dir = soundfont_dir();
