@@ -183,10 +183,12 @@ impl BoinxItem {
                     .collect(),
             ),
             Self::ArgMap(map) => {
-                let mut evaluated = map.clone();
-                for value in evaluated.values_mut() {
-                    *value = value.evaluate_vars(ctx, forbidden);
-                }
+                let evaluated = map
+                    .iter_mut()
+                    .map(|(k,v)| {
+                        (k.clone(), v.evaluate_vars(ctx, forbidden))
+                    })
+                    .collect();
                 Self::ArgMap(evaluated)
             }
             Self::Arithmetic(i1, op, i2, p) => Self::Arithmetic(

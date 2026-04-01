@@ -94,6 +94,10 @@ const DEMOS_GENERAL: &[(&str, &[u8])] = &[
         "Dirty & Crunchy", 
         include_bytes!("../assets/demos/demos/crado.sova")
     ),
+    (
+        "Studious", 
+        include_bytes!("../assets/demos/demos/chords.sova")
+    ),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
