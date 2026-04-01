@@ -1,4 +1,4 @@
-//#![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 #[macro_use]
 extern crate rust_i18n;
@@ -51,6 +51,7 @@ const DEMOS_GENERAL: &[(&str, &[u8])] = &[
     ("Bit after bit", include_bytes!("../assets/demos/demos/bit_after_bit.sova")),
     ("Some soup ?", include_bytes!("../assets/demos/demos/some_soup.sova")),
     ("Storm of sand", include_bytes!("../assets/demos/demos/darude.sova")),
+    ("Dirty & Crunchy", include_bytes!("../assets/demos/demos/crado.sova")),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {

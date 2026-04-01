@@ -62,11 +62,9 @@ pub fn audio_rate_modulation_string(
         3 => {
             let period = args.pop().unwrap();
             let period = match period {
-                BoinxItem::Number(f, _) => TimeSpan::Frames(f),
-                BoinxItem::Duration(time_span) => time_span,
-                x => VariableValue::from(x).as_dur(ctx),
+                BoinxItem::Duration(time_span) => time_span.as_secs(ctx.clock, ctx.frame_len),
+                x => VariableValue::from(x).as_float(ctx),
             };
-            let period = period.as_secs(ctx.clock, ctx.frame_len);
             let end = args.pop().unwrap();
             let end = VariableValue::from(end).as_float(ctx);
             let start = args.pop().unwrap();
@@ -243,7 +241,6 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
             let dur = match args.pop().unwrap() {
                 Duration(d) => d,
-                Number(f, _) => TimeSpan::Frames(f),
                 _ => {
                     ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'secs' is not a duration !"));
                     TimeSpan::default()
