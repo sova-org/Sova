@@ -280,6 +280,9 @@ impl Scene {
         date: &mut SyncTime,
     ) -> SyncTime {
         let len = line.length();
+        if len < 1e-6 {
+            return NEVER;
+        }
         let rem = ActionTiming::AtNextModulo(len).remaining(last_date.saturating_sub(date_offset), clock);
         if date.saturating_sub(last_date) >= rem {
             line.start();

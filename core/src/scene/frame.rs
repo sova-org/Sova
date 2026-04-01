@@ -92,7 +92,7 @@ impl Frame {
             self.script_has_changed = false;
             self.executions.clear();
         }
-        if !self.enabled || self.script().is_empty() {
+        if !self.enabled || self.script().is_empty() || !self.has_duration() {
             return;
         }
         if !self.script().compilation_state().is_ok() {
@@ -108,6 +108,10 @@ impl Frame {
             )
         }
         self.triggers += 1;
+    }
+
+    pub fn has_duration(&self) -> bool {
+        self.duration > 1e-6
     }
 
     pub fn reset(&mut self) {
