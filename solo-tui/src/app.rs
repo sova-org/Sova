@@ -44,7 +44,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn selected_frame(&self) -> Option<&Frame> {
-        self.scene_image.get_frame(self.selected.0, self.selected.1)
+        self.scene_image.frame(self.selected.0, self.selected.1)
     }
 
     pub fn selected_line(&self) -> Option<&Line> {

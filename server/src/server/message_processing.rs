@@ -251,7 +251,7 @@ pub async fn on_message(
         }
         ClientMessage::GetFrame(line_id, frame_id) => {
             let scene = state.scene_image.lock().await;
-            if let Some(frame) = scene.get_frame(line_id, frame_id) {
+            if let Some(frame) = scene.frame(line_id, frame_id) {
                 ServerMessage::Notification(SovaNotification::UpdatedFrames(vec![(line_id, frame_id, frame.clone())]))
             } else {
                 ServerMessage::InternalError(format!(

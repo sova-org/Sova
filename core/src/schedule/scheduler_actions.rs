@@ -1,5 +1,5 @@
 use crate::{
-    clock::Clock, scene::{Frame, Scene, script::ScriptExecution}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::LanguageCenter
+    clock::Clock, scene::{Frame, Scene, script::{Script, ScriptExecution}}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::{LanguageCenter, event::ConcreteEvent}
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -114,7 +114,7 @@ impl ActionProcessor {
                 }
             }
             SchedulerMessage::SetScript(line_id, frame_id, script, _) => {
-                let frame = scene.get_frame_mut(line_id, frame_id);
+                let frame = scene.frame_mut(line_id, frame_id);
                 frame.set_script(script.clone());
                 languages.process_script(line_id, frame_id, script, feedback.clone());
                 let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(
@@ -134,7 +134,7 @@ impl ActionProcessor {
                 let notif = SovaNotification::CompilationUpdated(line_id, frame_id, id, light);
 
                 if scene
-                    .get_frame_mut(line_id, frame_id)
+                    .frame_mut(line_id, frame_id)
                     .update_compilation_state(id, state)
                 {
                     let _ = update_notifier.send(notif);
@@ -196,5 +196,82 @@ impl ActionProcessor {
             }
         }
         let _ = update_notifier.send(SovaNotification::UpdatedFrames(updated));
+    }
+
+    pub fn process_internal_event(
+        scene: &mut Scene, 
+        event: ConcreteEvent,
+        update_notifier: &Sender<SovaNotification>,
+        languages: &LanguageCenter,
+        feedback: &Sender<SchedulerMessage>,
+    ) {
+        match event {
+            ConcreteEvent::ExecuteFrame(l_i, f_i) => {
+                if !scene.has_frame(l_i, f_i) {
+                    return;
+                }
+                scene.line_mut(l_i).start_at(f_i);
+                let positions = scene.positions().collect();
+                let _ = update_notifier.send(SovaNotification::FramePositionChanged(positions));
+            }
+            ConcreteEvent::SetFrameEnabled(l_i, f_i, en) => {
+                if !scene.has_frame(l_i, f_i) {
+                    return;
+                }
+                let frame = scene.frame_mut(l_i, f_i);
+                frame.enabled = en;
+                let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(l_i, f_i, frame.clone())]));
+            }
+            ConcreteEvent::SetFrameDuration(l_i, f_i, dur) => {
+                if !scene.has_frame(l_i, f_i) {
+                    return;
+                }
+                let frame = scene.frame_mut(l_i, f_i);
+                frame.duration = dur;
+                let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(l_i, f_i, frame.clone())]));
+            }
+            ConcreteEvent::SetLineLooping(l_i, looping) => {
+                if scene.n_lines() <= l_i {
+                    return;
+                }
+                let line = scene.line_mut(l_i);
+                line.looping = looping;
+                let _ = update_notifier.send(SovaNotification::UpdatedLines(vec![(l_i, line.clone())]));
+            }
+            ConcreteEvent::SetLineTrailing(l_i, trailing) => {
+                if scene.n_lines() <= l_i {
+                    return;
+                }
+                let line = scene.line_mut(l_i);
+                line.trailing = trailing;
+                let _ = update_notifier.send(SovaNotification::UpdatedLines(vec![(l_i, line.clone())]));
+            }
+            ConcreteEvent::SetLineManual(l_i, manual) => {
+                if scene.n_lines() <= l_i {
+                    return;
+                }
+                let line = scene.line_mut(l_i);
+                line.manual = manual;
+                let _ = update_notifier.send(SovaNotification::UpdatedLines(vec![(l_i, line.clone())]));
+            }
+            ConcreteEvent::SetLineSpeedFactor(l_i, sp) => {
+                if scene.n_lines() <= l_i {
+                    return;
+                }
+                let line = scene.line_mut(l_i);
+                line.speed_factor = sp;
+                let _ = update_notifier.send(SovaNotification::UpdatedLines(vec![(l_i, line.clone())]));
+            }
+            ConcreteEvent::SetFrame(l_i, f_i, lang, txt) => {
+                let frame = scene.frame_mut(l_i, f_i); // NO SAFETY ! Will insert if too big
+                let script = Script::new(txt, lang);
+                frame.set_script(script.clone());
+                languages.process_script(l_i, f_i, script, feedback.clone());
+                let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(
+                    l_i, f_i, frame.clone(),
+                )]));
+            }
+            _ => ()
+        }
     }
 }
