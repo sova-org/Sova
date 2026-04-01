@@ -14,7 +14,7 @@ pub(crate) struct Alt {
 }
 
 pub(crate) fn parse_pattern(input: &str) -> Result<Arc<[PatHit]>, String> {
-    let chars: Vec<char> = input.chars().collect();
+    let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
     let total = count_slots(&chars, 0, chars.len())?;
     if total == 0 {
         return Err("empty pattern".into());
@@ -30,8 +30,9 @@ fn count_slots(chars: &[char], start: usize, end: usize) -> Result<usize, String
     while i < end {
         match chars[i] {
             'x' | '.' | '-' => {
-                count += 1;
-                i += 1;
+                let (repeat, consumed) = parse_repeat(chars, i + 1, end);
+                count += repeat;
+                i += 1 + consumed;
             }
             '[' => {
                 let close = find_closing(chars, i)?;
@@ -72,16 +73,27 @@ fn collect_hits(
     while i < end {
         match chars[i] {
             'x' => {
-                let pos = offset + slot as f64 * slot_width;
-                let dashes = count_ahead(chars, i + 1, end, '-');
-                let gate = slot_width * (1 + dashes) as f64;
-                hits.push(PatHit { position: pos, gate, alt: alt.clone() });
-                i += 1 + dashes;
-                slot += 1 + dashes;
+                let (repeat, rep_consumed) = parse_repeat(chars, i + 1, end);
+                if rep_consumed > 0 {
+                    for _ in 0..repeat {
+                        let pos = offset + slot as f64 * slot_width;
+                        hits.push(PatHit { position: pos, gate: slot_width, alt: alt.clone() });
+                        slot += 1;
+                    }
+                    i += 1 + rep_consumed;
+                } else {
+                    let pos = offset + slot as f64 * slot_width;
+                    let dashes = count_ahead(chars, i + 1, end, '-');
+                    let gate = slot_width * (1 + dashes) as f64;
+                    hits.push(PatHit { position: pos, gate, alt: alt.clone() });
+                    i += 1 + dashes;
+                    slot += 1 + dashes;
+                }
             }
             '.' => {
-                slot += 1;
-                i += 1;
+                let (repeat, consumed) = parse_repeat(chars, i + 1, end);
+                slot += repeat;
+                i += 1 + consumed;
             }
             '-' => {
                 return Err("'-' without preceding 'x'".into());
@@ -394,6 +406,45 @@ mod tests {
         assert_hit_alt(&hits[0], 0.0, 0.5, 0, 2);
         assert_hit_alt(&hits[1], 0.5, 0.5, 0, 2);
         assert_hit_alt(&hits[2], 0.0, 1.0, 1, 2);
+    }
+
+    // --- char repeat ---
+
+    #[test]
+    fn repeat_hit() {
+        // x*4 = xxxx
+        let hits = parse_pattern("x*4").unwrap();
+        assert_eq!(hits.len(), 4);
+        for (i, h) in hits.iter().enumerate() {
+            assert_hit(h, i as f64 / 4.0, 0.25);
+        }
+    }
+
+    #[test]
+    fn repeat_rest() {
+        // .x*3. = 5 slots, 3 hits in the middle
+        let hits = parse_pattern(".x*3.").unwrap();
+        assert_eq!(hits.len(), 3);
+        assert_hit(&hits[0], 0.2, 0.2);
+        assert_hit(&hits[1], 0.4, 0.2);
+        assert_hit(&hits[2], 0.6, 0.2);
+    }
+
+    #[test]
+    fn repeat_rest_only() {
+        // .*4 = ....
+        let hits = parse_pattern(".*4").unwrap();
+        assert_eq!(hits.len(), 0);
+    }
+
+    // --- whitespace ---
+
+    #[test]
+    fn whitespace_ignored() {
+        let hits = parse_pattern("x . x .").unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_hit(&hits[0], 0.0, 0.25);
+        assert_hit(&hits[1], 0.5, 0.25);
     }
 
     // --- errors ---
