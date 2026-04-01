@@ -437,6 +437,16 @@ mod tests {
         assert_eq!(hits.len(), 0);
     }
 
+    #[test]
+    fn repeat_256_uniform_gate() {
+        let hits = parse_pattern("x*256").unwrap();
+        assert_eq!(hits.len(), 256);
+        let gate = 1.0 / 256.0;
+        for (i, h) in hits.iter().enumerate() {
+            assert_hit(h, i as f64 / 256.0, gate);
+        }
+    }
+
     // --- whitespace ---
 
     #[test]

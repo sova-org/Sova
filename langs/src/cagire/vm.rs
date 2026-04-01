@@ -875,7 +875,7 @@ impl CagireVM {
                         };
 
                         cmd.set_delta_secs(delta_secs);
-                        cmd.set_param("gate", Value::Float(hit.gate));
+                        cmd.set_param("gate", Value::Float(hit.gate * ctx.step_duration));
                         self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
                         cmd.clear_params();
                         cmd.clear_sound();
@@ -1421,17 +1421,23 @@ impl CagireVM {
                     }
                 }
 
-                if !args.contains_key("gate") {
+                let has_gate = args.contains_key("gate");
+                if !has_gate {
                     args.insert("gate".to_string(), VariableValue::Float(ctx.step_duration));
                 }
-                if !args.contains_key("release") {
+                if !args.contains_key("release") && !has_gate {
                     args.insert("release".to_string(), VariableValue::Float(ctx.step_duration));
                 }
                 if !args.contains_key("delaytime") {
                     args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
                 }
 
-                let dur_micros = (ctx.step_duration * 1_000_000.0) as SyncTime;
+                let gate_secs = match args.get("gate") {
+                    Some(VariableValue::Float(f)) => *f,
+                    Some(VariableValue::Integer(i)) => *i as f64,
+                    _ => ctx.step_duration,
+                };
+                let dur_micros = (gate_secs * 1_000_000.0) as SyncTime;
                 events.push((ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev), time));
             }
         } else {
