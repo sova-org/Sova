@@ -25,7 +25,7 @@ pub struct InlineFrameState {
     pub last_cursor_col: Option<usize>,
     pub sent_cursor: Option<(usize, usize)>,
     pub last_cursor_send: Instant,
-    pub header_name_buf: String,
+
     pub editor_has_focus: bool,
     pub request_focus: bool,
     pub escape_pressed: bool,
@@ -55,7 +55,7 @@ impl InlineFrameState {
             last_cursor_col: None,
             sent_cursor: None,
             last_cursor_send: Instant::now(),
-            header_name_buf: frame.name.clone().unwrap_or_default(),
+
             editor_has_focus: false,
             request_focus: false,
             escape_pressed: false,
@@ -146,7 +146,6 @@ impl InlineFrameState {
                 self.has_remote_edits = false;
                 self.lang = remote_lang.to_owned();
                 self.prev_content = self.content.clone();
-                self.header_name_buf = frame.name.clone().unwrap_or_default();
             }
             return;
         }
@@ -300,36 +299,6 @@ impl InlineFrameState {
                 vec![(li, fi, f)],
                 ActionTiming::Immediate,
             ));
-        }
-
-        // Name (last)
-        let name_id = ui.id().with("hdr_name");
-        let name_focused = ui.memory(|m| m.has_focus(name_id));
-        if !name_focused {
-            self.header_name_buf = frame.name.clone().unwrap_or_default();
-        }
-        let name_resp = ui.add(
-            egui::TextEdit::singleline(&mut self.header_name_buf)
-                .id(name_id)
-                .desired_width(60.0)
-                .hint_text("name")
-                .font(egui::TextStyle::Small),
-        );
-        if name_resp.lost_focus() {
-            let trimmed = self.header_name_buf.trim();
-            let new_name = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_owned())
-            };
-            if new_name != frame.name {
-                let mut f = frame.clone();
-                f.name = new_name;
-                bridge.send(SchedulerMessage::SetFrames(
-                    vec![(li, fi, f)],
-                    ActionTiming::Immediate,
-                ));
-            }
         }
 
         // Right-aligned: menu button + dirty indicator

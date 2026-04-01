@@ -1,5 +1,4 @@
 use std::collections::{BTreeSet, HashMap};
-use std::time::Instant;
 
 use eframe::egui;
 use sova_core::scene::script::Script;
@@ -169,12 +168,11 @@ impl ScenePanel {
         let accent = ui.visuals().selection.bg_fill;
         let opacity = SceneOpacity::new(visuals_enabled, scene_opacity);
 
-        // Compute per-line progress for playing indicators
+        // Compute per-line progress for playing indicators (beat-based, same source as phase bar)
         let progress: Vec<f32> = {
-            let now = Instant::now();
-            let secs_per_beat = 60.0 / bridge.clock().tempo;
+            let beat = bridge.clock().beat;
             let positions = bridge.positions();
-            let starts = bridge.position_start();
+            let starts = bridge.position_start_beat();
             (0..scene.lines.len())
                 .map(|li| {
                     let Some(&(fi, _rep)) = positions.get(li).and_then(|p| p.first()) else {
@@ -184,13 +182,13 @@ impl ScenePanel {
                     let Some(frame) = line.frames.get(fi) else {
                         return 0.0;
                     };
-                    let start = starts.get(li).copied().unwrap_or(now);
-                    let elapsed = now.duration_since(start).as_secs_f64();
-                    let dur = (frame.duration / line.speed_factor) * secs_per_beat;
+                    let start_beat = starts.get(li).copied().unwrap_or(beat);
+                    let elapsed_beats = (beat - start_beat).max(0.0);
+                    let dur = frame.duration / line.speed_factor;
                     if dur <= 0.0 {
                         return 0.0;
                     }
-                    ((elapsed % dur) / dur) as f32
+                    ((elapsed_beats % dur) / dur) as f32
                 })
                 .collect()
         };
@@ -240,6 +238,7 @@ impl ScenePanel {
                             ui.vertical(|ui| {
                                 // Line header
                                 self.show_line_header(ui, li, line, accent, &opacity, bridge, &default_lang);
+                                ui.add_space(4.0);
 
                                 // Independent vertical scroll for frames
                                 egui::ScrollArea::vertical()
@@ -275,7 +274,7 @@ impl ScenePanel {
                                                 line_progress,
                                                 is_selected,
                                                 is_cursor,
-                                                accent,
+                                                crate::widgets::line_accent(accent, li),
                                                 &opacity,
                                                 editor_settings,
                                                 &theme,

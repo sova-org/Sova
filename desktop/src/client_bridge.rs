@@ -91,7 +91,7 @@ pub struct ClientBridge {
     // State from server
     scene: Option<Scene>,
     positions: Vec<Vec<(usize, usize)>>,
-    position_start: Vec<Instant>,
+    position_start_beat: Vec<f64>,
     devices: Vec<DeviceInfo>,
     clock: ClockState,
     audio_state: AudioEngineState,
@@ -144,7 +144,7 @@ impl ClientBridge {
             just_connected: false,
             scene: None,
             positions: Vec::new(),
-            position_start: Vec::new(),
+            position_start_beat: Vec::new(),
             devices: Vec::new(),
             clock: ClockState::default(),
             audio_state: AudioEngineState::default(),
@@ -471,11 +471,11 @@ impl ClientBridge {
                     }
                 }
                 ServerMessage::Notification(SovaNotification::FramePositionChanged(p)) => {
-                    let now = Instant::now();
-                    self.position_start.resize(p.len(), now);
+                    let beat = self.clock.beat;
+                    self.position_start_beat.resize(p.len(), beat);
                     for (li, new_pos) in p.iter().enumerate() {
                         if self.positions.get(li) != Some(new_pos) {
-                            self.position_start[li] = now;
+                            self.position_start_beat[li] = beat;
                         }
                     }
                     self.positions = p;
@@ -490,7 +490,7 @@ impl ClientBridge {
                     self.clock.playing = !matches!(state, PlaybackState::Stopped);
                     if !self.clock.playing {
                         self.positions.clear();
-                        self.position_start.clear();
+                        self.position_start_beat.clear();
                     }
                 }
                 ServerMessage::Notification(SovaNotification::DeviceListChanged(devices)) => {
@@ -622,7 +622,7 @@ impl ClientBridge {
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                     self.positions.clear();
-                    self.position_start.clear();
+                    self.position_start_beat.clear();
                 }
                 ServerMessage::LinkState { enabled, start_stop_sync, num_peers } => {
                     self.clock.link_enabled = enabled;
@@ -640,7 +640,7 @@ impl ClientBridge {
                     self.compilation_flashes.clear();
                     self.mutation_flashes.clear();
                     self.positions.clear();
-                    self.position_start.clear();
+                    self.position_start_beat.clear();
                 }
                 _ => {}
             }
@@ -662,7 +662,7 @@ impl ClientBridge {
     fn clear_state(&mut self) {
         self.scene = None;
         self.positions.clear();
-        self.position_start.clear();
+        self.position_start_beat.clear();
         self.devices.clear();
         self.clock = ClockState::default();
         self.audio_state = AudioEngineState::default();
@@ -701,8 +701,8 @@ impl ClientBridge {
         &self.positions
     }
 
-    pub fn position_start(&self) -> &[Instant] {
-        &self.position_start
+    pub fn position_start_beat(&self) -> &[f64] {
+        &self.position_start_beat
     }
 
     pub fn devices(&self) -> &[DeviceInfo] {

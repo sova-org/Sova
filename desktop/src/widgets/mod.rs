@@ -44,7 +44,7 @@ pub fn username_color(name: &str) -> eframe::egui::Color32 {
     eframe::egui::Color32::from_rgb(r, g, b)
 }
 
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+pub(crate) fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
     let m = l - c / 2.0;
@@ -61,6 +61,40 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
         ((g + m) * 255.0) as u8,
         ((b + m) * 255.0) as u8,
     )
+}
+
+pub(crate) fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
+    let r = r as f32 / 255.0;
+    let g = g as f32 / 255.0;
+    let b = b as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    if (max - min).abs() < f32::EPSILON {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = d / (1.0 - (2.0 * l - 1.0).abs());
+    let h = if max == r {
+        60.0 * (((g - b) / d) % 6.0)
+    } else if max == g {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    let h = if h < 0.0 { h + 360.0 } else { h };
+    (h, s, l)
+}
+
+pub(crate) fn line_accent(accent: eframe::egui::Color32, line_index: usize) -> eframe::egui::Color32 {
+    const N: usize = 8;
+    if line_index % N == 0 {
+        return accent;
+    }
+    let (h, s, l) = rgb_to_hsl(accent.r(), accent.g(), accent.b());
+    let rotated = (h + (line_index % N) as f32 * (360.0 / N as f32)) % 360.0;
+    let (r, g, b) = hsl_to_rgb(rotated, s, l);
+    eframe::egui::Color32::from_rgb(r, g, b)
 }
 
 pub fn show_detached_viewport(
