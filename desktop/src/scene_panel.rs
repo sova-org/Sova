@@ -12,7 +12,7 @@ use crate::widgets::syntax_highlight::SyntaxTheme;
 use crate::widgets::{
     EditorContext, EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
 };
-use crate::widgets::inline_scene_view::{InlineFrameState, InlineScriptState};
+use crate::widgets::inline_scene_view::{InlineFrameState, InlineScriptState, show_lang_picker};
 use sova_core::schedule::SchedulerMessage;
 
 pub fn resolve_default_language(preferred: &str, available: &[LanguageDefinition]) -> String {
@@ -115,6 +115,7 @@ pub struct ScenePanel {
     pub prelude_states: Vec<InlineScriptState>,
     pub prelude_collapsed: bool,
     pub prelude_col_width: f32,
+    picker_open_pending: BTreeSet<(usize, usize)>,
 }
 
 impl Default for ScenePanel {
@@ -135,6 +136,7 @@ impl Default for ScenePanel {
             prelude_states: Vec::new(),
             prelude_collapsed: true,
             prelude_col_width: 300.0,
+            picker_open_pending: BTreeSet::new(),
         }
     }
 }
@@ -262,11 +264,14 @@ impl ScenePanel {
                                             let is_selected = self.selection.contains(&(li, fi));
                                             let is_cursor = self.cursor == Some((li, fi));
 
-                                            // Ensure frame state exists
+                                            // Ensure frame state exists; auto-open picker if pending
                                             let state_key = (li, fi);
                                             self.frame_states
                                                 .entry(state_key)
                                                 .or_insert_with(|| InlineFrameState::new(frame));
+                                            if self.picker_open_pending.remove(&state_key) {
+                                                self.frame_states.get_mut(&state_key).unwrap().lang_picker_open = true;
+                                            }
 
                                             let cell_resp = self.show_frame_cell(
                                                 ui,
@@ -279,7 +284,7 @@ impl ScenePanel {
                                                 is_selected,
                                                 is_cursor,
                                                 current_playing_fi,
-                                                crate::widgets::line_accent(accent, li),
+                                                crate::widgets::cycled_accent(accent, li),
                                                 &opacity,
                                                 editor_settings,
                                                 &theme,
@@ -389,6 +394,7 @@ impl ScenePanel {
                                                 new_frame(&default_lang),
                                                 ActionTiming::Immediate,
                                             ));
+                                            self.picker_open_pending.insert((li, fi));
                                         }
                                     });
                             });
@@ -442,6 +448,7 @@ impl ScenePanel {
                                 Line::new(vec![1.0]),
                                 ActionTiming::Immediate,
                             ));
+                            self.picker_open_pending.insert((li, 0));
                         }
                     });
                 });
@@ -630,7 +637,10 @@ impl ScenePanel {
         sample_names: &[String],
     ) -> egui::Response {
         // Background color — scaled by opacity
-        let bg = if !frame.enabled {
+        let picker_open = self.frame_states.get(&(li, fi)).is_some_and(|s| s.lang_picker_open);
+        let bg = if picker_open {
+            opacity.fill(ui.visuals().extreme_bg_color, 1.0)
+        } else if !frame.enabled {
             opacity.fill(egui::Color32::from_gray(25), 1.0)
         } else if is_cursor {
             opacity.fill(ui.visuals().extreme_bg_color, 1.0)
@@ -690,7 +700,7 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.set_height(HEADER_HEIGHT);
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_header(ui, li, fi, n_frames, current_playing_fi, accent, frame, opacity, bridge);
+                        state.show_header(ui, li, fi, n_frames, current_playing_fi, accent, frame, bridge);
                     }
                 });
 
@@ -703,8 +713,10 @@ impl ScenePanel {
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_min_width(150.0);
-                                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                                    state.show_frame_menu(ui, li, fi, bridge, default_lang);
+                                if let Some(state) = self.frame_states.get_mut(&(li, fi))
+                                    && let Some(target) = state.show_frame_menu(ui, li, fi, bridge, default_lang)
+                                {
+                                    self.picker_open_pending.insert(target);
                                 }
                             });
                         });
@@ -726,66 +738,91 @@ impl ScenePanel {
                 if !is_collapsed {
                     ui.separator();
 
-                    // Body (code editor)
-                    let syntax = bridge.syntax_map.get(
-                        self.frame_states
-                            .get(&(li, fi))
-                            .map(|s| s.lang.as_str())
-                            .unwrap_or(""),
-                    );
-                    let syntax_pair = syntax.map(|cs| (cs, theme));
+                    let picker_is_open = self.frame_states
+                        .get(&(li, fi))
+                        .is_some_and(|s| s.lang_picker_open);
 
-                    let reference = bridge
-                        .languages()
-                        .iter()
-                        .find(|l| {
+                    if picker_is_open {
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                            if let Some(lang) = show_lang_picker(
+                                ui,
+                                &mut state.lang_picker_open,
+                                &mut state.lang_picker_filter,
+                                &mut state.lang_picker_selection,
+                                &state.lang,
+                                accent,
+                                bridge,
+                            ) {
+                                state.lang = lang;
+                                state.dirty = true;
+                                state.request_focus = true;
+                            }
+                            if !state.lang_picker_open {
+                                state.request_focus = true;
+                            }
+                        }
+                    } else {
+                        // Body (code editor)
+                        let syntax = bridge.syntax_map.get(
                             self.frame_states
                                 .get(&(li, fi))
-                                .is_some_and(|s| s.lang == l.name)
-                        })
-                        .filter(|l| !l.documentation.reference.is_empty())
-                        .map(|l| &l.documentation.reference);
+                                .map(|s| s.lang.as_str())
+                                .unwrap_or(""),
+                        );
+                        let syntax_pair = syntax.map(|cs| (cs, theme));
 
-                    let mut cursors: Vec<PeerCursor> = bridge
-                        .text_cursors_for_frame(li, fi)
-                        .into_iter()
-                        .map(|(name, line, col)| PeerCursor {
-                            name: name.to_owned(),
-                            line,
-                            col,
-                            color: username_color(name),
-                        })
-                        .collect();
+                        let reference = bridge
+                            .languages()
+                            .iter()
+                            .find(|l| {
+                                self.frame_states
+                                    .get(&(li, fi))
+                                    .is_some_and(|s| s.lang == l.name)
+                            })
+                            .filter(|l| !l.documentation.reference.is_empty())
+                            .map(|l| &l.documentation.reference);
 
-                    // Include the local user's text cursor
-                    if let Some(my_name) = bridge.confirmed_username()
-                        && let Some(state) = self.frame_states.get(&(li, fi))
-                        && let (Some(line), Some(col)) =
-                            (state.last_cursor_line, state.last_cursor_col)
-                    {
-                        cursors.push(PeerCursor {
-                            name: my_name.to_owned(),
-                            line,
-                            col,
-                            color: username_color(my_name),
-                        });
-                    }
+                        let mut cursors: Vec<PeerCursor> = bridge
+                            .text_cursors_for_frame(li, fi)
+                            .into_iter()
+                            .map(|(name, line, col)| PeerCursor {
+                                name: name.to_owned(),
+                                line,
+                                col,
+                                color: username_color(name),
+                            })
+                            .collect();
 
-                    let editor_ctx = EditorContext {
-                        settings: editor_settings,
-                        syntax: syntax_pair,
-                        reference,
-                        peer_cursors: &cursors,
-                        annotations: if self.frame_states.get(&(li, fi)).is_some_and(|s| s.dirty) {
-                            &[]
-                        } else {
-                            bridge.frame_annotations(li, fi)
-                        },
-                        opacity: Some(opacity),
-                        sample_names,
-                    };
-                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_body(ui, li, fi, &editor_ctx, bridge);
+                        // Include the local user's text cursor
+                        if let Some(my_name) = bridge.confirmed_username()
+                            && let Some(state) = self.frame_states.get(&(li, fi))
+                            && let (Some(line), Some(col)) =
+                                (state.last_cursor_line, state.last_cursor_col)
+                        {
+                            cursors.push(PeerCursor {
+                                name: my_name.to_owned(),
+                                line,
+                                col,
+                                color: username_color(my_name),
+                            });
+                        }
+
+                        let editor_ctx = EditorContext {
+                            settings: editor_settings,
+                            syntax: syntax_pair,
+                            reference,
+                            peer_cursors: &cursors,
+                            annotations: if self.frame_states.get(&(li, fi)).is_some_and(|s| s.dirty) {
+                                &[]
+                            } else {
+                                bridge.frame_annotations(li, fi)
+                            },
+                            opacity: Some(opacity),
+                            sample_names,
+                        };
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                            state.show_body(ui, li, fi, &editor_ctx, bridge);
+                        }
                     }
                 }
             });
@@ -999,12 +1036,14 @@ impl ScenePanel {
                         bridge.send(SchedulerMessage::AddFrame(
                             li, fi, new_frame(default_lang), ActionTiming::Immediate,
                         ));
+                        self.picker_open_pending.insert((li, fi));
                         ui.close();
                     }
                     if ui.button(t!("scene.insert_frame_after")).clicked() {
                         bridge.send(SchedulerMessage::AddFrame(
                             li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
                         ));
+                        self.picker_open_pending.insert((li, fi + 1));
                         ui.close();
                     }
                 }
@@ -1091,12 +1130,14 @@ impl ScenePanel {
                     bridge.send(SchedulerMessage::AddLine(
                         li, Line::new(vec![1.0]), ActionTiming::Immediate,
                     ));
+                    self.picker_open_pending.insert((li, 0));
                     ui.close();
                 }
                 if ui.button(t!("scene.insert_line_after")).clicked() {
                     bridge.send(SchedulerMessage::AddLine(
                         li + 1, Line::new(vec![1.0]), ActionTiming::Immediate,
                     ));
+                    self.picker_open_pending.insert((li + 1, 0));
                     ui.close();
                 }
                 if ui
@@ -1390,12 +1431,14 @@ impl ScenePanel {
             bridge.send(SchedulerMessage::AddFrame(
                 li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
             ));
+            self.picker_open_pending.insert((li, fi + 1));
         }
 
         if cmd_shift_i {
             bridge.send(SchedulerMessage::AddFrame(
                 li, fi, new_frame(default_lang), ActionTiming::Immediate,
             ));
+            self.picker_open_pending.insert((li, fi));
         }
 
         // Toggles
@@ -1750,34 +1793,53 @@ impl ScenePanel {
                                             ui,
                                             idx,
                                             prelude_len,
-                                            opacity,
                                             bridge,
                                         );
                                     });
 
                                     ui.separator();
 
-                                    // Body (code editor)
-                                    let syntax = bridge.syntax_map.get(
-                                        self.prelude_states[idx].lang.as_str(),
-                                    );
-                                    let syntax_pair = syntax.map(|cs| (cs, theme));
-                                    let reference = bridge
-                                        .languages()
-                                        .iter()
-                                        .find(|l| l.name == self.prelude_states[idx].lang)
-                                        .filter(|l| !l.documentation.reference.is_empty())
-                                        .map(|l| &l.documentation.reference);
-                                    let ctx = EditorContext {
-                                        settings: editor_settings,
-                                        syntax: syntax_pair,
-                                        reference,
-                                        peer_cursors: &[],
-                                        annotations: &[],
-                                        opacity: Some(opacity),
-                                        sample_names,
-                                    };
-                                    self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
+                                    if self.prelude_states[idx].lang_picker_open {
+                                        let state = &mut self.prelude_states[idx];
+                                        if let Some(lang) = show_lang_picker(
+                                            ui,
+                                            &mut state.lang_picker_open,
+                                            &mut state.lang_picker_filter,
+                                            &mut state.lang_picker_selection,
+                                            &state.lang,
+                                            accent,
+                                            bridge,
+                                        ) {
+                                            state.lang = lang;
+                                            state.dirty = true;
+                                            state.request_focus = true;
+                                        }
+                                        if !self.prelude_states[idx].lang_picker_open {
+                                            self.prelude_states[idx].request_focus = true;
+                                        }
+                                    } else {
+                                        // Body (code editor)
+                                        let syntax = bridge.syntax_map.get(
+                                            self.prelude_states[idx].lang.as_str(),
+                                        );
+                                        let syntax_pair = syntax.map(|cs| (cs, theme));
+                                        let reference = bridge
+                                            .languages()
+                                            .iter()
+                                            .find(|l| l.name == self.prelude_states[idx].lang)
+                                            .filter(|l| !l.documentation.reference.is_empty())
+                                            .map(|l| &l.documentation.reference);
+                                        let ctx = EditorContext {
+                                            settings: editor_settings,
+                                            syntax: syntax_pair,
+                                            reference,
+                                            peer_cursors: &[],
+                                            annotations: &[],
+                                            opacity: Some(opacity),
+                                            sample_names,
+                                        };
+                                        self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
+                                    }
                                 });
 
                                 let cell_rect = frame_resp.response.rect;

@@ -272,7 +272,7 @@ impl AudioPanel {
 
                 let r = ui.label(t!("audio.voices"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
-                let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
+                let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=2048));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
                 ui.end_row();
 

@@ -86,13 +86,13 @@ pub(crate) fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     (h, s, l)
 }
 
-pub(crate) fn line_accent(accent: eframe::egui::Color32, line_index: usize) -> eframe::egui::Color32 {
+pub(crate) fn cycled_accent(accent: eframe::egui::Color32, index: usize) -> eframe::egui::Color32 {
     const N: usize = 8;
-    if line_index % N == 0 {
+    if index % N == 0 {
         return accent;
     }
     let (h, s, l) = rgb_to_hsl(accent.r(), accent.g(), accent.b());
-    let rotated = (h + (line_index % N) as f32 * (360.0 / N as f32)) % 360.0;
+    let rotated = (h + (index % N) as f32 * (360.0 / N as f32)) % 360.0;
     let (r, g, b) = hsl_to_rgb(rotated, s, l);
     eframe::egui::Color32::from_rgb(r, g, b)
 }

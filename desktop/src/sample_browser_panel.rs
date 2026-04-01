@@ -255,7 +255,9 @@ impl SampleBrowserPanel {
                         }
                     }
 
-                    let color = if entry.is_default
+                    let color = if selected {
+                        ui.visuals().selection.stroke.color
+                    } else if entry.is_default
                         && matches!(entry.kind, TreeLineKind::Root { .. })
                     {
                         ui.visuals().weak_text_color()
