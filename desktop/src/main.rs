@@ -1013,7 +1013,7 @@ impl eframe::App for SovaApp {
             if action.open_server_config {
                 self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
             }
-            if action.start_feedback && !self.bridge.has_feedback() {
+            if action.start_feedback && !self.server.is_running() && !self.bridge.has_feedback() {
                 self.bridge.start_feedback(self.audio.generate_audio_config());
             }
         }
