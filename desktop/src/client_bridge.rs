@@ -553,7 +553,7 @@ impl ClientBridge {
                         _ => {}
                     }
                     if let Some(scene) = &mut self.scene {
-                        *scene.get_frame_mut(li, fi).compilation_state_mut() = state;
+                        *scene.frame_mut(li, fi).compilation_state_mut() = state;
                     }
                 }
                 ServerMessage::Notification(SovaNotification::Log(msg)) => {
@@ -794,7 +794,7 @@ impl ClientBridge {
     }
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
-        self.scene().and_then(|s| s.get_frame(li, fi)).map(|f| f.script().compilation_state())
+        self.scene().and_then(|s| s.frame(li, fi)).map(|f| f.script().compilation_state())
     }
 
     pub fn chat_messages(&self) -> &VecDeque<ChatMessage> {

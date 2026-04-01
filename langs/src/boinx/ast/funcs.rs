@@ -109,9 +109,14 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     let mut funcs = BTreeMap::new();
     funcs.insert("choice".to_owned(), ItemFunc::define(
         "Uniformly *samples* one item amongst the arguments",
-        |_, mut args| {
+        |ctx, mut args| {
             args = unpack_if_one(args);
-            let i = rand::random_range(0..args.len());
+            let len = args.len();
+            if len == 0 {
+                SovaError::from(ctx).message("Trying to choose from empty vec ! Ignoring");
+                return Mute;
+            }
+            let i = rand::random_range(0..len);
             args.remove(i)
         }
     ));
@@ -149,46 +154,49 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             Sequence((i1..i2).map(|i| Note(i, None)).collect())
         }
     ));
-    funcs.insert("randrange".to_owned(), ItemFunc::define(
+    funcs.insert("rand".to_owned(), ItemFunc::define(
         "Samples a random float in the range given",
         |ctx, mut args| {
             if args.len() > 2 { 
                 ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'randrange' function, taking only two last !"));
             }
-            let (i1, i2) = if args.len() >= 2 {
+            if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
                 let b = VariableValue::from(iter.next().unwrap());
-                let a = a.as_float(ctx);
-                let b = b.as_float(ctx);
-                if a <= b { (a,b) } else { (b,a) }
+                if a.is_float() || b.is_float() {
+                    let a = a.as_float(ctx);
+                    let b = b.as_float(ctx);
+                    let (a,b) = if a <= b { (a,b) } else { (b,a) };
+                    if a == b {
+                        return Number(a, None);
+                    }
+                    Number(rand::random_range(a..b), None)
+                } else {
+                    let a = a.as_integer(ctx);
+                    let b = b.as_integer(ctx);
+                    let (a,b) = if a <= b { (a,b) } else { (b,a) };
+                    if a == b {
+                        return Note(a, None);
+                    }
+                    Note(rand::random_range(a..b), None)
+                }
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
-                let a = a.as_float(ctx);
-                (0.0, a)
-            };
-            Number(rand::random_range(i1..i2), None)
-        }
-    ));
-    funcs.insert("irandrange".to_owned(), ItemFunc::define(
-        "Samples a random int in the range given",
-        |ctx, mut args| {
-            if args.len() > 2 { 
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'irandrange' function, taking only two last !"));
+                if a.is_float() {
+                    let a = a.as_float(ctx);
+                    if a == 0.0 {
+                        return Number(0.0, None);
+                    }
+                    Number(rand::random_range(0.0..a), None)
+                } else {
+                    let a = a.as_integer(ctx);
+                    if a == 0 {
+                        return Note(0, None);
+                    }
+                    Note(rand::random_range(0..a), None)
+                }
             }
-            let (i1, i2) = if args.len() >= 2 {
-                let mut iter = args.into_iter();
-                let a = VariableValue::from(iter.next().unwrap());
-                let b = VariableValue::from(iter.next().unwrap());
-                let a = a.as_integer(ctx);
-                let b = b.as_integer(ctx);
-                if a <= b { (a,b) } else { (b,a) }
-            } else {
-                let a = VariableValue::from(args.pop().unwrap());
-                let a = a.as_integer(ctx);
-                (0, a)
-            };
-            Note(rand::random_range(i1..i2), None)
         }
     ));
     funcs.insert("maybe".to_owned(), ItemFunc::define(

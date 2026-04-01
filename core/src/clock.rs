@@ -318,6 +318,14 @@ impl Clock {
         SystemTime::now() + delta
     }
 
+    pub fn from_system_time(&self, date: SystemTime) -> SyncTime {
+        let Ok(delta) = date.duration_since(SystemTime::now()) else {
+            return NEVER;
+        };
+        let now = self.server.link.clock_micros() as SyncTime;
+        now.saturating_add(delta.as_micros() as u64)
+    }
+
     /// Commits the current application session state back to the Ableton Link instance.
     /// This is necessary after modifying tempo or other properties in `session_state`.
     pub fn commit_app_state(&self) {

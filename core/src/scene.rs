@@ -90,13 +90,13 @@ impl Scene {
 
     /// Returns an optionnal reference to the [Frame] at the given index,
     /// or None if there are none.
-    pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
+    pub fn frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
         self.line(line_id).and_then(|line| line.frame(frame_id))
     }
 
     /// Returns a mutable reference to the [Frame] at the given index,
     /// eventually creating necessary lines and frames in order to do so.
-    pub fn get_frame_mut(&mut self, line_id: usize, frame_id: usize) -> &mut Frame {
+    pub fn frame_mut(&mut self, line_id: usize, frame_id: usize) -> &mut Frame {
         self.line_mut(line_id).frame_mut(frame_id)
     }
 
@@ -280,6 +280,9 @@ impl Scene {
         date: &mut SyncTime,
     ) -> SyncTime {
         let len = line.length();
+        if len < 1e-6 || line.manual {
+            return NEVER;
+        }
         let rem = ActionTiming::AtNextModulo(len).remaining(last_date.saturating_sub(date_offset), clock);
         if date.saturating_sub(last_date) >= rem {
             line.start();
@@ -333,7 +336,7 @@ impl Scene {
 
         for line in self.lines.iter_mut() {
             let mut line_date = date;
-            if start {
+            if start && !line.manual {
                 line.start();
             } else if self.mode.is_free() {
                 let rem = Self::handle_free_line(

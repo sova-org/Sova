@@ -36,6 +36,16 @@ pub enum ConcreteEvent {
     },
     StartProgram(Program),
     Generic(VariableValue, SyncTime, String, usize),
+
+    // Manual scheduling
+    ExecuteFrame(usize, usize),
+    SetFrameEnabled(usize, usize, bool),
+    SetFrameDuration(usize, usize, f64),
+    SetLineLooping(usize, bool),
+    SetLineTrailing(usize, bool),
+    SetLineManual(usize, bool),
+    SetLineSpeedFactor(usize, f64),
+    SetFrame(usize, usize, String, String)
 }
 
 impl ConcreteEvent {
@@ -60,7 +70,32 @@ impl ConcreteEvent {
             }
             | ConcreteEvent::Generic(_, _, _, device_id) => Some(*device_id),
             ConcreteEvent::Print(_) => Some(0),
-            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) => None,
+            ConcreteEvent::Nop 
+            | ConcreteEvent::StartProgram(_)
+            | ConcreteEvent::ExecuteFrame(..) 
+            | ConcreteEvent::SetFrameEnabled(..) 
+            | ConcreteEvent::SetFrameDuration(..) 
+            | ConcreteEvent::SetLineLooping(..) 
+            | ConcreteEvent::SetLineTrailing(..) 
+            | ConcreteEvent::SetLineManual(..) 
+            | ConcreteEvent::SetLineSpeedFactor(..) 
+            | ConcreteEvent::SetFrame(..) => None
+        }
+    }
+
+    pub fn is_internal(&self) -> bool {
+        match self {
+            ConcreteEvent::Nop 
+            | ConcreteEvent::StartProgram(_)
+            | ConcreteEvent::ExecuteFrame(..) 
+            | ConcreteEvent::SetFrameEnabled(..) 
+            | ConcreteEvent::SetFrameDuration(..) 
+            | ConcreteEvent::SetLineLooping(..) 
+            | ConcreteEvent::SetLineTrailing(..) 
+            | ConcreteEvent::SetLineManual(..) 
+            | ConcreteEvent::SetLineSpeedFactor(..) 
+            | ConcreteEvent::SetFrame(..) => true,
+            _ => false
         }
     }
 }
@@ -96,6 +131,14 @@ impl fmt::Display for ConcreteEvent {
             ConcreteEvent::StartProgram(_) => write!(f, "start-program"),
             ConcreteEvent::Generic(val, dur, ch, dev) =>
                 write!(f, "generic {val:?} dur {dur}us ch {ch} dev {dev}"),
+            ConcreteEvent::ExecuteFrame(l_i, f_i) => write!(f, "execute {l_i}:{f_i}"),
+            ConcreteEvent::SetFrameEnabled(l_i, f_i, en) => write!(f, "set-enabled {l_i}:{f_i} = {en}"),
+            ConcreteEvent::SetFrameDuration(l_i, f_i, dur) => write!(f, "set-duration {l_i}:{f_i} = {dur}"),
+            ConcreteEvent::SetLineLooping(l_i, looping) => write!(f, "set-looping {l_i} = {looping}"),
+            ConcreteEvent::SetLineTrailing(l_i, trailing) => write!(f, "set-trailing {l_i} = {trailing}"),
+            ConcreteEvent::SetLineManual(l_i, manual) => write!(f, "set-manual {l_i} = {manual}"),
+            ConcreteEvent::SetLineSpeedFactor(l_i, fact) => write!(f, "set-speed-factor {l_i} = {fact}"),
+            ConcreteEvent::SetFrame(l_i, f_i, lang, _) => write!(f, "set-frame {l_i}:{f_i} | {lang}"),
         }
     }
 }
@@ -135,6 +178,16 @@ pub enum Event {
 
     /// Generic event: value, duration, channel, device
     Generic(Variable, Variable, Variable, Variable),
+
+    // ---- Manual scheduling ----
+    ExecuteFrame(Variable, Variable),
+    SetFrameEnabled(Variable, Variable, Variable),
+    SetFrameDuration(Variable, Variable, Variable),
+    SetLineLooping(Variable, Variable),
+    SetLineTrailing(Variable, Variable),
+    SetLineManual(Variable, Variable),
+    SetLineSpeedFactor(Variable, Variable),
+    SetFrame(Variable, Variable, Variable, Variable)
 }
 
 impl Event {
@@ -260,6 +313,58 @@ impl Event {
                 ctx.evaluate(channel).as_str(ctx),
                 ctx.evaluate(device).as_integer(ctx) as usize,
             ),
+            Event::ExecuteFrame(l_i, f_i) => {
+                ConcreteEvent::ExecuteFrame(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(f_i).as_integer(ctx) as usize
+                )
+            }
+            Event::SetFrameEnabled(l_i, f_i, en) => {
+                ConcreteEvent::SetFrameEnabled(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(f_i).as_integer(ctx) as usize,
+                    ctx.evaluate(en).as_bool(ctx)
+                )
+            }
+            Event::SetFrameDuration(l_i, f_i, dur) => {
+                ConcreteEvent::SetFrameDuration(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(f_i).as_integer(ctx) as usize,
+                    ctx.evaluate(dur).as_float(ctx)
+                )
+            }
+            Event::SetLineLooping(l_i, looping) => {
+                ConcreteEvent::SetLineLooping(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(looping).as_bool(ctx)
+                )
+            }
+            Event::SetLineTrailing(l_i, trailing) => {
+                ConcreteEvent::SetLineTrailing(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(trailing).as_bool(ctx)
+                )
+            }
+            Event::SetLineManual(l_i, manual) => {
+                ConcreteEvent::SetLineManual(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(manual).as_bool(ctx)
+                )
+            }
+            Event::SetLineSpeedFactor(l_i, fact) => {
+                ConcreteEvent::SetLineSpeedFactor(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(fact).as_float(ctx)
+                )
+            }
+            Event::SetFrame(l_i, f_i, lang, script) => {
+                ConcreteEvent::SetFrame(
+                    ctx.evaluate(l_i).as_integer(ctx) as usize, 
+                    ctx.evaluate(f_i).as_integer(ctx) as usize,
+                    ctx.evaluate(lang).as_str(ctx),
+                    ctx.evaluate(script).as_str(ctx)
+                )
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::{Scene, script::ScriptExecution}, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
+    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::{Scene, script::ScriptExecution}, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -241,6 +241,22 @@ impl Scheduler {
             .unwrap_or(NEVER)
     }
 
+    pub fn execute_event(&mut self, event: ConcreteEvent, date: SyncTime) {
+        if event.is_internal() {
+            ActionProcessor::process_internal_event(
+                &mut self.scene, 
+                event,
+                &self.update_notifier,
+                &self.languages,
+                &self.feedback
+            );
+            return;
+        }
+        for msg in self.devices.map_event(event, date, &self.clock) {
+            let _ = self.world_iface.send(msg);
+        }
+    }
+
     pub fn process_executions(&mut self, date: SyncTime) -> SyncTime {
         let mut partial = PartialContext::default();
         partial.logic_date = date;
@@ -250,15 +266,16 @@ impl Scheduler {
         partial.errors = Some(&self.error_queue);
         let (events, wait) = self.scene.update_executions(partial);
         for event in events {
-            for msg in self.devices.map_event(event, date, &self.clock) {
-                let _ = self.world_iface.send(msg);
-            }
+            self.execute_event(event, date);            
         }
         wait
     }
 
     pub fn process_scratchpad_executions(&mut self, date: SyncTime) -> SyncTime {
         let mut next_wait = NEVER;
+        if self.scratchpad.is_empty() {
+            return next_wait;
+        }
         let mut line_vars = VariableStore::new();
         let mut frame_vars = VariableStore::new();
         let mut partial = PartialContext {
@@ -278,6 +295,7 @@ impl Scheduler {
             device_map: Some(&self.devices),
             errors: Some(&self.error_queue),
         };
+        let mut trig = Vec::with_capacity(self.scratchpad.len());
         for (exec, frame_len) in self.scratchpad.iter_mut() {
             partial.frame_len = Some(*frame_len);
             if !exec.is_ready(date) {
@@ -286,11 +304,12 @@ impl Scheduler {
             }
             let (event, wait) = exec.execute_next(partial.child());
             if let Some(e) = event {
-                for msg in self.devices.map_event(e, date, &self.clock) {
-                    let _ = self.world_iface.send(msg);
-                }
+                trig.push(e);
             }
             next_wait = std::cmp::min(next_wait, wait);
+        }
+        for event in trig {
+            self.execute_event(event, date);
         }
         self.scratchpad.retain(|(exec, _)| !exec.has_terminated());
         next_wait

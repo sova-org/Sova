@@ -55,6 +55,8 @@ pub struct Line {
     pub looping: bool,
     #[serde(default)]
     pub trailing: bool,
+    #[serde(default)]
+    pub manual: bool,
 
     // --- Runtime State (Not Serialized) ---
     /// The current loop iteration number for the line.
@@ -142,6 +144,7 @@ impl Line {
         self.end_frame = other.end_frame;
         self.looping = other.looping;
         self.trailing = other.trailing;
+        self.manual = other.manual;
     }
 
     /// Returns light version without frames
@@ -445,6 +448,10 @@ impl Line {
             }
             stepped = true;
             if state.last_trigger != NEVER {
+                if self.manual { // Already started, manual mode so stopping it
+                    state.current_frame = usize::MAX;
+                    continue;
+                }
                 // Precise date correction if the exact time has been stepped over
                 let frame_len = clock.beats_to_micros(frame.duration / self.speed_factor);
                 date = state.last_trigger + frame_len;
@@ -546,6 +553,7 @@ impl Default for Line {
             frames_passed: Default::default(),
             looping: false,
             trailing: false,
+            manual: false
         }
     }
 }
