@@ -865,7 +865,7 @@ fn enrich_with_sound_docs(languages: &mut [sova_core::vm::language::LanguageDefi
             let desc = format!("GM {} (program {})", preset.family, preset.program);
             let mut entry = ReferenceEntry::new(desc).with_category("Sound: GM");
             if !preset.aliases.is_empty() {
-                let aliases: Vec<&str> = preset.aliases.iter().copied().collect();
+                let aliases: Vec<&str> = preset.aliases.iter().map(String::as_str).collect();
                 entry = entry.with_aliases(&aliases);
             }
             ref_map.insert(LanguageElement::Word(preset.name.to_string()), entry);

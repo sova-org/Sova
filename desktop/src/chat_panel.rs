@@ -1,4 +1,5 @@
 use eframe::egui;
+use egui::text::TextWrapping;
 
 use crate::client_bridge::ClientBridge;
 use crate::settings::AppearanceSettings;
@@ -137,7 +138,25 @@ impl ChatPanel {
                                                 .strong()
                                                 .color(username_color(&msg.user)),
                                         );
-                                        ui.label(&msg.message);
+                                        let mut job = egui::text::LayoutJob {
+                                            wrap: TextWrapping {
+                                                max_width: ui.available_width(),
+                                                ..Default::default()
+                                            },
+                                            ..Default::default()
+                                        };
+                                        widgets::append_inline_markdown(
+                                            &mut job,
+                                            &msg.message,
+                                            &egui::TextFormat {
+                                                font_id: egui::FontId::proportional(14.0),
+                                                color: ui.visuals().text_color(),
+                                                ..Default::default()
+                                            },
+                                            ui.visuals().strong_text_color(),
+                                            ui.visuals().code_bg_color,
+                                        );
+                                        ui.label(job);
                                     }
                                 });
                             }

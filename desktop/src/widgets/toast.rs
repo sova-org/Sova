@@ -147,14 +147,21 @@ impl ToastStack {
                                         ..Default::default()
                                     },
                                 );
-                                job.append(
+                                super::append_inline_markdown(
+                                    &mut job,
                                     &toast.message,
-                                    0.0,
-                                    egui::TextFormat {
+                                    &egui::TextFormat {
                                         font_id: font,
                                         color: text_color,
                                         ..Default::default()
                                     },
+                                    ui.visuals().strong_text_color().gamma_multiply(alpha),
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        bg_r.saturating_add(12),
+                                        bg_g.saturating_add(12),
+                                        bg_b.saturating_add(12),
+                                        alpha_byte,
+                                    ),
                                 );
                                 ui.label(job);
                             }
