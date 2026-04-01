@@ -219,6 +219,63 @@ fn parse_repeat(chars: &[char], from: usize, end: usize) -> (usize, usize) {
     (1, 0)
 }
 
+/// Split a pattern string into top-level slot substrings.
+/// Each slot is: a char (+ optional `*N`), or a bracket group (+ optional `*N`).
+fn top_level_slots(input: &str) -> Result<Vec<String>, String> {
+    let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut slots = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            'x' | '.' | '-' => {
+                let (_, rep_consumed) = parse_repeat(&chars, i + 1, chars.len());
+                let end = i + 1 + rep_consumed;
+                slots.push(chars[i..end].iter().collect());
+                i = end;
+            }
+            '[' | '<' => {
+                let close = find_closing(&chars, i)?;
+                let (_, rep_consumed) = parse_repeat(&chars, close + 1, chars.len());
+                let end = close + 1 + rep_consumed;
+                slots.push(chars[i..end].iter().collect());
+                i = end;
+            }
+            c => return Err(format!("unknown pattern char '{c}'")),
+        }
+    }
+    Ok(slots)
+}
+
+pub(crate) fn rotate_pattern(input: &str, n: i64) -> Result<String, String> {
+    let mut slots = top_level_slots(input)?;
+    if slots.is_empty() {
+        return Ok(String::new());
+    }
+    let len = slots.len() as i64;
+    let shift = ((n % len) + len) % len;
+    slots.rotate_right(shift as usize);
+    Ok(slots.join(""))
+}
+
+pub(crate) fn reverse_pattern(input: &str) -> Result<String, String> {
+    let mut slots = top_level_slots(input)?;
+    slots.reverse();
+    Ok(slots.join(""))
+}
+
+pub(crate) fn invert_pattern(input: &str) -> Result<String, String> {
+    let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
+    Ok(chars
+        .iter()
+        .map(|c| match c {
+            'x' => '.',
+            '.' => 'x',
+            '-' => 'x',
+            other => *other,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,5 +544,72 @@ mod tests {
     #[test]
     fn error_pipe_outside() {
         assert!(parse_pattern("x|x").is_err());
+    }
+
+    // --- transforms ---
+
+    #[test]
+    fn rotate_right() {
+        // [x, ., ., x] → rotate_right(1) → [x, x, ., .]
+        assert_eq!(rotate_pattern("x..x", 1).unwrap(), "xx..");
+    }
+
+    #[test]
+    fn rotate_left() {
+        // x . . x → rotate left by 1 → . . x x
+        assert_eq!(rotate_pattern("x..x", -1).unwrap(), "..xx");
+    }
+
+    #[test]
+    fn rotate_preserves_brackets() {
+        // x [xx] . → rotate right by 1 → . x [xx]
+        assert_eq!(rotate_pattern("x[xx].", 1).unwrap(), ".x[xx]");
+    }
+
+    #[test]
+    fn rotate_with_repeat() {
+        // x . *2 → slots: ["x", ".*2"] → rotate right 1 → .*2 x
+        assert_eq!(rotate_pattern("x.*2", 1).unwrap(), ".*2x");
+    }
+
+    #[test]
+    fn rotate_zero() {
+        assert_eq!(rotate_pattern("x.x.", 0).unwrap(), "x.x.");
+    }
+
+    #[test]
+    fn rotate_full_cycle() {
+        assert_eq!(rotate_pattern("x.x.", 4).unwrap(), "x.x.");
+    }
+
+    #[test]
+    fn reverse_simple() {
+        assert_eq!(reverse_pattern("x...").unwrap(), "...x");
+    }
+
+    #[test]
+    fn reverse_with_brackets() {
+        assert_eq!(reverse_pattern("x.[xx.]").unwrap(), "[xx.].x");
+    }
+
+    #[test]
+    fn reverse_preserves_alternation() {
+        assert_eq!(reverse_pattern("x<a|b>.").unwrap(), ".<a|b>x");
+    }
+
+    #[test]
+    fn invert_simple() {
+        assert_eq!(invert_pattern("x.x.").unwrap(), ".x.x");
+    }
+
+    #[test]
+    fn invert_elongation() {
+        // x-- becomes .xx (elongation of a now-rest becomes hits)
+        assert_eq!(invert_pattern("x--.").unwrap(), ".xxx");
+    }
+
+    #[test]
+    fn invert_preserves_brackets() {
+        assert_eq!(invert_pattern("[x.x]").unwrap(), "[.x.]");
     }
 }

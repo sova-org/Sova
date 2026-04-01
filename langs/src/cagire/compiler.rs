@@ -213,19 +213,7 @@ fn compile(
                         pattern::parse_pattern(s)
                             .map_err(|e| err(format!("pat: {e}"), sp))?;
                     }
-                    if let Some((body_ops, body_spans, consumed)) =
-                        compile_at(&tokens[i + 1..], dict)?
-                    {
-                        i += consumed;
-                        push(
-                            &mut ops,
-                            &mut spans,
-                            Op::PatLoop(Arc::from(body_ops), Arc::from(body_spans)),
-                            sp,
-                        );
-                    } else {
-                        push(&mut ops, &mut spans, Op::PatPush, sp);
-                    }
+                    push(&mut ops, &mut spans, Op::PatPush, sp);
                 } else if word == "case" {
                     let (case_ops, case_spans, consumed) =
                         compile_case(&tokens[i + 1..], sp, dict)?;

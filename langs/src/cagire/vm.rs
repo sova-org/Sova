@@ -12,14 +12,8 @@ use sova_core::vm::variable::{Variable, VariableValue};
 
 use super::compiler::{Dictionary, compile_script};
 use super::ops::Op;
-use super::pattern::{PatHit, parse_pattern};
+use super::pattern;
 use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Stack, Value, float_to_value};
-
-fn pop_pattern(stack: &mut Stack) -> Result<Arc<[PatHit]>, String> {
-    let val = stack.pop()?;
-    let s = val.as_str()?;
-    parse_pattern(s)
-}
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -818,11 +812,52 @@ impl CagireVM {
 
                 Op::AtLoop(body_ops, body_spans) => {
                     at!(stack.ensure(1))?;
-                    let deltas = std::mem::take(&mut stack.values);
+                    let values = std::mem::take(&mut stack.values);
                     stack.origins.clear();
-                    let n = deltas.len();
 
-                    for (i, delta_val) in deltas.iter().enumerate() {
+                    // Single string → pattern mode (with gates + alternation)
+                    if values.len() == 1 {
+                        if let Value::Str(ref s) = values[0] {
+                            let hits = at!(pattern::parse_pattern(s))?;
+                            let n = hits.len();
+                            for (i, hit) in hits.iter().enumerate() {
+                                if let Some(alt) = &hit.alt {
+                                    if ctx.runs % alt.count as usize != alt.index as usize {
+                                        continue;
+                                    }
+                                }
+                                let delta_secs = ctx.nudge_secs + hit.position * ctx.step_duration;
+
+                                let iter_ctx = StepContext {
+                                    step: ctx.step,
+                                    beat: ctx.beat,
+                                    tempo: ctx.tempo,
+                                    phase: ctx.phase,
+                                    slot: ctx.slot,
+                                    runs: ctx.runs * n + i,
+                                    iter: ctx.iter,
+                                    speed: ctx.speed,
+                                    step_duration: ctx.step_duration,
+                                    frame_index: ctx.frame_index,
+                                    nudge_secs: ctx.nudge_secs,
+                                    default_device: ctx.default_device,
+                                };
+
+                                cmd.set_delta_secs(delta_secs);
+                                cmd.set_param("gate", Value::Float(hit.gate * ctx.step_duration));
+                                self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
+                                cmd.clear_params();
+                                cmd.clear_sound();
+                            }
+
+                            pc += 1;
+                            continue;
+                        }
+                    }
+
+                    // Float mode (existing behavior)
+                    let n = values.len();
+                    for (i, delta_val) in values.iter().enumerate() {
                         let frac = at!(delta_val.as_float())?;
                         let delta_secs = ctx.nudge_secs + frac * ctx.step_duration;
 
@@ -848,42 +883,10 @@ impl CagireVM {
                     }
                 }
 
-                Op::PatLoop(body_ops, body_spans) => {
-                    let hits = at!(pop_pattern(stack))?;
-                    let n = hits.len();
-                    for (i, hit) in hits.iter().enumerate() {
-                        if let Some(alt) = &hit.alt {
-                            if ctx.runs % alt.count as usize != alt.index as usize {
-                                continue;
-                            }
-                        }
-                        let delta_secs = ctx.nudge_secs + hit.position * ctx.step_duration;
-
-                        let iter_ctx = StepContext {
-                            step: ctx.step,
-                            beat: ctx.beat,
-                            tempo: ctx.tempo,
-                            phase: ctx.phase,
-                            slot: ctx.slot,
-                            runs: ctx.runs * n + i,
-                            iter: ctx.iter,
-                            speed: ctx.speed,
-                            step_duration: ctx.step_duration,
-                            frame_index: ctx.frame_index,
-                            nudge_secs: ctx.nudge_secs,
-                            default_device: ctx.default_device,
-                        };
-
-                        cmd.set_delta_secs(delta_secs);
-                        cmd.set_param("gate", Value::Float(hit.gate * ctx.step_duration));
-                        self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
-                        cmd.clear_params();
-                        cmd.clear_sound();
-                    }
-                }
-
                 Op::PatPush => {
-                    let hits = at!(pop_pattern(stack))?;
+                    let val = at!(stack.pop())?;
+                    let s = at!(val.as_str().map(str::to_string))?;
+                    let hits = at!(pattern::parse_pattern(&s))?;
                     let origin = span!();
                     for hit in hits.iter() {
                         if let Some(alt) = &hit.alt {
@@ -893,6 +896,28 @@ impl CagireVM {
                         }
                         stack.push(Value::Float(hit.position), origin);
                     }
+                }
+
+                Op::PatRot => {
+                    let n = at!(stack.pop_int())?;
+                    let val = at!(stack.pop())?;
+                    let s = at!(val.as_str().map(str::to_string))?;
+                    let result = at!(pattern::rotate_pattern(&s, n))?;
+                    stack.push(Value::Str(Arc::from(result.as_str())), span!());
+                }
+
+                Op::PatRev => {
+                    let val = at!(stack.pop())?;
+                    let s = at!(val.as_str().map(str::to_string))?;
+                    let result = at!(pattern::reverse_pattern(&s))?;
+                    stack.push(Value::Str(Arc::from(result.as_str())), span!());
+                }
+
+                Op::PatInv => {
+                    let val = at!(stack.pop())?;
+                    let s = at!(val.as_str().map(str::to_string))?;
+                    let result = at!(pattern::invert_pattern(&s))?;
+                    stack.push(Value::Str(Arc::from(result.as_str())), span!());
                 }
 
                 Op::Adsr => {

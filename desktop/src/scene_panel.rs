@@ -245,12 +245,15 @@ impl ScenePanel {
                                     .id_salt(("line_scroll", li))
                                     .auto_shrink(false)
                                     .show(ui, |ui| {
+                                        let current_playing_fi = bridge
+                                            .positions()
+                                            .get(li)
+                                            .and_then(|p| p.first())
+                                            .map(|&(fi, _)| fi);
+
                                         for fi in 0..line.frames.len() {
                                             let frame = &line.frames[fi];
-                                            let is_playing = bridge
-                                                .positions()
-                                                .get(li)
-                                                .is_some_and(|p| p.iter().any(|&(pf, _)| pf == fi));
+                                            let is_playing = current_playing_fi == Some(fi);
                                             let line_progress = if is_playing {
                                                 progress.get(li).copied().unwrap_or(0.0)
                                             } else {
@@ -269,11 +272,13 @@ impl ScenePanel {
                                                 ui,
                                                 li,
                                                 fi,
+                                                line.frames.len(),
                                                 frame,
                                                 is_playing,
                                                 line_progress,
                                                 is_selected,
                                                 is_cursor,
+                                                current_playing_fi,
                                                 crate::widgets::line_accent(accent, li),
                                                 &opacity,
                                                 editor_settings,
@@ -609,11 +614,13 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         li: usize,
         fi: usize,
+        n_frames: usize,
         frame: &Frame,
         is_playing: bool,
         progress: f32,
         is_selected: bool,
         is_cursor: bool,
+        current_playing_fi: Option<usize>,
         accent: egui::Color32,
         opacity: &SceneOpacity,
         editor_settings: &EditorSettings,
@@ -683,7 +690,7 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.set_height(HEADER_HEIGHT);
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_header(ui, li, fi, frame, opacity, bridge);
+                        state.show_header(ui, li, fi, n_frames, current_playing_fi, accent, frame, opacity, bridge);
                     }
                 });
 

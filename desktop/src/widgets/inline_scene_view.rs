@@ -182,6 +182,9 @@ impl InlineFrameState {
         ui: &mut egui::Ui,
         li: usize,
         fi: usize,
+        n_frames: usize,
+        current_playing_fi: Option<usize>,
+        accent: egui::Color32,
         frame: &Frame,
         _opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
@@ -301,7 +304,7 @@ impl InlineFrameState {
             ));
         }
 
-        // Right-aligned: menu button + dirty indicator
+        // Right-aligned: menu button + dirty indicator + step badge
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Menu button
             let menu_btn = ui.add(
@@ -327,6 +330,31 @@ impl InlineFrameState {
                 {
                     self.sync_from_frame(frame);
                 }
+            }
+
+            // Step badge
+            if n_frames > 1 {
+                let label = format!("{}/{}", fi + 1, n_frames);
+                let (badge_bg, badge_fg) = match current_playing_fi {
+                    Some(pfi) if fi == pfi => (accent, egui::Color32::WHITE),
+                    Some(pfi) if fi < pfi => (
+                        egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 50),
+                        COLOR_MUTED,
+                    ),
+                    _ => (ui.visuals().extreme_bg_color, COLOR_MUTED),
+                };
+                let font = egui::FontId::monospace(10.0);
+                let galley = ui.painter().layout_no_wrap(label, font, badge_fg);
+                let pad = egui::vec2(5.0, 2.0);
+                let desired = galley.size() + pad * 2.0;
+                let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+                ui.painter().rect_filled(rect, 0.0, badge_bg);
+                let center = rect.center();
+                ui.painter().galley(
+                    egui::pos2(center.x - galley.size().x / 2.0, center.y - galley.size().y / 2.0),
+                    galley,
+                    badge_fg,
+                );
             }
         });
     }
