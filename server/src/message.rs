@@ -1,7 +1,11 @@
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime, protocol::DeviceInfo, scene::Scene, schedule::{SchedulerMessage, SovaNotification}, vm::{language::LanguageDefinition}
+    clock::SyncTime,
+    protocol::DeviceInfo,
+    scene::Scene,
+    schedule::{SchedulerMessage, SovaNotification},
+    vm::language::LanguageDefinition,
 };
 
 use crate::server::Snapshot;
@@ -74,7 +78,8 @@ mod tests {
         compiler::{CompilationError, CompilationState},
         error::SovaError,
         protocol::{
-            DeviceInfo, log::{LogMessage, Severity}
+            DeviceInfo,
+            log::{LogMessage, Severity},
         },
         scene::{ExecutionMode, Frame, Line, Scene, script::Script},
         schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState},
@@ -82,17 +87,20 @@ mod tests {
     };
 
     fn roundtrip(msg: &ServerMessage) {
-        let bytes = rmp_serde::to_vec_named(msg)
-            .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        rmp_serde::from_slice::<ServerMessage>(&bytes)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
-                    std::mem::discriminant(msg),
-                    bytes.len(),
-                    &bytes[..bytes.len().min(32)]
-                )
-            });
+        let bytes = rmp_serde::to_vec_named(msg).unwrap_or_else(|e| {
+            panic!(
+                "serialize failed for {:?}: {e}",
+                std::mem::discriminant(msg)
+            )
+        });
+        rmp_serde::from_slice::<ServerMessage>(&bytes).unwrap_or_else(|e| {
+            panic!(
+                "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
+                std::mem::discriminant(msg),
+                bytes.len(),
+                &bytes[..bytes.len().min(32)]
+            )
+        });
     }
 
     #[test]
@@ -169,28 +177,52 @@ mod tests {
                 ("y".into(), VariableValue::Float(3.14)),
                 ("z".into(), VariableValue::Bool(true)),
                 ("s".into(), VariableValue::Str("hi".into())),
-                ("d".into(), VariableValue::Dur(sova_core::clock::TimeSpan::Beats(1.0))),
-                ("m".into(), VariableValue::Map(HashMap::from([
-                    ("nested_int".into(), VariableValue::Integer(7)),
-                    ("nested_str".into(), VariableValue::Str("deep".into())),
-                ]))),
-                ("v".into(), VariableValue::Vec(vec![
-                    VariableValue::Integer(1),
-                    VariableValue::Float(2.5),
-                    VariableValue::Bool(false),
-                ])),
+                (
+                    "d".into(),
+                    VariableValue::Dur(sova_core::clock::TimeSpan::Beats(1.0)),
+                ),
+                (
+                    "m".into(),
+                    VariableValue::Map(HashMap::from([
+                        ("nested_int".into(), VariableValue::Integer(7)),
+                        ("nested_str".into(), VariableValue::Str("deep".into())),
+                    ])),
+                ),
+                (
+                    "v".into(),
+                    VariableValue::Vec(vec![
+                        VariableValue::Integer(1),
+                        VariableValue::Float(2.5),
+                        VariableValue::Bool(false),
+                    ]),
+                ),
             ]))),
             // CompilationState variants — the most likely to cause issues
             ServerMessage::Notification(CompilationUpdated(0, 0, 1, CompilationState::NotCompiled)),
             ServerMessage::Notification(CompilationUpdated(0, 0, 2, CompilationState::Compiling)),
-            ServerMessage::Notification(CompilationUpdated(0, 0, 3, CompilationState::Compiled(Default::default()))),
-            ServerMessage::Notification(CompilationUpdated(0, 0, 4, CompilationState::Parsed(None))),
-            ServerMessage::Notification(CompilationUpdated(0, 0, 5, CompilationState::Error(CompilationError {
-                lang: "bob".into(),
-                info: "parse error".into(),
-                from: 0,
-                to: 10,
-            }))),
+            ServerMessage::Notification(CompilationUpdated(
+                0,
+                0,
+                3,
+                CompilationState::Compiled(Default::default()),
+            )),
+            ServerMessage::Notification(CompilationUpdated(
+                0,
+                0,
+                4,
+                CompilationState::Parsed(None),
+            )),
+            ServerMessage::Notification(CompilationUpdated(
+                0,
+                0,
+                5,
+                CompilationState::Error(CompilationError {
+                    lang: "bob".into(),
+                    info: "parse error".into(),
+                    from: 0,
+                    to: 10,
+                }),
+            )),
             ServerMessage::DevicesRestored {
                 missing_devices: vec!["MIDI1".into()],
             },
@@ -211,7 +243,10 @@ mod tests {
             },
             ServerMessage::Feedback(SchedulerMessage::SetTempo(140.0, ActionTiming::Immediate)),
             ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
-            ServerMessage::Feedback(SchedulerMessage::SetScene(scene.clone(), ActionTiming::Immediate)),
+            ServerMessage::Feedback(SchedulerMessage::SetScene(
+                scene.clone(),
+                ActionTiming::Immediate,
+            )),
             ServerMessage::CoreRestarted,
             ServerMessage::LinkState {
                 enabled: true,

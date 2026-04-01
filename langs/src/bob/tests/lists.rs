@@ -145,8 +145,9 @@ fn list_stored_in_variable() {
 #[test]
 fn foreach_basic() {
     // First test: manual iteration using L loop - THIS WORKS
-    let result =
-        compile_and_run("SET G.M '[10 20 30]; SET G.X 0; RANGE 0 2 : SET G.X ADD G.X GET G.M I; I END");
+    let result = compile_and_run(
+        "SET G.M '[10 20 30]; SET G.X 0; RANGE 0 2 : SET G.X ADD G.X GET G.M I; I END",
+    );
     assert_eq!(
         result.global_vars.get("X"),
         Some(&VariableValue::Integer(60)) // 10 + 20 + 30 = 60

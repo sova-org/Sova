@@ -4,8 +4,8 @@ use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
 
 use crate::clock::TimeSpan;
-use crate::vm::variable::VariableValue;
 use crate::protocol::error::ProtocolError;
+use crate::vm::variable::VariableValue;
 
 mod message;
 pub use message::*;
@@ -19,9 +19,7 @@ pub fn variable_from_osc(value: OscType) -> Option<VariableValue> {
         OscType::Float(f) => Some(VariableValue::Float(f as f64)),
         OscType::String(s) => Some(VariableValue::Str(s)),
         OscType::Blob(items) => Some(VariableValue::Blob(items)),
-        OscType::Time(_osc_time) => {
-            None
-        }
+        OscType::Time(_osc_time) => None,
         OscType::Long(i) => Some(VariableValue::Integer(i)),
         OscType::Double(d) => Some(VariableValue::Float(d)),
         OscType::Char(c) => Some(VariableValue::Str(c.to_string())),
@@ -31,13 +29,17 @@ pub fn variable_from_osc(value: OscType) -> Option<VariableValue> {
             map.insert("data1".to_owned(), (midi.data1 as i64).into());
             map.insert("data2".to_owned(), (midi.data2 as i64).into());
             Some(VariableValue::Map(map))
-        },
+        }
         OscType::Bool(b) => Some(VariableValue::Bool(b)),
         OscType::Array(osc_array) => {
-            let values = osc_array.content.into_iter().filter_map(|x| variable_from_osc(x)).collect();
+            let values = osc_array
+                .content
+                .into_iter()
+                .filter_map(|x| variable_from_osc(x))
+                .collect();
             Some(VariableValue::Vec(values))
         }
-        _ => None
+        _ => None,
     }
 }
 
@@ -52,16 +54,14 @@ pub fn osc_from_variable(value: VariableValue) -> Option<OscType> {
         VariableValue::Str(s) => Some(OscType::String(s)),
         VariableValue::Blob(b) => Some(OscType::Blob(b)),
         VariableValue::Dur(t) => {
-            let TimeSpan::Micros(t) = t else {
-                return None
-            };
+            let TimeSpan::Micros(t) = t else { return None };
             let secs = t / 1_000_000;
             Some(OscType::Time(OscTime {
                 seconds: secs as u32,
                 fractional: (t - secs) as u32,
             }))
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -75,16 +75,16 @@ pub struct OSCOut {
 }
 
 impl OSCOut {
-
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
         crate::log_println!(
             "[~] connect() called for OSCOutDevice '{}' @ {}",
-            self.name, self.address
+            self.name,
+            self.address
         );
         if self.socket.is_some() {
             crate::log_println!("    Already connected.");
             return Ok(());
-        } 
+        }
         // Bind to any available local port for sending
         let local_addr: SocketAddr = "0.0.0.0:0"
             .parse()
@@ -101,7 +101,8 @@ impl OSCOut {
             Err(e) => {
                 crate::log_eprintln!(
                     "[!] Failed to bind UDP socket for OSCOutDevice '{}': {}",
-                    self.name, e
+                    self.name,
+                    e
                 );
                 Err(ProtocolError::from(e))
             }
@@ -129,7 +130,6 @@ impl OSCOut {
             let rosc_msg = OscPacket::Message(rosc_msg);
 
             let packet = if let Some(timetag) = message.timetag {
-
                 // Create an OSC bundle containing the single message with the calculated timetag
                 OscPacket::Bundle(OscBundle {
                     timetag: timetag.into(),
@@ -142,7 +142,8 @@ impl OSCOut {
             match rosc::encoder::encode(&packet) {
                 Ok(buf) => {
                     // Send the encoded buffer to the target address
-                    sock.send_to(&buf, self.address).map_err(ProtocolError::from)?; // Convert IO error
+                    sock.send_to(&buf, self.address)
+                        .map_err(ProtocolError::from)?; // Convert IO error
                     Ok(())
                 }
                 Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error
@@ -154,7 +155,6 @@ impl OSCOut {
             )))
         }
     }
-
 }
 
 impl fmt::Debug for OSCOut {

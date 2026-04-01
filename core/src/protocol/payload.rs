@@ -19,14 +19,12 @@ pub enum ProtocolPayload {
 }
 
 impl ProtocolPayload {
-
     pub fn with_device(self, device: Arc<ProtocolDevice>) -> ProtocolMessage {
         ProtocolMessage {
             payload: self,
-            device
+            device,
         }
     }
-
 }
 
 impl Display for ProtocolPayload {
@@ -35,11 +33,7 @@ impl Display for ProtocolPayload {
             ProtocolPayload::OSC(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::MIDI(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
-            ProtocolPayload::AudioEngine(m) => write!(
-                f,
-                "AudioEngine: {} args",
-                m.args.len(),
-            ),
+            ProtocolPayload::AudioEngine(m) => write!(f, "AudioEngine: {} args", m.args.len(),),
         }
     }
 }

@@ -1,9 +1,18 @@
-use std::{collections::HashMap, thread::{self, JoinHandle}};
+use std::{
+    collections::HashMap,
+    thread::{self, JoinHandle},
+};
 
 use crossbeam_channel::{Receiver, SendError, Sender};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{LogMessage, clock::SyncTime, log_eprintln, protocol::{error::ProtocolError, payload::ProtocolPayload}, vm::{event::ConcreteEvent, variable::VariableValue}};
+use crate::{
+    LogMessage,
+    clock::SyncTime,
+    log_eprintln,
+    protocol::{error::ProtocolError, payload::ProtocolPayload},
+    vm::{event::ConcreteEvent, variable::VariableValue},
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
@@ -12,8 +21,10 @@ pub struct AudioEnginePayload {
 }
 
 impl AudioEnginePayload {
-
-    pub fn generate_messages(event: ConcreteEvent, date: SyncTime) -> Vec<(ProtocolPayload, SyncTime)> {
+    pub fn generate_messages(
+        event: ConcreteEvent,
+        date: SyncTime,
+    ) -> Vec<(ProtocolPayload, SyncTime)> {
         match event {
             ConcreteEvent::Dirt { args, device_id: _ } => {
                 let audio_payload = AudioEnginePayload {
@@ -29,7 +40,7 @@ impl AudioEnginePayload {
                     VariableValue::Map(map) => map,
                     s @ VariableValue::Str(_) => {
                         let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), s);                        
+                        map.insert("sound".to_owned(), s);
                         map
                     }
                     i @ VariableValue::Integer(_) => {
@@ -44,7 +55,7 @@ impl AudioEnginePayload {
                         map.insert("freq".to_owned(), f);
                         map
                     }
-                    _ => return Vec::new()
+                    _ => return Vec::new(),
                 };
                 if !map_payload.contains_key("gate") {
                     map_payload.insert("gate".to_owned(), dur_s.into());
@@ -58,28 +69,24 @@ impl AudioEnginePayload {
                 };
                 vec![(audio_payload.into(), date)]
             }
-            _ => Vec::new()
+            _ => Vec::new(),
         }
     }
-
 }
 
 pub struct AudioEngineProxy {
     pub tx: Sender<AudioEnginePayload>,
-    pub thread: Option<JoinHandle<()>>
+    pub thread: Option<JoinHandle<()>>,
 }
 
 impl AudioEngineProxy {
-
     pub fn new(tx: Sender<AudioEnginePayload>) -> Self {
-        AudioEngineProxy { 
-            tx, 
-            thread: None
-        }
+        AudioEngineProxy { tx, thread: None }
     }
 
-    pub fn log_callback<F>(&mut self, log_rx: Receiver<LogMessage>, callback: F) 
-        where F: (Fn(LogMessage) -> ()) + Send + Sync + 'static
+    pub fn log_callback<F>(&mut self, log_rx: Receiver<LogMessage>, callback: F)
+    where
+        F: (Fn(LogMessage) -> ()) + Send + Sync + 'static,
     {
         if self.thread.is_some() {
             log_eprintln!("Log handling thread is already started for audio engine !");
@@ -99,8 +106,9 @@ impl AudioEngineProxy {
     pub fn send(&self, message: AudioEnginePayload) -> Result<(), ProtocolError> {
         match self.tx.send(message) {
             Ok(_) => Ok(()),
-            Err(SendError(_)) => Err(format!("Unable to send : audio engine is disconnected !").into()),
+            Err(SendError(_)) => {
+                Err(format!("Unable to send : audio engine is disconnected !").into())
+            }
         }
     }
-
 }

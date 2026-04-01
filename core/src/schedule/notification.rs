@@ -2,15 +2,15 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::LogMessage;
 use crate::compiler::CompilationState;
 use crate::error::SovaError;
+use crate::protocol::DeviceInfo;
 use crate::scene::script::Script;
+use crate::scene::{ExecutionMode, Frame, Line, Scene};
+use crate::schedule::playback::PlaybackState;
 use crate::vm::interpreter::Annotation;
 use crate::vm::variable::VariableValue;
-use crate::scene::{ExecutionMode, Frame, Line, Scene};
-use crate::protocol::DeviceInfo;
-use crate::LogMessage;
-use crate::schedule::playback::PlaybackState;
 
 /// Enum representing notifications broadcast by the Scheduler.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -56,5 +56,5 @@ pub enum SovaNotification {
     /// Updates scene annotations
     Annotations(Vec<Vec<Vec<Annotation>>>),
     /// An internal error occured
-    Error(SovaError)
+    Error(SovaError),
 }

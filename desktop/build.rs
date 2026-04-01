@@ -23,11 +23,7 @@ fn generate_demos_for_dir(dir: &Path, const_name: &str, out: &mut String) {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "sova")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "sova"))
         .map(|e| e.path())
         .collect();
 

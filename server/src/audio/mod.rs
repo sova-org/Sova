@@ -4,7 +4,9 @@ pub enum AudioCommand {
 }
 
 #[cfg(feature = "audio")]
-pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture, audio as doux_audio};
+pub use doux_sova::{
+    AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture, audio as doux_audio,
+};
 
 #[cfg(feature = "default-samples")]
 pub mod default_samples;
@@ -49,7 +51,7 @@ mod stub {
     impl Default for AudioEngineState {
         fn default() -> Self {
             Self {
-                running: false,
+                running: true,
                 device: None,
                 sample_rate: 0.0,
                 channels: 0,

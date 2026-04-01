@@ -78,8 +78,11 @@ impl LogPanel {
                 let dimmed = color.linear_multiply(0.3);
                 let btn_color = if active { color } else { dimmed };
                 let btn = egui::Button::new(
-                    egui::RichText::new(SEVERITY_LABELS[i]).color(btn_color).strong(),
-                ).frame(false);
+                    egui::RichText::new(SEVERITY_LABELS[i])
+                        .color(btn_color)
+                        .strong(),
+                )
+                .frame(false);
                 if ui.add(btn).clicked() {
                     self.severity_filter[i] = !self.severity_filter[i];
                 }
@@ -93,7 +96,8 @@ impl LogPanel {
             ui.add(search_edit);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(crate::icons::TRASH)
+                if ui
+                    .button(crate::icons::TRASH)
                     .on_hover_text(t!("log.clear"))
                     .clicked()
                 {
@@ -124,17 +128,13 @@ impl LogPanel {
                     if !self.severity_filter[severity_index(&log.level)] {
                         continue;
                     }
-                    if !search_lower.is_empty()
-                        && !log.msg.to_lowercase().contains(&search_lower)
-                    {
+                    if !search_lower.is_empty() && !log.msg.to_lowercase().contains(&search_lower) {
                         continue;
                     }
 
                     let color = severity_color(&log.level);
-                    let resp = ui.colored_label(
-                        color,
-                        egui::RichText::new(log.to_string()).monospace(),
-                    );
+                    let resp =
+                        ui.colored_label(color, egui::RichText::new(log.to_string()).monospace());
                     if visible_idx % 2 == 1 {
                         let row = egui::Rect::from_x_y_ranges(
                             ui.clip_rect().x_range(),

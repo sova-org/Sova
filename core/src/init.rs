@@ -2,9 +2,15 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::{clock::ClockServer, device_map::DeviceMap, vm::LanguageCenter, schedule::{Scheduler, SchedulerMessage, SovaNotification}, world::World};
+use crate::{
+    clock::ClockServer,
+    device_map::DeviceMap,
+    schedule::{Scheduler, SchedulerMessage, SovaNotification},
+    vm::LanguageCenter,
+    world::World,
+};
 
-/// Starts both [World] and [Scheduler] from the same [ClockServer], 
+/// Starts both [World] and [Scheduler] from the same [ClockServer],
 /// ensuring that [Scheduler] is connected to [World]
 /// And returns handles to both threads, as well as [Scheduler] communication channels
 pub fn start_scheduler_and_world(
@@ -19,12 +25,8 @@ pub fn start_scheduler_and_world(
 ) {
     let (world_handle, world_iface) = World::create(clock_server.clone());
 
-    let (sched_handle, sched_iface, sched_update) = Scheduler::create(
-        clock_server,
-        devices,
-        languages,
-        world_iface
-    );
+    let (sched_handle, sched_iface, sched_update) =
+        Scheduler::create(clock_server, devices, languages, world_iface);
 
     (world_handle, sched_handle, sched_iface, sched_update)
 }

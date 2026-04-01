@@ -1,0 +1,5 @@
+"x..x..x." 2 prot at kick snd .
+
+clear
+
+"x..x..x." step 8 mod prot at kick snd .

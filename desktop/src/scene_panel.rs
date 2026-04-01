@@ -1,5 +1,4 @@
 use std::collections::{BTreeSet, HashMap};
-use std::time::Instant;
 
 use eframe::egui;
 use sova_core::scene::script::Script;
@@ -9,11 +8,11 @@ use sova_core::vm::language::LanguageDefinition;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
+use crate::widgets::inline_scene_view::{InlineFrameState, InlineScriptState, show_lang_picker};
 use crate::widgets::syntax_highlight::SyntaxTheme;
 use crate::widgets::{
-    EditorContext, EditorSettings, PeerCursor, username_color, COLOR_MUTED, COLOR_OK,
+    COLOR_MUTED, COLOR_OK, EditorContext, EditorSettings, PeerCursor, username_color,
 };
-use crate::widgets::inline_scene_view::{InlineFrameState, InlineScriptState};
 use sova_core::schedule::SchedulerMessage;
 
 pub fn resolve_default_language(preferred: &str, available: &[LanguageDefinition]) -> String {
@@ -116,6 +115,7 @@ pub struct ScenePanel {
     pub prelude_states: Vec<InlineScriptState>,
     pub prelude_collapsed: bool,
     pub prelude_col_width: f32,
+    picker_open_pending: BTreeSet<(usize, usize)>,
 }
 
 impl Default for ScenePanel {
@@ -136,6 +136,7 @@ impl Default for ScenePanel {
             prelude_states: Vec::new(),
             prelude_collapsed: true,
             prelude_col_width: 300.0,
+            picker_open_pending: BTreeSet::new(),
         }
     }
 }
@@ -160,21 +161,18 @@ impl ScenePanel {
             return;
         };
 
-        let default_lang = resolve_default_language(
-            &editor_settings.default_language,
-            bridge.languages(),
-        );
+        let default_lang =
+            resolve_default_language(&editor_settings.default_language, bridge.languages());
 
         let has_positions = bridge.positions().iter().any(|p| !p.is_empty());
         let accent = ui.visuals().selection.bg_fill;
         let opacity = SceneOpacity::new(visuals_enabled, scene_opacity);
 
-        // Compute per-line progress for playing indicators
+        // Compute per-line progress for playing indicators (beat-based, same source as phase bar)
         let progress: Vec<f32> = {
-            let now = Instant::now();
-            let secs_per_beat = 60.0 / bridge.clock().tempo;
+            let beat = bridge.clock().beat;
             let positions = bridge.positions();
-            let starts = bridge.position_start();
+            let starts = bridge.position_start_beat();
             (0..scene.lines.len())
                 .map(|li| {
                     let Some(&(fi, _rep)) = positions.get(li).and_then(|p| p.first()) else {
@@ -184,13 +182,13 @@ impl ScenePanel {
                     let Some(frame) = line.frames.get(fi) else {
                         return 0.0;
                     };
-                    let start = starts.get(li).copied().unwrap_or(now);
-                    let elapsed = now.duration_since(start).as_secs_f64();
-                    let dur = (frame.duration / line.speed_factor) * secs_per_beat;
+                    let start_beat = starts.get(li).copied().unwrap_or(beat);
+                    let elapsed_beats = (beat - start_beat).max(0.0);
+                    let dur = frame.duration / line.speed_factor;
                     if dur <= 0.0 {
                         return 0.0;
                     }
-                    ((elapsed % dur) / dur) as f32
+                    ((elapsed_beats % dur) / dur) as f32
                 })
                 .collect()
         };
@@ -229,201 +227,265 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
                     // Prelude column
-                    self.show_prelude_column(ui, available_height, accent, &opacity, &theme, editor_settings, bridge, &default_lang, sample_names);
+                    self.show_prelude_column(
+                        ui,
+                        available_height,
+                        accent,
+                        &opacity,
+                        &theme,
+                        editor_settings,
+                        bridge,
+                        &default_lang,
+                        sample_names,
+                    );
 
                     for li in 0..scene.lines.len() {
-                      ui.push_id(("line_col", li), |ui| {
-                        let col_width = self.column_widths[li];
-                        let line = &scene.lines[li];
+                        ui.push_id(("line_col", li), |ui| {
+                            let col_width = self.column_widths[li];
+                            let line = &scene.lines[li];
 
-                        let col_resp = ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
-                            ui.vertical(|ui| {
-                                // Line header
-                                self.show_line_header(ui, li, line, accent, &opacity, bridge, &default_lang);
+                            let col_resp =
+                                ui.allocate_ui(egui::vec2(col_width, available_height), |ui| {
+                                    ui.vertical(|ui| {
+                                        // Line header
+                                        self.show_line_header(
+                                            ui,
+                                            li,
+                                            line,
+                                            accent,
+                                            &opacity,
+                                            bridge,
+                                            &default_lang,
+                                        );
+                                        ui.add_space(4.0);
 
-                                // Independent vertical scroll for frames
-                                egui::ScrollArea::vertical()
-                                    .id_salt(("line_scroll", li))
-                                    .auto_shrink(false)
-                                    .show(ui, |ui| {
-                                        for fi in 0..line.frames.len() {
-                                            let frame = &line.frames[fi];
-                                            let is_playing = bridge
-                                                .positions()
-                                                .get(li)
-                                                .is_some_and(|p| p.iter().any(|&(pf, _)| pf == fi));
-                                            let line_progress = if is_playing {
-                                                progress.get(li).copied().unwrap_or(0.0)
-                                            } else {
-                                                0.0
-                                            };
-                                            let is_selected = self.selection.contains(&(li, fi));
-                                            let is_cursor = self.cursor == Some((li, fi));
+                                        // Independent vertical scroll for frames
+                                        egui::ScrollArea::vertical()
+                                            .id_salt(("line_scroll", li))
+                                            .auto_shrink(false)
+                                            .show(ui, |ui| {
+                                                let current_playing_fi = bridge
+                                                    .positions()
+                                                    .get(li)
+                                                    .and_then(|p| p.first())
+                                                    .map(|&(fi, _)| fi);
 
-                                            // Ensure frame state exists
-                                            let state_key = (li, fi);
-                                            self.frame_states
-                                                .entry(state_key)
-                                                .or_insert_with(|| InlineFrameState::new(frame));
+                                                for fi in 0..line.frames.len() {
+                                                    let frame = &line.frames[fi];
+                                                    let is_playing = current_playing_fi == Some(fi);
+                                                    let line_progress = if is_playing {
+                                                        progress.get(li).copied().unwrap_or(0.0)
+                                                    } else {
+                                                        0.0
+                                                    };
+                                                    let is_selected =
+                                                        self.selection.contains(&(li, fi));
+                                                    let is_cursor = self.cursor == Some((li, fi));
 
-                                            let cell_resp = self.show_frame_cell(
-                                                ui,
-                                                li,
-                                                fi,
-                                                frame,
-                                                is_playing,
-                                                line_progress,
-                                                is_selected,
-                                                is_cursor,
-                                                accent,
-                                                &opacity,
-                                                editor_settings,
-                                                &theme,
-                                                bridge,
-                                                &default_lang,
-                                                sample_names,
-                                            );
+                                                    // Ensure frame state exists; auto-open picker if pending
+                                                    let state_key = (li, fi);
+                                                    self.frame_states
+                                                        .entry(state_key)
+                                                        .or_insert_with(|| {
+                                                            InlineFrameState::new(frame)
+                                                        });
+                                                    if self.picker_open_pending.remove(&state_key) {
+                                                        self.frame_states
+                                                            .get_mut(&state_key)
+                                                            .unwrap()
+                                                            .lang_picker_open = true;
+                                                    }
 
-                                            // Scroll cursor into view (only on cursor change)
-                                            if is_cursor && self.scroll_to_cursor {
-                                                cell_resp.scroll_to_me(Some(egui::Align::Center));
-                                            }
+                                                    let cell_resp = self.show_frame_cell(
+                                                        ui,
+                                                        li,
+                                                        fi,
+                                                        line.frames.len(),
+                                                        frame,
+                                                        is_playing,
+                                                        line_progress,
+                                                        is_selected,
+                                                        is_cursor,
+                                                        current_playing_fi,
+                                                        crate::widgets::cycled_accent(accent, li),
+                                                        &opacity,
+                                                        editor_settings,
+                                                        &theme,
+                                                        bridge,
+                                                        &default_lang,
+                                                        sample_names,
+                                                    );
 
-                                            // Track editor focus
-                                            if self.frame_states
-                                                .get(&(li, fi))
-                                                .is_some_and(|s| s.editor_has_focus)
-                                            {
-                                                new_editing = Some((li, fi));
-                                            }
+                                                    // Scroll cursor into view (only on cursor change)
+                                                    if is_cursor && self.scroll_to_cursor {
+                                                        cell_resp.scroll_to_me(Some(
+                                                            egui::Align::Center,
+                                                        ));
+                                                    }
 
-                                            // Handle click on cell
-                                            if cell_resp.clicked() {
-                                                let shift = ui.input(|i| i.modifiers.shift);
-                                                if shift {
-                                                    self.extend_selection((li, fi));
-                                                } else {
-                                                    self.update_cursor((li, fi), bridge);
-                                                    self.anchor = Some((li, fi));
-                                                    self.selection.clear();
-                                                    self.selection.insert((li, fi));
-                                                }
-                                            }
+                                                    // Track editor focus
+                                                    if self
+                                                        .frame_states
+                                                        .get(&(li, fi))
+                                                        .is_some_and(|s| s.editor_has_focus)
+                                                    {
+                                                        new_editing = Some((li, fi));
+                                                    }
 
-                                            // Right-click on cell
-                                            if cell_resp.secondary_clicked() {
-                                                self.context_target =
-                                                    Some(ContextTarget::Cell(li, fi));
-                                                if !self.selection.contains(&(li, fi)) {
-                                                    self.update_cursor((li, fi), bridge);
-                                                    self.selection.clear();
-                                                    self.selection.insert((li, fi));
-                                                    self.anchor = Some((li, fi));
-                                                }
-                                            }
+                                                    // Handle click on cell
+                                                    if cell_resp.clicked() {
+                                                        let shift = ui.input(|i| i.modifiers.shift);
+                                                        if shift {
+                                                            self.extend_selection((li, fi));
+                                                        } else {
+                                                            self.update_cursor((li, fi), bridge);
+                                                            self.anchor = Some((li, fi));
+                                                            self.selection.clear();
+                                                            self.selection.insert((li, fi));
+                                                        }
+                                                    }
 
-                                            // Context menu
-                                            cell_resp.context_menu(|ui| {
-                                                self.show_context_menu(
-                                                    ui,
-                                                    Some(ContextTarget::Cell(li, fi)),
-                                                    bridge,
-                                                    &default_lang,
-                                                );
-                                            });
+                                                    // Right-click on cell
+                                                    if cell_resp.secondary_clicked() {
+                                                        self.context_target =
+                                                            Some(ContextTarget::Cell(li, fi));
+                                                        if !self.selection.contains(&(li, fi)) {
+                                                            self.update_cursor((li, fi), bridge);
+                                                            self.selection.clear();
+                                                            self.selection.insert((li, fi));
+                                                            self.anchor = Some((li, fi));
+                                                        }
+                                                    }
 
-                                            ui.add_space(GAP);
+                                                    // Context menu
+                                                    cell_resp.context_menu(|ui| {
+                                                        self.show_context_menu(
+                                                            ui,
+                                                            Some(ContextTarget::Cell(li, fi)),
+                                                            bridge,
+                                                            &default_lang,
+                                                        );
+                                                    });
 
-                                            // Drag handle below every frame for vertical resizing (hidden when collapsed)
-                                            let frame_collapsed = self.frame_states.get(&(li, fi))
-                                                .is_some_and(|s| s.collapsed);
-                                            if frame_collapsed {
-                                                ui.add_space(DRAG_HANDLE_HEIGHT);
-                                            } else {
-                                                let handle_width = ui.available_width();
-                                                let (handle_rect, handle_resp) = ui.allocate_exact_size(
-                                                    egui::vec2(handle_width, DRAG_HANDLE_HEIGHT),
-                                                    egui::Sense::drag(),
-                                                );
-                                                if handle_resp.dragged() {
-                                                    let delta = handle_resp.drag_delta().y;
-                                                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                                                        state.height = (state.height + delta).clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
+                                                    ui.add_space(GAP);
+
+                                                    // Drag handle below every frame for vertical resizing (hidden when collapsed)
+                                                    let frame_collapsed = self
+                                                        .frame_states
+                                                        .get(&(li, fi))
+                                                        .is_some_and(|s| s.collapsed);
+                                                    if frame_collapsed {
+                                                        ui.add_space(DRAG_HANDLE_HEIGHT);
+                                                    } else {
+                                                        let handle_width = ui.available_width();
+                                                        let (handle_rect, handle_resp) = ui
+                                                            .allocate_exact_size(
+                                                                egui::vec2(
+                                                                    handle_width,
+                                                                    DRAG_HANDLE_HEIGHT,
+                                                                ),
+                                                                egui::Sense::drag(),
+                                                            );
+                                                        if handle_resp.dragged() {
+                                                            let delta = handle_resp.drag_delta().y;
+                                                            if let Some(state) =
+                                                                self.frame_states.get_mut(&(li, fi))
+                                                            {
+                                                                state.height =
+                                                                    (state.height + delta).clamp(
+                                                                        MIN_FRAME_HEIGHT,
+                                                                        MAX_FRAME_HEIGHT,
+                                                                    );
+                                                            }
+                                                        }
+                                                        if handle_resp.hovered()
+                                                            || handle_resp.dragged()
+                                                        {
+                                                            let center_y = handle_rect.center().y;
+                                                            ui.painter().hline(
+                                                                handle_rect.x_range(),
+                                                                center_y,
+                                                                egui::Stroke::new(1.0, accent),
+                                                            );
+                                                            ui.ctx().set_cursor_icon(
+                                                                egui::CursorIcon::ResizeVertical,
+                                                            );
+                                                        }
                                                     }
                                                 }
-                                                if handle_resp.hovered() || handle_resp.dragged() {
-                                                    let center_y = handle_rect.center().y;
-                                                    ui.painter().hline(
-                                                        handle_rect.x_range(),
-                                                        center_y,
-                                                        egui::Stroke::new(1.0, accent),
-                                                    );
-                                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+
+                                                // Add frame button
+                                                ui.add_space(4.0);
+                                                let add_btn_fill = opacity.fill(
+                                                    ui.visuals().widgets.inactive.bg_fill,
+                                                    0.5,
+                                                );
+                                                if ui
+                                                    .add(
+                                                        egui::Button::new(
+                                                            egui::RichText::new("+").strong(),
+                                                        )
+                                                        .fill(add_btn_fill)
+                                                        .min_size(egui::vec2(
+                                                            ui.available_width(),
+                                                            22.0,
+                                                        )),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    let fi = line.frames.len();
+                                                    bridge.send(SchedulerMessage::AddFrame(
+                                                        li,
+                                                        fi,
+                                                        new_frame(&default_lang),
+                                                        ActionTiming::Immediate,
+                                                    ));
+                                                    self.picker_open_pending.insert((li, fi));
                                                 }
-                                            }
-                                        }
-
-                                        // Add frame button
-                                        ui.add_space(4.0);
-                                        let add_btn_fill = opacity.fill(
-                                            ui.visuals().widgets.inactive.bg_fill, 0.5,
-                                        );
-                                        if ui
-                                            .add(
-                                                egui::Button::new(
-                                                    egui::RichText::new("+").strong(),
-                                                )
-                                                .fill(add_btn_fill)
-                                                .min_size(egui::vec2(ui.available_width(), 22.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            let fi = line.frames.len();
-                                            bridge.send(SchedulerMessage::AddFrame(
-                                                li,
-                                                fi,
-                                                new_frame(&default_lang),
-                                                ActionTiming::Immediate,
-                                            ));
-                                        }
+                                            });
                                     });
-                            });
-                        });
+                                });
 
-                        // Scroll column into view horizontally (only on cursor change)
-                        if self.scroll_to_cursor && self.cursor.is_some_and(|(cur_li, _)| cur_li == li) {
-                            ui.scroll_to_rect(col_resp.response.rect, Some(egui::Align::Center));
-                        }
-
-                        // Drag handle between columns
-                        if li + 1 < scene.lines.len() {
-                            let (handle_rect, handle_resp) = ui.allocate_exact_size(
-                                egui::vec2(DRAG_HANDLE_WIDTH, available_height),
-                                egui::Sense::drag(),
-                            );
-                            if handle_resp.dragged() {
-                                let delta = handle_resp.drag_delta().x;
-                                self.column_widths[li] =
-                                    (self.column_widths[li] + delta).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH);
-                            }
-                            if handle_resp.hovered() || handle_resp.dragged() {
-                                let center_x = handle_rect.center().x;
-                                ui.painter().vline(
-                                    center_x,
-                                    handle_rect.y_range(),
-                                    egui::Stroke::new(1.0, accent),
+                            // Scroll column into view horizontally (only on cursor change)
+                            if self.scroll_to_cursor
+                                && self.cursor.is_some_and(|(cur_li, _)| cur_li == li)
+                            {
+                                ui.scroll_to_rect(
+                                    col_resp.response.rect,
+                                    Some(egui::Align::Center),
                                 );
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                             }
-                        }
-                      });
+
+                            // Drag handle between columns
+                            if li + 1 < scene.lines.len() {
+                                let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                                    egui::vec2(DRAG_HANDLE_WIDTH, available_height),
+                                    egui::Sense::drag(),
+                                );
+                                if handle_resp.dragged() {
+                                    let delta = handle_resp.drag_delta().x;
+                                    self.column_widths[li] = (self.column_widths[li] + delta)
+                                        .clamp(MIN_COL_WIDTH, MAX_COL_WIDTH);
+                                }
+                                if handle_resp.hovered() || handle_resp.dragged() {
+                                    let center_x = handle_rect.center().x;
+                                    ui.painter().vline(
+                                        center_x,
+                                        handle_rect.y_range(),
+                                        egui::Stroke::new(1.0, accent),
+                                    );
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                                }
+                            }
+                        });
                     }
 
                     // Add line button
                     ui.add_space(4.0);
                     ui.vertical(|ui| {
                         ui.add_space(LINE_HEADER_HEIGHT);
-                        let add_line_fill = ui.visuals().widgets.inactive.bg_fill.linear_multiply(0.5);
+                        let add_line_fill =
+                            ui.visuals().widgets.inactive.bg_fill.linear_multiply(0.5);
                         if ui
                             .add(
                                 egui::Button::new(egui::RichText::new(crate::icons::ADD))
@@ -438,6 +500,7 @@ impl ScenePanel {
                                 Line::new(vec![1.0]),
                                 ActionTiming::Immediate,
                             ));
+                            self.picker_open_pending.insert((li, 0));
                         }
                     });
                 });
@@ -610,11 +673,13 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         li: usize,
         fi: usize,
+        n_frames: usize,
         frame: &Frame,
         is_playing: bool,
         progress: f32,
         is_selected: bool,
         is_cursor: bool,
+        current_playing_fi: Option<usize>,
         accent: egui::Color32,
         opacity: &SceneOpacity,
         editor_settings: &EditorSettings,
@@ -624,7 +689,13 @@ impl ScenePanel {
         sample_names: &[String],
     ) -> egui::Response {
         // Background color — scaled by opacity
-        let bg = if !frame.enabled {
+        let picker_open = self
+            .frame_states
+            .get(&(li, fi))
+            .is_some_and(|s| s.lang_picker_open);
+        let bg = if picker_open {
+            opacity.fill(ui.visuals().extreme_bg_color, 1.0)
+        } else if !frame.enabled {
             opacity.fill(egui::Color32::from_gray(25), 1.0)
         } else if is_cursor {
             opacity.fill(ui.visuals().extreme_bg_color, 1.0)
@@ -642,11 +713,15 @@ impl ScenePanel {
             let pre_rect = ui.available_rect_before_wrap();
             ui.interact(pre_rect, bg_id, egui::Sense::click());
 
-            let cell_frame = egui::Frame::NONE
-                .fill(bg)
-                .inner_margin(egui::Margin { left: 5, right: 5, ..egui::Margin::ZERO });
+            let cell_frame = egui::Frame::NONE.fill(bg).inner_margin(egui::Margin {
+                left: 5,
+                right: 5,
+                ..egui::Margin::ZERO
+            });
 
-            let is_collapsed = self.frame_states.get(&(li, fi))
+            let is_collapsed = self
+                .frame_states
+                .get(&(li, fi))
                 .is_some_and(|s| s.collapsed);
 
             let frame_resp = cell_frame.show(ui, |ui| {
@@ -654,7 +729,9 @@ impl ScenePanel {
                 if is_collapsed {
                     ui.set_height(HEADER_HEIGHT);
                 } else {
-                    let frame_height = self.frame_states.get(&(li, fi))
+                    let frame_height = self
+                        .frame_states
+                        .get(&(li, fi))
                         .map_or(CELL_HEIGHT, |s| s.height);
                     ui.set_height(HEADER_HEIGHT + frame_height);
                 }
@@ -667,9 +744,7 @@ impl ScenePanel {
                         ui.min_rect().min,
                         egui::vec2(ui.available_width() * progress, HEADER_HEIGHT),
                     );
-                    let blend = |a: u8, b: u8| -> u8 {
-                        ((a as u16 * 2 + b as u16) / 3) as u8
-                    };
+                    let blend = |a: u8, b: u8| -> u8 { ((a as u16 * 2 + b as u16) / 3) as u8 };
                     let fill = egui::Color32::from_rgb(
                         blend(accent.r(), bg.r()),
                         blend(accent.g(), bg.g()),
@@ -684,12 +759,25 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.set_height(HEADER_HEIGHT);
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_header(ui, li, fi, frame, opacity, bridge);
+                        state.show_header(
+                            ui,
+                            li,
+                            fi,
+                            n_frames,
+                            current_playing_fi,
+                            accent,
+                            frame,
+                            bridge,
+                        );
                     }
                 });
 
                 // Frame menu popup
-                if self.frame_states.get(&(li, fi)).is_some_and(|s| s.menu_open) {
+                if self
+                    .frame_states
+                    .get(&(li, fi))
+                    .is_some_and(|s| s.menu_open)
+                {
                     let popup_id = ui.id().with("frame_menu");
                     let popup_resp = egui::Area::new(popup_id)
                         .order(egui::Order::Foreground)
@@ -697,8 +785,11 @@ impl ScenePanel {
                         .show(ui.ctx(), |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_min_width(150.0);
-                                if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                                    state.show_frame_menu(ui, li, fi, bridge, default_lang);
+                                if let Some(state) = self.frame_states.get_mut(&(li, fi))
+                                    && let Some(target) =
+                                        state.show_frame_menu(ui, li, fi, bridge, default_lang)
+                                {
+                                    self.picker_open_pending.insert(target);
                                 }
                             });
                         });
@@ -720,66 +811,96 @@ impl ScenePanel {
                 if !is_collapsed {
                     ui.separator();
 
-                    // Body (code editor)
-                    let syntax = bridge.syntax_map.get(
-                        self.frame_states
-                            .get(&(li, fi))
-                            .map(|s| s.lang.as_str())
-                            .unwrap_or(""),
-                    );
-                    let syntax_pair = syntax.map(|cs| (cs, theme));
+                    let picker_is_open = self
+                        .frame_states
+                        .get(&(li, fi))
+                        .is_some_and(|s| s.lang_picker_open);
 
-                    let reference = bridge
-                        .languages()
-                        .iter()
-                        .find(|l| {
+                    if picker_is_open {
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                            if let Some(lang) = show_lang_picker(
+                                ui,
+                                &mut state.lang_picker_open,
+                                &mut state.lang_picker_filter,
+                                &mut state.lang_picker_selection,
+                                &state.lang,
+                                accent,
+                                bridge,
+                            ) {
+                                state.lang = lang;
+                                state.dirty = true;
+                                state.request_focus = true;
+                            }
+                            if !state.lang_picker_open {
+                                state.request_focus = true;
+                            }
+                        }
+                    } else {
+                        // Body (code editor)
+                        let syntax = bridge.syntax_map.get(
                             self.frame_states
                                 .get(&(li, fi))
-                                .is_some_and(|s| s.lang == l.name)
-                        })
-                        .filter(|l| !l.documentation.reference.is_empty())
-                        .map(|l| &l.documentation.reference);
+                                .map(|s| s.lang.as_str())
+                                .unwrap_or(""),
+                        );
+                        let syntax_pair = syntax.map(|cs| (cs, theme));
 
-                    let mut cursors: Vec<PeerCursor> = bridge
-                        .text_cursors_for_frame(li, fi)
-                        .into_iter()
-                        .map(|(name, line, col)| PeerCursor {
-                            name: name.to_owned(),
-                            line,
-                            col,
-                            color: username_color(name),
-                        })
-                        .collect();
+                        let reference = bridge
+                            .languages()
+                            .iter()
+                            .find(|l| {
+                                self.frame_states
+                                    .get(&(li, fi))
+                                    .is_some_and(|s| s.lang == l.name)
+                            })
+                            .filter(|l| !l.documentation.reference.is_empty())
+                            .map(|l| &l.documentation.reference);
 
-                    // Include the local user's text cursor
-                    if let Some(my_name) = bridge.confirmed_username()
-                        && let Some(state) = self.frame_states.get(&(li, fi))
-                        && let (Some(line), Some(col)) =
-                            (state.last_cursor_line, state.last_cursor_col)
-                    {
-                        cursors.push(PeerCursor {
-                            name: my_name.to_owned(),
-                            line,
-                            col,
-                            color: username_color(my_name),
-                        });
-                    }
+                        let mut cursors: Vec<PeerCursor> = bridge
+                            .text_cursors_for_frame(li, fi)
+                            .into_iter()
+                            .map(|(name, line, col)| PeerCursor {
+                                name: name.to_owned(),
+                                line,
+                                col,
+                                color: username_color(name),
+                            })
+                            .collect();
 
-                    let editor_ctx = EditorContext {
-                        settings: editor_settings,
-                        syntax: syntax_pair,
-                        reference,
-                        peer_cursors: &cursors,
-                        annotations: if self.frame_states.get(&(li, fi)).is_some_and(|s| s.dirty) {
-                            &[]
-                        } else {
-                            bridge.frame_annotations(li, fi)
-                        },
-                        opacity: Some(opacity),
-                        sample_names,
-                    };
-                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_body(ui, li, fi, &editor_ctx, bridge);
+                        // Include the local user's text cursor
+                        if let Some(my_name) = bridge.confirmed_username()
+                            && let Some(state) = self.frame_states.get(&(li, fi))
+                            && let (Some(line), Some(col)) =
+                                (state.last_cursor_line, state.last_cursor_col)
+                        {
+                            cursors.push(PeerCursor {
+                                name: my_name.to_owned(),
+                                line,
+                                col,
+                                color: username_color(my_name),
+                            });
+                        }
+
+                        let editor_ctx = EditorContext {
+                            settings: editor_settings,
+                            syntax: syntax_pair,
+                            reference,
+                            peer_cursors: &cursors,
+                            annotations: if self
+                                .frame_states
+                                .get(&(li, fi))
+                                .is_some_and(|s| s.dirty)
+                            {
+                                &[]
+                            } else {
+                                bridge.frame_annotations(li, fi)
+                            },
+                            opacity: Some(opacity),
+                            sample_names,
+                        };
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
+                            state.show_body(ui, li, fi, &editor_ctx, bridge);
+                        }
                     }
                 }
             });
@@ -790,21 +911,16 @@ impl ScenePanel {
             if is_playing && frame.enabled {
                 let p = ui.painter();
                 // Static accent strip on the left edge
-                let accent_strip = egui::Rect::from_min_size(
-                    cell_rect.min,
-                    egui::vec2(3.0, cell_rect.height()),
-                );
+                let accent_strip =
+                    egui::Rect::from_min_size(cell_rect.min, egui::vec2(3.0, cell_rect.height()));
                 p.rect_filled(accent_strip, 0.0, accent);
 
                 // Background fill (top→bottom)
                 let fill_h = cell_rect.height() * progress;
-                let bg = egui::Rect::from_min_size(
-                    cell_rect.min,
-                    egui::vec2(cell_rect.width(), fill_h),
-                );
-                let bc = egui::Color32::from_rgba_unmultiplied(
-                    accent.r(), accent.g(), accent.b(), 15,
-                );
+                let bg =
+                    egui::Rect::from_min_size(cell_rect.min, egui::vec2(cell_rect.width(), fill_h));
+                let bc =
+                    egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 15);
                 p.rect_filled(bg, 0.0, bc);
                 ui.ctx().request_repaint();
             }
@@ -845,9 +961,7 @@ impl ScenePanel {
             }
 
             // Local user: colored left bar on cursor frame
-            if is_cursor
-                && let Some(my_name) = bridge.confirmed_username()
-            {
+            if is_cursor && let Some(my_name) = bridge.confirmed_username() {
                 let color = username_color(my_name);
                 let s = egui::Stroke::new(2.0, color);
                 ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);
@@ -861,15 +975,13 @@ impl ScenePanel {
     }
 
     fn sync_frame_states(&mut self, scene: &sova_core::scene::Scene, _bridge: &ClientBridge) {
-        let current_counts: Vec<usize> =
-            scene.lines.iter().map(|l| l.frames.len()).collect();
+        let current_counts: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
         // If line count or frame counts changed, invalidate stale states
         if current_counts != self.last_frame_counts || scene.lines.len() != self.last_line_count {
             // Remove states for lines/frames that no longer exist
-            self.frame_states.retain(|&(li, fi), _| {
-                scene.lines.get(li).is_some_and(|l| fi < l.frames.len())
-            });
+            self.frame_states
+                .retain(|&(li, fi), _| scene.lines.get(li).is_some_and(|l| fi < l.frames.len()));
 
             // If frame count changed for a line, clear all states for that line
             // (indices may have shifted), but preserve UI-only fields (collapsed, height)
@@ -925,7 +1037,11 @@ impl ScenePanel {
         if old != self.cursor {
             self.scroll_to_cursor = true;
             if bridge.is_connected() {
-                bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1, None));
+                bridge.send(ClientMessage::CursorPosition(
+                    new_cursor.0,
+                    new_cursor.1,
+                    None,
+                ));
             }
         }
     }
@@ -953,10 +1069,7 @@ impl ScenePanel {
                     .unwrap_or(0);
                 let (min_fi, max_fi) = if !self.selection.is_empty() {
                     let fis: Vec<usize> = self.selection.iter().map(|&(_, f)| f).collect();
-                    (
-                        *fis.iter().min().unwrap(),
-                        *fis.iter().max().unwrap(),
-                    )
+                    (*fis.iter().min().unwrap(), *fis.iter().max().unwrap())
                 } else {
                     (fi, fi)
                 };
@@ -991,20 +1104,31 @@ impl ScenePanel {
                 if !multi {
                     if ui.button(t!("scene.insert_frame_before")).clicked() {
                         bridge.send(SchedulerMessage::AddFrame(
-                            li, fi, new_frame(default_lang), ActionTiming::Immediate,
+                            li,
+                            fi,
+                            new_frame(default_lang),
+                            ActionTiming::Immediate,
                         ));
+                        self.picker_open_pending.insert((li, fi));
                         ui.close();
                     }
                     if ui.button(t!("scene.insert_frame_after")).clicked() {
                         bridge.send(SchedulerMessage::AddFrame(
-                            li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
+                            li,
+                            fi + 1,
+                            new_frame(default_lang),
+                            ActionTiming::Immediate,
                         ));
+                        self.picker_open_pending.insert((li, fi + 1));
                         ui.close();
                     }
                 }
 
                 if ui
-                    .add(egui::Button::new(t!("scene.duplicate_frame")).shortcut_text(format!("{m}+D")))
+                    .add(
+                        egui::Button::new(t!("scene.duplicate_frame"))
+                            .shortcut_text(format!("{m}+D")),
+                    )
                     .clicked()
                 {
                     if let Some(scene_ref) = scene {
@@ -1015,12 +1139,18 @@ impl ScenePanel {
                         let frames: Vec<Frame> = selected
                             .iter()
                             .filter_map(|&(l, f)| {
-                                scene_ref.lines.get(l).and_then(|line| line.frames.get(f).cloned())
+                                scene_ref
+                                    .lines
+                                    .get(l)
+                                    .and_then(|line| line.frames.get(f).cloned())
                             })
                             .collect();
                         for (offset, frame) in frames.iter().enumerate() {
                             bridge.send(SchedulerMessage::AddFrame(
-                                sel_li, last_fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
+                                sel_li,
+                                last_fi + 1 + offset,
+                                frame.clone(),
+                                ActionTiming::Immediate,
                             ));
                         }
                     }
@@ -1053,8 +1183,7 @@ impl ScenePanel {
                 ui.separator();
 
                 if ui.button(t!("scene.toggle_enabled")).clicked() {
-                    let selected: Vec<(usize, usize)> =
-                        self.selection.iter().copied().collect();
+                    let selected: Vec<(usize, usize)> = self.selection.iter().copied().collect();
                     for (sl, sf) in selected {
                         self.toggle_enabled(sl, sf, bridge);
                     }
@@ -1071,7 +1200,11 @@ impl ScenePanel {
                         self.selection.iter().copied().collect();
                     to_remove.sort_by(|a, b| b.1.cmp(&a.1));
                     for (rli, rfi) in to_remove {
-                        bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+                        bridge.send(SchedulerMessage::RemoveFrame(
+                            rli,
+                            rfi,
+                            ActionTiming::Immediate,
+                        ));
                     }
                     self.selection.clear();
                     self.cursor = None;
@@ -1083,23 +1216,34 @@ impl ScenePanel {
 
                 if ui.button(t!("scene.insert_line_before")).clicked() {
                     bridge.send(SchedulerMessage::AddLine(
-                        li, Line::new(vec![1.0]), ActionTiming::Immediate,
+                        li,
+                        Line::new(vec![1.0]),
+                        ActionTiming::Immediate,
                     ));
+                    self.picker_open_pending.insert((li, 0));
                     ui.close();
                 }
                 if ui.button(t!("scene.insert_line_after")).clicked() {
                     bridge.send(SchedulerMessage::AddLine(
-                        li + 1, Line::new(vec![1.0]), ActionTiming::Immediate,
+                        li + 1,
+                        Line::new(vec![1.0]),
+                        ActionTiming::Immediate,
                     ));
+                    self.picker_open_pending.insert((li + 1, 0));
                     ui.close();
                 }
                 if ui
-                    .add(egui::Button::new(t!("scene.duplicate_line")).shortcut_text(format!("{m}+Shift+D")))
+                    .add(
+                        egui::Button::new(t!("scene.duplicate_line"))
+                            .shortcut_text(format!("{m}+Shift+D")),
+                    )
                     .clicked()
                 {
                     if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
                         bridge.send(SchedulerMessage::AddLine(
-                            li + 1, line.clone(), ActionTiming::Immediate,
+                            li + 1,
+                            line.clone(),
+                            ActionTiming::Immediate,
                         ));
                     }
                     ui.close();
@@ -1108,7 +1252,10 @@ impl ScenePanel {
                 ui.separator();
 
                 if ui
-                    .add_enabled(li > 0, egui::Button::new(t!("scene.move_left")).shortcut_text("Alt+Left"))
+                    .add_enabled(
+                        li > 0,
+                        egui::Button::new(t!("scene.move_left")).shortcut_text("Alt+Left"),
+                    )
                     .clicked()
                 {
                     self.move_line_horizontal(li, -1, bridge);
@@ -1155,7 +1302,10 @@ impl ScenePanel {
                 ui.separator();
 
                 if ui
-                    .add(egui::Button::new(t!("scene.remove_line")).shortcut_text(format!("{m}+Del")))
+                    .add(
+                        egui::Button::new(t!("scene.remove_line"))
+                            .shortcut_text(format!("{m}+Del")),
+                    )
                     .clicked()
                 {
                     bridge.send(SchedulerMessage::RemoveLine(li, ActionTiming::Immediate));
@@ -1230,15 +1380,34 @@ impl ScenePanel {
 
         // Read all keys
         let (
-            up, down, left, right, shift,
-            key_delete, cmd_d, cmd_shift_d, shift_i, cmd_shift_i,
-            key_shift_j, key_shift_k,
-            key_e, key_dot, key_comma, key_p,
-            key_enter, key_i, key_escape,
-            ctrl_a, ctrl_del, alt_h, alt_l,
+            up,
+            down,
+            left,
+            right,
+            shift,
+            key_delete,
+            cmd_d,
+            cmd_shift_d,
+            shift_i,
+            cmd_shift_i,
+            key_shift_j,
+            key_shift_k,
+            key_e,
+            key_dot,
+            key_comma,
+            key_p,
+            key_enter,
+            key_i,
+            key_escape,
+            ctrl_a,
+            ctrl_del,
+            alt_h,
+            alt_l,
         ) = ui.input(|i| {
-            let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift;
-            let shift_only = i.modifiers.shift && !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
+            let no_mod =
+                !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift;
+            let shift_only =
+                i.modifiers.shift && !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
             (
                 // Movement (arrows + vim)
                 i.key_pressed(egui::Key::ArrowUp) || (no_mod && i.key_pressed(egui::Key::K)),
@@ -1265,7 +1434,8 @@ impl ScenePanel {
                 i.key_pressed(egui::Key::Escape),
                 // Ctrl combos
                 i.modifiers.command && i.key_pressed(egui::Key::A),
-                i.modifiers.command && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
+                i.modifiers.command
+                    && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
                 i.modifiers.alt && i.key_pressed(egui::Key::H),
                 i.modifiers.alt && i.key_pressed(egui::Key::L),
             )
@@ -1343,7 +1513,11 @@ impl ScenePanel {
             let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
             to_remove.sort_by(|a, b| b.1.cmp(&a.1));
             for (rli, rfi) in to_remove {
-                bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(
+                    rli,
+                    rfi,
+                    ActionTiming::Immediate,
+                ));
             }
             self.selection.clear();
             self.cursor = None;
@@ -1356,12 +1530,18 @@ impl ScenePanel {
             let frames: Vec<Frame> = selected
                 .iter()
                 .filter_map(|&(l, f)| {
-                    scene.lines.get(l).and_then(|line| line.frames.get(f).cloned())
+                    scene
+                        .lines
+                        .get(l)
+                        .and_then(|line| line.frames.get(f).cloned())
                 })
                 .collect();
             for (offset, frame) in frames.iter().enumerate() {
                 bridge.send(SchedulerMessage::AddFrame(
-                    sel_li, last_fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
+                    sel_li,
+                    last_fi + 1 + offset,
+                    frame.clone(),
+                    ActionTiming::Immediate,
                 ));
             }
             self.selection.clear();
@@ -1372,24 +1552,34 @@ impl ScenePanel {
             self.anchor = Some((sel_li, last_fi + 1));
         }
 
-        if cmd_shift_d
-            && let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi))
+        if cmd_shift_d && let Some(frame_data) = scene.lines.get(li).and_then(|l| l.frames.get(fi))
         {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi, frame_data.clone(), ActionTiming::Immediate,
+                li,
+                fi,
+                frame_data.clone(),
+                ActionTiming::Immediate,
             ));
         }
 
         if shift_i {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi + 1,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
+            self.picker_open_pending.insert((li, fi + 1));
         }
 
         if cmd_shift_i {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
+            self.picker_open_pending.insert((li, fi));
         }
 
         // Toggles
@@ -1460,7 +1650,10 @@ impl ScenePanel {
             .selection
             .iter()
             .filter_map(|&(l, f)| {
-                scene.lines.get(l).and_then(|line| line.frames.get(f).cloned())
+                scene
+                    .lines
+                    .get(l)
+                    .and_then(|line| line.frames.get(f).cloned())
             })
             .collect();
     }
@@ -1470,7 +1663,11 @@ impl ScenePanel {
         let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
         to_remove.sort_by(|a, b| b.1.cmp(&a.1));
         for (rli, rfi) in to_remove {
-            bridge.send(SchedulerMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveFrame(
+                rli,
+                rfi,
+                ActionTiming::Immediate,
+            ));
         }
         self.selection.clear();
         self.cursor = None;
@@ -1482,7 +1679,10 @@ impl ScenePanel {
         }
         for (offset, frame) in self.clipboard.iter().enumerate() {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi + 1 + offset, frame.clone(), ActionTiming::Immediate,
+                li,
+                fi + 1 + offset,
+                frame.clone(),
+                ActionTiming::Immediate,
             ));
         }
         let count = self.clipboard.len();
@@ -1519,8 +1719,17 @@ impl ScenePanel {
                 .get(sel_li)
                 .and_then(|l| l.frames.get(min_fi - 1).cloned())
             {
-                bridge.send(SchedulerMessage::RemoveFrame(sel_li, min_fi - 1, ActionTiming::Immediate));
-                bridge.send(SchedulerMessage::AddFrame(sel_li, max_fi, frame, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(
+                    sel_li,
+                    min_fi - 1,
+                    ActionTiming::Immediate,
+                ));
+                bridge.send(SchedulerMessage::AddFrame(
+                    sel_li,
+                    max_fi,
+                    frame,
+                    ActionTiming::Immediate,
+                ));
             }
             self.selection.clear();
             for fi in (min_fi - 1)..=max_fi.saturating_sub(1) {
@@ -1537,8 +1746,17 @@ impl ScenePanel {
                 .get(sel_li)
                 .and_then(|l| l.frames.get(max_fi + 1).cloned())
             {
-                bridge.send(SchedulerMessage::RemoveFrame(sel_li, max_fi + 1, ActionTiming::Immediate));
-                bridge.send(SchedulerMessage::AddFrame(sel_li, min_fi, frame, ActionTiming::Immediate));
+                bridge.send(SchedulerMessage::RemoveFrame(
+                    sel_li,
+                    max_fi + 1,
+                    ActionTiming::Immediate,
+                ));
+                bridge.send(SchedulerMessage::AddFrame(
+                    sel_li,
+                    min_fi,
+                    frame,
+                    ActionTiming::Immediate,
+                ));
             }
             self.selection.clear();
             for fi in (min_fi + 1)..=(max_fi + 1) {
@@ -1568,7 +1786,11 @@ impl ScenePanel {
         if let Some(line) = scene.lines.get(li) {
             let line = line.clone();
             bridge.send(SchedulerMessage::RemoveLine(li, ActionTiming::Immediate));
-            bridge.send(SchedulerMessage::AddLine(new_li, line, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::AddLine(
+                new_li,
+                line,
+                ActionTiming::Immediate,
+            ));
         }
 
         if let Some((cur_li, cur_fi)) = self.cursor
@@ -1638,11 +1860,8 @@ impl ScenePanel {
             let strip_width = 24.0;
             ui.allocate_ui(egui::vec2(strip_width, available_height), |ui| {
                 let rect = ui.available_rect_before_wrap();
-                ui.painter().rect_filled(
-                    rect,
-                    0.0,
-                    opacity.fill(ui.visuals().faint_bg_color, 1.0),
-                );
+                ui.painter()
+                    .rect_filled(rect, 0.0, opacity.fill(ui.visuals().faint_bg_color, 1.0));
 
                 // Click to expand
                 let resp = ui.allocate_rect(rect, egui::Sense::click());
@@ -1672,8 +1891,7 @@ impl ScenePanel {
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        egui::RichText::new(crate::icons::CHEVRON_DOWN)
-                                            .small(),
+                                        egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
                                     )
                                     .fill(egui::Color32::TRANSPARENT),
                                 )
@@ -1688,8 +1906,7 @@ impl ScenePanel {
                                     if ui
                                         .add(
                                             egui::Button::new(
-                                                egui::RichText::new(crate::icons::ADD)
-                                                    .small(),
+                                                egui::RichText::new(crate::icons::ADD).small(),
                                             )
                                             .fill(egui::Color32::TRANSPARENT),
                                         )
@@ -1721,9 +1938,8 @@ impl ScenePanel {
                         for idx in 0..prelude_len {
                             ui.push_id(("prelude_cell", idx), |ui| {
                                 let bg = opacity.fill(ui.visuals().faint_bg_color, 1.0);
-                                let cell_frame = egui::Frame::NONE
-                                    .fill(bg)
-                                    .inner_margin(egui::Margin {
+                                let cell_frame =
+                                    egui::Frame::NONE.fill(bg).inner_margin(egui::Margin {
                                         left: 5,
                                         right: 5,
                                         ..egui::Margin::ZERO
@@ -1744,34 +1960,53 @@ impl ScenePanel {
                                             ui,
                                             idx,
                                             prelude_len,
-                                            opacity,
                                             bridge,
                                         );
                                     });
 
                                     ui.separator();
 
-                                    // Body (code editor)
-                                    let syntax = bridge.syntax_map.get(
-                                        self.prelude_states[idx].lang.as_str(),
-                                    );
-                                    let syntax_pair = syntax.map(|cs| (cs, theme));
-                                    let reference = bridge
-                                        .languages()
-                                        .iter()
-                                        .find(|l| l.name == self.prelude_states[idx].lang)
-                                        .filter(|l| !l.documentation.reference.is_empty())
-                                        .map(|l| &l.documentation.reference);
-                                    let ctx = EditorContext {
-                                        settings: editor_settings,
-                                        syntax: syntax_pair,
-                                        reference,
-                                        peer_cursors: &[],
-                                        annotations: &[],
-                                        opacity: Some(opacity),
-                                        sample_names,
-                                    };
-                                    self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
+                                    if self.prelude_states[idx].lang_picker_open {
+                                        let state = &mut self.prelude_states[idx];
+                                        if let Some(lang) = show_lang_picker(
+                                            ui,
+                                            &mut state.lang_picker_open,
+                                            &mut state.lang_picker_filter,
+                                            &mut state.lang_picker_selection,
+                                            &state.lang,
+                                            accent,
+                                            bridge,
+                                        ) {
+                                            state.lang = lang;
+                                            state.dirty = true;
+                                            state.request_focus = true;
+                                        }
+                                        if !self.prelude_states[idx].lang_picker_open {
+                                            self.prelude_states[idx].request_focus = true;
+                                        }
+                                    } else {
+                                        // Body (code editor)
+                                        let syntax = bridge
+                                            .syntax_map
+                                            .get(self.prelude_states[idx].lang.as_str());
+                                        let syntax_pair = syntax.map(|cs| (cs, theme));
+                                        let reference = bridge
+                                            .languages()
+                                            .iter()
+                                            .find(|l| l.name == self.prelude_states[idx].lang)
+                                            .filter(|l| !l.documentation.reference.is_empty())
+                                            .map(|l| &l.documentation.reference);
+                                        let ctx = EditorContext {
+                                            settings: editor_settings,
+                                            syntax: syntax_pair,
+                                            reference,
+                                            peer_cursors: &[],
+                                            annotations: &[],
+                                            opacity: Some(opacity),
+                                            sample_names,
+                                        };
+                                        self.prelude_states[idx].show_body(ui, idx, &ctx, bridge);
+                                    }
                                 });
 
                                 let cell_rect = frame_resp.response.rect;
@@ -1784,10 +2019,10 @@ impl ScenePanel {
                                 let handle_resp =
                                     ui.allocate_rect(handle_rect, egui::Sense::drag());
                                 if handle_resp.dragged() {
-                                    self.prelude_states[idx].height =
-                                        (self.prelude_states[idx].height
-                                            + handle_resp.drag_delta().y)
-                                            .clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
+                                    self.prelude_states[idx].height = (self.prelude_states[idx]
+                                        .height
+                                        + handle_resp.drag_delta().y)
+                                        .clamp(MIN_FRAME_HEIGHT, MAX_FRAME_HEIGHT);
                                 }
                                 if handle_resp.hovered() || handle_resp.dragged() {
                                     let center_y = handle_rect.center().y;
@@ -1796,8 +2031,7 @@ impl ScenePanel {
                                         center_y,
                                         egui::Stroke::new(1.0, accent),
                                     );
-                                    ui.ctx()
-                                        .set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                                 }
 
                                 ui.add_space(GAP);
@@ -1806,15 +2040,12 @@ impl ScenePanel {
 
                         // Add script button (matches add frame button pattern)
                         ui.add_space(4.0);
-                        let add_fill =
-                            opacity.fill(ui.visuals().widgets.inactive.bg_fill, 0.5);
+                        let add_fill = opacity.fill(ui.visuals().widgets.inactive.bg_fill, 0.5);
                         if ui
                             .add(
-                                egui::Button::new(
-                                    egui::RichText::new("+").strong(),
-                                )
-                                .fill(add_fill)
-                                .min_size(egui::vec2(ui.available_width(), 22.0)),
+                                egui::Button::new(egui::RichText::new("+").strong())
+                                    .fill(add_fill)
+                                    .min_size(egui::vec2(ui.available_width(), 22.0)),
                             )
                             .clicked()
                         {
@@ -1822,10 +2053,7 @@ impl ScenePanel {
                                 .scene()
                                 .map(|s| s.prelude.clone())
                                 .unwrap_or_default();
-                            scripts.push(Script::new(
-                                String::new(),
-                                default_lang.to_string(),
-                            ));
+                            scripts.push(Script::new(String::new(), default_lang.to_string()));
                             bridge.send(ClientMessage::SchedulerControl(
                                 SchedulerMessage::SetScenePrelude(scripts),
                             ));

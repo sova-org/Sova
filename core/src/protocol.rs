@@ -23,11 +23,11 @@ pub mod osc;
 pub mod audio_engine_proxy;
 
 mod device;
-mod payload;
-mod message;
 mod error;
+mod message;
+mod payload;
 
 pub use device::*;
+pub use error::ProtocolError;
 pub use message::*;
 pub use payload::*;
-pub use error::ProtocolError;

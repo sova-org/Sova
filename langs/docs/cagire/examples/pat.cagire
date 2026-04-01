@@ -1,13 +1,7 @@
-"x.x." pat kick snd .
+;; pat extracts positions as floats
+"x.x." pat at kick snd .
 
 clear
 
-"x--x..[xx.]" pat hat snd 0.6 gain .
-
-clear
-
-"<x.|..x>" pat rim snd .
-
-clear
-
-"[x.]*4" pat hat snd 0.3 gain .
+;; pattern strings also work directly with at
+"x--x..[xx.]" at hat snd 0.6 gain .

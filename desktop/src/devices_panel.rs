@@ -3,7 +3,6 @@ use crate::widgets::{COLOR_MUTED, COLOR_OK};
 use eframe::egui;
 use sova_core::protocol::{DeviceInfo, DeviceKind};
 
-
 pub struct DevicesPanel {
     pub open: bool,
     creating_midi: bool,
@@ -148,7 +147,10 @@ impl DevicesPanel {
             }
         }
 
-        let is_editing_latency = self.editing_latency.as_ref().is_some_and(|n| n == &dev.name);
+        let is_editing_latency = self
+            .editing_latency
+            .as_ref()
+            .is_some_and(|n| n == &dev.name);
         if is_editing_latency {
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.latency_edit_value)
@@ -167,9 +169,7 @@ impl DevicesPanel {
             }
             resp.request_focus();
         } else {
-            let latency_text = dev
-                .latency
-                .to_string();
+            let latency_text = dev.latency.to_string();
             let resp = ui.add(egui::Label::new(&latency_text).sense(egui::Sense::click()));
             if resp.hovered() {
                 crate::widgets::hint::set(ui.ctx(), t!("devices.hint.latency"));

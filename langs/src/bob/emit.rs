@@ -105,9 +105,10 @@ where
     let mut len_vars: HashMap<&str, Variable> = HashMap::new();
     for (key, var) in &params_to_expand {
         let len_var = ctx.temp("_exp_len");
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Len(var.clone(), len_var.clone()),
-        )));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+            var.clone(),
+            len_var.clone(),
+        ))));
 
         // if len_var > max_len then max_len = len_var
         labeled.push(LabeledInstr::Instr(Instruction::Control(

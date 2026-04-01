@@ -4,7 +4,11 @@ use crate::{
     clock::NEVER,
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
-    vm::{PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory}},
+    vm::{
+        PartialContext,
+        event::ConcreteEvent,
+        interpreter::{Annotation, InterpreterDirectory},
+    },
 };
 
 use serde::{Deserialize, Serialize};
@@ -448,7 +452,8 @@ impl Line {
             }
             stepped = true;
             if state.last_trigger != NEVER {
-                if self.manual { // Already started, manual mode so stopping it
+                if self.manual {
+                    // Already started, manual mode so stopping it
                     state.current_frame = usize::MAX;
                     continue;
                 }
@@ -528,7 +533,7 @@ impl Line {
     }
 
     pub fn annotations(&self) -> Vec<Vec<Annotation>> {
-        let mut res = vec![Vec::new() ; self.n_frames()];
+        let mut res = vec![Vec::new(); self.n_frames()];
         for (i, frame) in self.frames.iter().enumerate() {
             let annotations = frame.annotations();
             if !annotations.is_empty() {
@@ -553,7 +558,7 @@ impl Default for Line {
             frames_passed: Default::default(),
             looping: false,
             trailing: false,
-            manual: false
+            manual: false,
         }
     }
 }

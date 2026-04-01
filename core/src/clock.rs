@@ -1,8 +1,10 @@
 use std::{
-    fmt::Display, sync::{
+    fmt::Display,
+    sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
-    }, time::{Duration, SystemTime}
+    },
+    time::{Duration, SystemTime},
 };
 
 use rusty_link::{AblLink, SessionState};
@@ -80,8 +82,7 @@ impl TimeSpan {
     pub fn is_zero(&self) -> bool {
         match self {
             TimeSpan::Micros(m) => *m == 0,
-            TimeSpan::Beats(b) 
-            | TimeSpan::Frames(b) => *b == 0.0,
+            TimeSpan::Beats(b) | TimeSpan::Frames(b) => *b == 0.0,
         }
     }
 
@@ -363,7 +364,7 @@ impl Clock {
         self.session_state
             .set_is_playing(playing, self.micros() as i64);
         self.commit_app_state();
-    } 
+    }
 
     /// Sets a new tempo for the Ableton Link session.
     ///

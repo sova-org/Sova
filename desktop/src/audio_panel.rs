@@ -4,8 +4,8 @@ use eframe::egui;
 use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
-use sova_server::audio::doux_audio::{self, AudioDeviceInfo, AudioHostInfo};
 use sova_server::AudioRestartConfig;
+use sova_server::audio::doux_audio::{self, AudioDeviceInfo, AudioHostInfo};
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -272,7 +272,7 @@ impl AudioPanel {
 
                 let r = ui.label(t!("audio.voices"));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
-                let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
+                let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=2048));
                 hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
                 ui.end_row();
 
@@ -306,7 +306,10 @@ impl AudioPanel {
 
         #[cfg(feature = "default-samples")]
         ui.horizontal(|ui| {
-            ui.colored_label(egui::Color32::GRAY, self.default_samples_path.display().to_string());
+            ui.colored_label(
+                egui::Color32::GRAY,
+                self.default_samples_path.display().to_string(),
+            );
             ui.weak("(built-in)");
         });
 

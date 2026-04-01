@@ -34,20 +34,62 @@ impl Language for CagireInterpreterFactory {
     fn documentation(&self) -> LanguageDocumentation {
         let mut doc = LanguageDocumentation::default();
 
-        doc.articles.push(("Getting Started".into(), include_str!("../../docs/cagire/intro.md").into()));
-        doc.articles.push(("The Stack".into(), include_str!("../../docs/cagire/stack.md").into()));
-        doc.articles.push(("Control Flow".into(), include_str!("../../docs/cagire/control_flow.md").into()));
-        doc.articles.push(("Creating Words".into(), include_str!("../../docs/cagire/definitions.md").into()));
-        doc.articles.push(("Brackets".into(), include_str!("../../docs/cagire/brackets.md").into()));
-        doc.articles.push(("Variables".into(), include_str!("../../docs/cagire/variables.md").into()));
-        doc.articles.push(("Notes & Harmony".into(), include_str!("../../docs/cagire/harmony.md").into()));
-        doc.articles.push(("Generators".into(), include_str!("../../docs/cagire/generators.md").into()));
-        doc.articles.push(("Randomness".into(), include_str!("../../docs/cagire/randomness.md").into()));
-        doc.articles.push(("Timing".into(), include_str!("../../docs/cagire/timing.md").into()));
-        doc.articles.push(("MIDI".into(), include_str!("../../docs/cagire/midi.md").into()));
-        doc.articles.push(("Recording".into(), include_str!("../../docs/cagire/recording.md").into()));
-        doc.articles.push(("Cagire vs Classic Forth".into(), include_str!("../../docs/cagire/differences.md").into()));
-        doc.articles.push(("Language Reference".into(), include_str!("../../docs/cagire/reference.md").into()));
+        doc.articles.push((
+            "Getting Started".into(),
+            include_str!("../../docs/cagire/intro.md").into(),
+        ));
+        doc.articles.push((
+            "The Stack".into(),
+            include_str!("../../docs/cagire/stack.md").into(),
+        ));
+        doc.articles.push((
+            "Control Flow".into(),
+            include_str!("../../docs/cagire/control_flow.md").into(),
+        ));
+        doc.articles.push((
+            "Creating Words".into(),
+            include_str!("../../docs/cagire/definitions.md").into(),
+        ));
+        doc.articles.push((
+            "Brackets".into(),
+            include_str!("../../docs/cagire/brackets.md").into(),
+        ));
+        doc.articles.push((
+            "Variables".into(),
+            include_str!("../../docs/cagire/variables.md").into(),
+        ));
+        doc.articles.push((
+            "Notes & Harmony".into(),
+            include_str!("../../docs/cagire/harmony.md").into(),
+        ));
+        doc.articles.push((
+            "Generators".into(),
+            include_str!("../../docs/cagire/generators.md").into(),
+        ));
+        doc.articles.push((
+            "Randomness".into(),
+            include_str!("../../docs/cagire/randomness.md").into(),
+        ));
+        doc.articles.push((
+            "Timing".into(),
+            include_str!("../../docs/cagire/timing.md").into(),
+        ));
+        doc.articles.push((
+            "MIDI".into(),
+            include_str!("../../docs/cagire/midi.md").into(),
+        ));
+        doc.articles.push((
+            "Recording".into(),
+            include_str!("../../docs/cagire/recording.md").into(),
+        ));
+        doc.articles.push((
+            "Cagire vs Classic Forth".into(),
+            include_str!("../../docs/cagire/differences.md").into(),
+        ));
+        doc.articles.push((
+            "Language Reference".into(),
+            include_str!("../../docs/cagire/reference.md").into(),
+        ));
 
         for word in WORDS.iter() {
             let mut entry = ReferenceEntry::new(word.desc)
@@ -75,7 +117,12 @@ impl Language for CagireInterpreterFactory {
         let mut special_words = Vec::new();
 
         for word in WORDS.iter() {
-            if !word.name.chars().next().is_some_and(|c| c.is_alphanumeric()) {
+            if !word
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric())
+            {
                 continue;
             }
             if word.name.contains('<') {
@@ -83,15 +130,14 @@ impl Language for CagireInterpreterFactory {
             }
 
             let bucket = match word.category {
-                "Stack" | "Arithmetic" | "Comparison" | "Logic" | "Control" | "Definitions" =>
-                    &mut builtin_words,
-                "Sample" | "Oscillator" | "Wavetable" | "FM" | "Modulation"
-                | "Envelope" | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo"
-                | "Mod FX" | "MIDI" | "Context" =>
-                    &mut symbol_words,
-                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord"
-                | "LFO" | "Audio Modulation" | "Debug" =>
-                    &mut special_words,
+                "Stack" | "Arithmetic" | "Comparison" | "Logic" | "Control" | "Definitions" => {
+                    &mut builtin_words
+                }
+                "Sample" | "Oscillator" | "Wavetable" | "FM" | "Modulation" | "Envelope"
+                | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo" | "Mod FX" | "MIDI"
+                | "Context" => &mut symbol_words,
+                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord" | "LFO"
+                | "Audio Modulation" | "Debug" => &mut special_words,
                 _ => &mut builtin_words,
             };
             bucket.push(word.name);
@@ -181,7 +227,7 @@ mod tests {
     fn syntax_highlights_all_categories() {
         use TokenCategory::*;
         let tokens = categories_for(
-            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n( 2 distort ) sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter"
+            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n( 2 distort ) sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter",
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
@@ -203,10 +249,18 @@ mod tests {
         assert_eq!(find("gain"), Some(Symbol), "gain should be Symbol (param)");
         assert_eq!(find("lpf"), Some(Symbol), "lpf should be Symbol (param)");
         assert_eq!(find("chan"), Some(Symbol), "chan should be Symbol (MIDI)");
-        assert_eq!(find("step"), Some(Symbol), "step should be Symbol (context)");
+        assert_eq!(
+            find("step"),
+            Some(Symbol),
+            "step should be Symbol (context)"
+        );
         assert_eq!(find("sound"), Some(Special), "sound should be Special");
         assert_eq!(find("dup"), Some(Builtin), "dup should be Builtin (stack)");
-        assert_eq!(find("rand"), Some(Special), "rand should be Special (probability)");
+        assert_eq!(
+            find("rand"),
+            Some(Special),
+            "rand should be Special (probability)"
+        );
     }
 
     #[test]

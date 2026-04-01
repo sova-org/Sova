@@ -113,13 +113,17 @@ pub(crate) fn emit_map_var_as_asm(
     if !is_expandable(map_var) {
         labeled.push(LabeledInstr::Jump(label_single_map.clone()));
     } else {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Len(map_var.clone(), list_len.clone()),
-        )));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+            map_var.clone(),
+            list_len.clone(),
+        ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
             ControlASM::GreaterThan(list_len.clone(), zero.clone(), cond.clone()),
         )));
-        labeled.push(LabeledInstr::JumpIfNot(cond.clone(), label_single_map.clone()));
+        labeled.push(LabeledInstr::JumpIfNot(
+            cond.clone(),
+            label_single_map.clone(),
+        ));
     }
 
     // ----- LIST OF MAPS PATH -----
@@ -131,7 +135,10 @@ pub(crate) fn emit_map_var_as_asm(
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::GreaterOrEqual(list_idx.clone(), list_len.clone(), cond.clone()),
     )));
-    labeled.push(LabeledInstr::JumpIf(cond.clone(), label_list_loop_end.clone()));
+    labeled.push(LabeledInstr::JumpIf(
+        cond.clone(),
+        label_list_loop_end.clone(),
+    ));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::Index(map_var.clone(), list_idx.clone(), elem_map.clone()),
     )));
@@ -215,12 +222,23 @@ pub(crate) fn emit_map_var_as_asm(
     let key_dev = key("dev");
 
     // Extract dev (common to all paths)
-    extract_optional(&mut labeled, map_var, &key_dev, &dev_var, &default_dev_var, &cond, ctx);
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_dev,
+        &dev_var,
+        &default_dev_var,
+        &cond,
+        ctx,
+    );
 
     // Check which keys exist for dispatch
     for (k, dest) in [
-        (&key_cc, &has_cc), (&key_pc, &has_pc), (&key_at, &has_at),
-        (&key_note, &has_note), (&key_pressure, &has_pressure),
+        (&key_cc, &has_cc),
+        (&key_pc, &has_pc),
+        (&key_at, &has_at),
+        (&key_note, &has_note),
+        (&key_pressure, &has_pressure),
     ] {
         labeled.push(LabeledInstr::Instr(Instruction::Control(
             ControlASM::Contains(map_var.clone(), k.clone(), dest.clone()),
@@ -228,67 +246,208 @@ pub(crate) fn emit_map_var_as_asm(
     }
 
     // ========== CC ==========
-    labeled.push(LabeledInstr::JumpIfNot(has_cc.clone(), label_check_pc.clone()));
+    labeled.push(LabeledInstr::JumpIfNot(
+        has_cc.clone(),
+        label_check_pc.clone(),
+    ));
     extract_required(&mut labeled, map_var, &key_cc, &cc_var, &default_cc);
-    extract_optional(&mut labeled, map_var, &key_val, &val_var, &default_val, &cond, ctx);
-    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
-    emit_expanded(&mut labeled, &["cc", "val", "chan"], HashMap::from([
-        ("cc".into(), cc_var.clone()), ("val".into(), val_var.clone()), ("chan".into(), chan_var.clone()),
-    ]), ctx, |p| emit_midi_control_single(p, &dev_var));
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_val,
+        &val_var,
+        &default_val,
+        &cond,
+        ctx,
+    );
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_chan,
+        &chan_var,
+        &default_chan,
+        &cond,
+        ctx,
+    );
+    emit_expanded(
+        &mut labeled,
+        &["cc", "val", "chan"],
+        HashMap::from([
+            ("cc".into(), cc_var.clone()),
+            ("val".into(), val_var.clone()),
+            ("chan".into(), chan_var.clone()),
+        ]),
+        ctx,
+        |p| emit_midi_control_single(p, &dev_var),
+    );
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ========== PC ==========
     labeled.push(LabeledInstr::Mark(label_check_pc));
-    labeled.push(LabeledInstr::JumpIfNot(has_pc.clone(), label_check_at.clone()));
+    labeled.push(LabeledInstr::JumpIfNot(
+        has_pc.clone(),
+        label_check_at.clone(),
+    ));
     extract_required(&mut labeled, map_var, &key_pc, &pc_var, &default_pc);
-    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
-    emit_expanded(&mut labeled, &["pc", "chan"], HashMap::from([
-        ("pc".into(), pc_var.clone()), ("chan".into(), chan_var.clone()),
-    ]), ctx, |p| emit_midi_program_single(p, &dev_var));
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_chan,
+        &chan_var,
+        &default_chan,
+        &cond,
+        ctx,
+    );
+    emit_expanded(
+        &mut labeled,
+        &["pc", "chan"],
+        HashMap::from([
+            ("pc".into(), pc_var.clone()),
+            ("chan".into(), chan_var.clone()),
+        ]),
+        ctx,
+        |p| emit_midi_program_single(p, &dev_var),
+    );
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ========== Aftertouch (requires both at AND note) ==========
     labeled.push(LabeledInstr::Mark(label_check_at));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::And(
-        has_at.clone(), has_note.clone(), cond.clone(),
+        has_at.clone(),
+        has_note.clone(),
+        cond.clone(),
     ))));
-    labeled.push(LabeledInstr::JumpIfNot(cond.clone(), label_check_pressure.clone()));
+    labeled.push(LabeledInstr::JumpIfNot(
+        cond.clone(),
+        label_check_pressure.clone(),
+    ));
     extract_required(&mut labeled, map_var, &key_note, &note_var, &default_note);
     extract_required(&mut labeled, map_var, &key_at, &at_var, &default_at);
-    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
-    emit_expanded(&mut labeled, &["note", "at", "chan"], HashMap::from([
-        ("note".into(), note_var.clone()), ("at".into(), at_var.clone()), ("chan".into(), chan_var.clone()),
-    ]), ctx, |p| emit_midi_aftertouch_single(p, &dev_var));
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_chan,
+        &chan_var,
+        &default_chan,
+        &cond,
+        ctx,
+    );
+    emit_expanded(
+        &mut labeled,
+        &["note", "at", "chan"],
+        HashMap::from([
+            ("note".into(), note_var.clone()),
+            ("at".into(), at_var.clone()),
+            ("chan".into(), chan_var.clone()),
+        ]),
+        ctx,
+        |p| emit_midi_aftertouch_single(p, &dev_var),
+    );
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ========== Channel Pressure ==========
     labeled.push(LabeledInstr::Mark(label_check_pressure));
-    labeled.push(LabeledInstr::JumpIfNot(has_pressure.clone(), label_check_note.clone()));
-    extract_required(&mut labeled, map_var, &key_pressure, &pressure_var, &default_pressure);
-    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
-    emit_expanded(&mut labeled, &["pressure", "chan"], HashMap::from([
-        ("pressure".into(), pressure_var.clone()), ("chan".into(), chan_var.clone()),
-    ]), ctx, |p| emit_midi_channel_pressure_single(p, &dev_var));
+    labeled.push(LabeledInstr::JumpIfNot(
+        has_pressure.clone(),
+        label_check_note.clone(),
+    ));
+    extract_required(
+        &mut labeled,
+        map_var,
+        &key_pressure,
+        &pressure_var,
+        &default_pressure,
+    );
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_chan,
+        &chan_var,
+        &default_chan,
+        &cond,
+        ctx,
+    );
+    emit_expanded(
+        &mut labeled,
+        &["pressure", "chan"],
+        HashMap::from([
+            ("pressure".into(), pressure_var.clone()),
+            ("chan".into(), chan_var.clone()),
+        ]),
+        ctx,
+        |p| emit_midi_channel_pressure_single(p, &dev_var),
+    );
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ========== MIDI Note ==========
     labeled.push(LabeledInstr::Mark(label_check_note));
-    labeled.push(LabeledInstr::JumpIfNot(has_note.clone(), label_emit_dirt.clone()));
+    labeled.push(LabeledInstr::JumpIfNot(
+        has_note.clone(),
+        label_emit_dirt.clone(),
+    ));
     extract_required(&mut labeled, map_var, &key_note, &note_var, &default_note);
-    extract_optional(&mut labeled, map_var, &key_vel, &vel_var, &default_vel, &cond, ctx);
-    extract_optional(&mut labeled, map_var, &key_chan, &chan_var, &default_chan, &cond, ctx);
-    extract_optional(&mut labeled, map_var, &key_dur, &dur_var, &default_dur, &cond, ctx);
-    emit_expanded(&mut labeled, &["note", "vel", "chan", "dur"], HashMap::from([
-        ("note".into(), note_var.clone()), ("vel".into(), vel_var.clone()),
-        ("chan".into(), chan_var.clone()), ("dur".into(), dur_var.clone()),
-    ]), ctx, |p| emit_midi_note_single(p, &dev_var));
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_vel,
+        &vel_var,
+        &default_vel,
+        &cond,
+        ctx,
+    );
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_chan,
+        &chan_var,
+        &default_chan,
+        &cond,
+        ctx,
+    );
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_dur,
+        &dur_var,
+        &default_dur,
+        &cond,
+        ctx,
+    );
+    emit_expanded(
+        &mut labeled,
+        &["note", "vel", "chan", "dur"],
+        HashMap::from([
+            ("note".into(), note_var.clone()),
+            ("vel".into(), vel_var.clone()),
+            ("chan".into(), chan_var.clone()),
+            ("dur".into(), dur_var.clone()),
+        ]),
+        ctx,
+        |p| emit_midi_note_single(p, &dev_var),
+    );
     labeled.push(LabeledInstr::Jump(label_done.clone()));
 
     // ========== Dirt (fallback) ==========
     labeled.push(LabeledInstr::Mark(label_emit_dirt));
-    extract_optional(&mut labeled, map_var, &key_sound, &sound_var, &default_sound, &cond, ctx);
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_sound,
+        &sound_var,
+        &default_sound,
+        &cond,
+        ctx,
+    );
     // Also check "s" as alias for "sound"
-    extract_optional(&mut labeled, map_var, &key_s, &sound_var, &sound_var, &cond, ctx);
+    extract_optional(
+        &mut labeled,
+        map_var,
+        &key_s,
+        &sound_var,
+        &sound_var,
+        &cond,
+        ctx,
+    );
     {
         let time_var = ctx.temp("_em_time");
         let mut params: HashMap<String, Variable> = HashMap::new();

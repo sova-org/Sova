@@ -1,8 +1,8 @@
 use crate::compiler::CompilationState;
 use crate::protocol::ProtocolPayload;
-use crate::scene::{ExecutionMode, Frame};
 use crate::scene::script::Script;
-use crate::scene::{Scene, Line};
+use crate::scene::{ExecutionMode, Frame};
+use crate::scene::{Line, Scene};
 use crate::schedule::action_timing::ActionTiming;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ pub enum SchedulerMessage {
 
     /// Set the current frame in specified line
     GoToFrame(usize, usize, ActionTiming),
-    
+
     /// Set a frame at a specific index
     SetFrames(Vec<(usize, usize, Frame)>, ActionTiming),
     /// Insert a frame with a given value at a specific position in a line.
@@ -30,7 +30,7 @@ pub enum SchedulerMessage {
 
     /// Set the script content and lang for specified frame
     SetScript(usize, usize, Script, ActionTiming),
-    
+
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
     /// Set the clock quantum.
@@ -62,7 +62,6 @@ pub enum SchedulerMessage {
 }
 
 impl SchedulerMessage {
-
     pub fn timing(&self) -> ActionTiming {
         match self {
             SchedulerMessage::SetScene(_, t)
@@ -76,14 +75,13 @@ impl SchedulerMessage {
             | SchedulerMessage::RemoveFrame(_, _, t)
             | SchedulerMessage::SetTempo(_, t)
             | SchedulerMessage::SetQuantum(_, t)
-            | SchedulerMessage::TransportStart(t) 
+            | SchedulerMessage::TransportStart(t)
             | SchedulerMessage::TransportStop(t)
-            | SchedulerMessage::DeviceMessage(_, _, t) 
-            | SchedulerMessage::GoToFrame(_, _, t) 
+            | SchedulerMessage::DeviceMessage(_, _, t)
+            | SchedulerMessage::GoToFrame(_, _, t)
             | SchedulerMessage::SetScript(_, _, _, t)
             | SchedulerMessage::StartLine(_, t)
-            | SchedulerMessage::StartLineAt(_, _, t)
-                => *t,
+            | SchedulerMessage::StartLineAt(_, _, t) => *t,
             SchedulerMessage::RunSnippet(_, _)
             | SchedulerMessage::SetScenePrelude(_)
             | SchedulerMessage::CompilationUpdate(_, _, _, _)
@@ -91,5 +89,4 @@ impl SchedulerMessage {
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }
     }
-
 }

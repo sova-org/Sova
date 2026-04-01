@@ -12,7 +12,9 @@ use crate::boinx::ast::{
     BoinxItem, BoinxOutput, BoinxProg, BoinxStatement,
 };
 use sova_core::{
-    clock::{SyncTime, TimeSpan}, compiler::CompilationError, vm::interpreter::{Annotation, CodePosition}
+    clock::{SyncTime, TimeSpan},
+    compiler::CompilationError,
+    vm::interpreter::{Annotation, CodePosition},
 };
 
 #[derive(Parser)]
@@ -21,16 +23,14 @@ pub struct BoinxParser;
 
 static BOINX_PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> =
     std::sync::LazyLock::new(|| {
-        use pest::pratt_parser::{Assoc::*, Op};
         use Rule::*;
+        use pest::pratt_parser::{Assoc::*, Op};
         PrattParser::new()
-            .op(
-                Op::infix(compo_op, Right)
-                    | Op::infix(iter_op, Right)
-                    | Op::infix(zip_op, Right)
-                    | Op::infix(each_op, Right)
-                    | Op::infix(super_each_op, Right),
-            )
+            .op(Op::infix(compo_op, Right)
+                | Op::infix(iter_op, Right)
+                | Op::infix(zip_op, Right)
+                | Op::infix(each_op, Right)
+                | Op::infix(super_each_op, Right))
             .op(Op::infix(shr, Left) | Op::infix(shl, Left))
             .op(Op::infix(add, Left) | Op::infix(sub, Left) | Op::infix(rem, Left))
             .op(Op::infix(mul, Left) | Op::infix(div, Left))
@@ -96,12 +96,15 @@ fn parse_str(pair: Pair<Rule>) -> String {
 fn highlight_from_pair(pair: &Pair<Rule>) -> Annotation {
     let (line, col) = pair.line_col();
     let (line_end, col_end) = pair.as_span().end_pos().line_col();
-    Annotation::Highlight(CodePosition::at(line-1, col-1), CodePosition::at(line_end-1, col_end-1))
+    Annotation::Highlight(
+        CodePosition::at(line - 1, col - 1),
+        CodePosition::at(line_end - 1, col_end - 1),
+    )
 }
 
 fn end_pos_from_pair(pair: &Pair<Rule>) -> CodePosition {
     let (line_end, col_end) = pair.as_span().end_pos().line_col();
-    CodePosition::at(line_end-1, col_end-1)
+    CodePosition::at(line_end - 1, col_end - 1)
 }
 
 fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
@@ -175,7 +178,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     parse_condition(condition),
                     Box::new(parse_prog(t_block)),
                     Box::new(parse_prog(f_block)),
-                    Some(pos)
+                    Some(pos),
                 )
                 .into()
             }
@@ -240,7 +243,13 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     _ => unreachable!(),
                 };
                 let pos = end_pos_from_pair(&op);
-                BoinxItem::Arithmetic(Box::new(lhs.extract()), b_op, Box::new(rhs.extract()), Some(pos)).into()
+                BoinxItem::Arithmetic(
+                    Box::new(lhs.extract()),
+                    b_op,
+                    Box::new(rhs.extract()),
+                    Some(pos),
+                )
+                .into()
             }
         })
         .map_prefix(|op, rhs| match op.as_rule() {

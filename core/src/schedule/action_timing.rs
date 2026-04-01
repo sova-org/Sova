@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}};
+use crate::clock::{Clock, SyncTime};
 
 /// Specifies when a scheduler action should be applied.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -17,14 +17,13 @@ pub enum ActionTiming {
 }
 
 impl ActionTiming {
-
     pub fn remaining(&self, date: SyncTime, clock: &Clock) -> SyncTime {
         let beat = clock.beat_at_date(date);
         match self {
             ActionTiming::Immediate => 0,
             ActionTiming::AtNextModulo(m) => {
                 let rem = *m - ((beat % *m) + *m) % *m;
-                clock.beats_to_micros(rem) 
+                clock.beats_to_micros(rem)
             }
             ActionTiming::AtBeat(b) => {
                 let target = *b as f64;
@@ -36,13 +35,13 @@ impl ActionTiming {
             }
             ActionTiming::AtNextBeat => {
                 let rem = 1.0 - ((beat % 1.0) + 1.0) % 1.0;
-                clock.beats_to_micros(rem) 
+                clock.beats_to_micros(rem)
             }
             ActionTiming::AtNextPhase => {
                 //clock.next_phase_reset_date().saturating_sub(date)
                 let m = clock.quantum();
                 let rem = m - ((beat % m) + m) % m;
-                clock.beats_to_micros(rem) 
+                clock.beats_to_micros(rem)
             }
         }
     }
@@ -51,9 +50,7 @@ impl ActionTiming {
         match self {
             ActionTiming::Immediate => false,
             ActionTiming::AtBeat(target) => current_beat >= *target as f64,
-            ActionTiming::AtNextBeat => {
-                previous_beat.floor() != current_beat.floor()
-            }
+            ActionTiming::AtNextBeat => previous_beat.floor() != current_beat.floor(),
             ActionTiming::AtNextPhase => {
                 let quantum = clock.quantum();
                 (previous_beat.div_euclid(quantum)) != (current_beat.div_euclid(quantum))
@@ -63,5 +60,4 @@ impl ActionTiming {
             }
         }
     }
-
 }

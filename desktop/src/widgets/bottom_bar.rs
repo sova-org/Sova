@@ -8,7 +8,11 @@ pub struct BottomBarResponse {
     pub open_palette: bool,
 }
 
-pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -> BottomBarResponse {
+pub fn bottom_bar(
+    ui: &mut egui::Ui,
+    server: &ServerInfo,
+    client: &ClientInfo,
+) -> BottomBarResponse {
     let mut disconnect = false;
     let mut open_palette = false;
     ui.horizontal(|ui| {
@@ -44,7 +48,11 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let shortcut = if cfg!(target_os = "macos") { "\u{2318}K" } else { "Ctrl+K" };
+            let shortcut = if cfg!(target_os = "macos") {
+                "\u{2318}K"
+            } else {
+                "Ctrl+K"
+            };
             let btn = ui.weak(shortcut);
             if btn.clicked() {
                 open_palette = true;
@@ -58,5 +66,8 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
             }
         });
     });
-    BottomBarResponse { disconnect, open_palette }
+    BottomBarResponse {
+        disconnect,
+        open_palette,
+    }
 }

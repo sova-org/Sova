@@ -235,7 +235,11 @@ pub(crate) fn find_operator(name: &str, arity: usize) -> Option<&'static OpDef> 
 
 macro_rules! unary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+        fn $name(
+            args: &[Variable],
+            dest: &Variable,
+            _ctx: &mut CompileContext,
+        ) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 dest.clone(),
@@ -246,7 +250,11 @@ macro_rules! unary_op {
 
 macro_rules! binary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+        fn $name(
+            args: &[Variable],
+            dest: &Variable,
+            _ctx: &mut CompileContext,
+        ) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 args[1].clone(),
@@ -258,7 +266,11 @@ macro_rules! binary_op {
 
 macro_rules! ternary_op {
     ($name:ident, $variant:ident) => {
-        fn $name(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+        fn $name(
+            args: &[Variable],
+            dest: &Variable,
+            _ctx: &mut CompileContext,
+        ) -> Vec<Instruction> {
             vec![Instruction::Control(ControlASM::$variant(
                 args[0].clone(),
                 args[1].clone(),
@@ -438,11 +450,7 @@ fn op_drunk(args: &[Variable], dest: &Variable, ctx: &mut CompileContext) -> Vec
         Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
         Instruction::Control(ControlASM::Mov(rand_var, dest.clone())),
         // dest = dest - step (center around 0)
-        Instruction::Control(ControlASM::Sub(
-            dest.clone(),
-            args[1].clone(),
-            dest.clone(),
-        )),
+        Instruction::Control(ControlASM::Sub(dest.clone(), args[1].clone(), dest.clone())),
         // dest = current + dest
         Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
     ]
@@ -506,7 +514,11 @@ fn op_scale(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Ve
     ))]
 }
 
-fn op_ccin_context(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+fn op_ccin_context(
+    args: &[Variable],
+    dest: &Variable,
+    _ctx: &mut CompileContext,
+) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::GetMidiCC(
         Variable::Instance("_use_context_device".to_string()),
         Variable::Instance("_use_context_channel".to_string()),
@@ -515,7 +527,11 @@ fn op_ccin_context(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext
     ))]
 }
 
-fn op_ccin_explicit(args: &[Variable], dest: &Variable, _ctx: &mut CompileContext) -> Vec<Instruction> {
+fn op_ccin_explicit(
+    args: &[Variable],
+    dest: &Variable,
+    _ctx: &mut CompileContext,
+) -> Vec<Instruction> {
     vec![Instruction::Control(ControlASM::GetMidiCC(
         args[1].clone(),
         args[2].clone(),

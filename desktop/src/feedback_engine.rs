@@ -1,16 +1,9 @@
-use std::sync::{
-    Arc, Mutex as StdMutex,
-    atomic::Ordering,
-};
+use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering};
 
 use crossbeam_channel::Sender;
-use sova_core::{
-    clock::ClockServer,
-    device_map::DeviceMap,
-    schedule::SchedulerMessage,
-};
-use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
+use sova_core::{clock::ClockServer, device_map::DeviceMap, schedule::SchedulerMessage};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
 
 pub struct FeedbackEngine {
     sched_iface: Sender<SchedulerMessage>,
@@ -53,9 +46,8 @@ impl FeedbackEngine {
             dummy_registry,
         );
 
-        let notification_drainer = std::thread::spawn(move || {
-            while sched_notifications.recv().is_ok() {}
-        });
+        let notification_drainer =
+            std::thread::spawn(move || while sched_notifications.recv().is_ok() {});
 
         Ok(Self {
             sched_iface,

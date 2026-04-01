@@ -1,6 +1,11 @@
 use std::time::{Duration, Instant};
 
-use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Rect}, style::Color, widgets::{Block, BorderType, Clear, Paragraph, Widget, Wrap}};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    style::Color,
+    widgets::{Block, BorderType, Clear, Paragraph, Widget, Wrap},
+};
 
 pub const NOTIFICATION_TIME_MS: u64 = 1000;
 
@@ -11,14 +16,13 @@ pub struct Notification {
 }
 
 impl Notification {
-
     pub fn new() -> Self {
-        Notification { 
-            text: Default::default(), 
-            color: Default::default(), 
-            triggered: Instant::now().checked_sub(
-                Duration::from_millis(NOTIFICATION_TIME_MS + 1)
-            ).unwrap()
+        Notification {
+            text: Default::default(),
+            color: Default::default(),
+            triggered: Instant::now()
+                .checked_sub(Duration::from_millis(NOTIFICATION_TIME_MS + 1))
+                .unwrap(),
         }
     }
 
@@ -43,11 +47,9 @@ impl Notification {
     pub fn is_showing(&self) -> bool {
         self.triggered.elapsed().as_millis() < NOTIFICATION_TIME_MS as u128
     }
-
 }
 
 impl Widget for &Notification {
-
     fn render(self, area: Rect, buf: &mut Buffer) {
         use Constraint::*;
         if !self.is_showing() {
@@ -55,9 +57,10 @@ impl Widget for &Notification {
         }
         let paragraph = Paragraph::new(self.text.as_str())
             .wrap(Wrap { trim: true })
-            .block(Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(self.color)
+            .block(
+                Block::bordered()
+                    .border_type(BorderType::Rounded)
+                    .border_style(self.color),
             );
         let width = 25 * area.width / 100;
         let len = 125 * (self.text.len() as u16) / 100;
@@ -69,5 +72,4 @@ impl Widget for &Notification {
         Clear.render(area, buf);
         paragraph.render(area, buf);
     }
-
 }

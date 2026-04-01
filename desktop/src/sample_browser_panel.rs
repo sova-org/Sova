@@ -51,7 +51,10 @@ impl SampleBrowserPanel {
     }
 
     pub fn sample_names(&self) -> Vec<String> {
-        self.state.as_ref().map(|s| s.tree.sample_names()).unwrap_or_default()
+        self.state
+            .as_ref()
+            .map(|s| s.tree.sample_names())
+            .unwrap_or_default()
     }
 
     pub fn show(
@@ -79,10 +82,7 @@ impl SampleBrowserPanel {
             if sample_paths.is_empty() && default_path.is_none() {
                 self.state = None;
             } else {
-                self.state = Some(SampleBrowserState::new(
-                    default_path,
-                    sample_paths,
-                ));
+                self.state = Some(SampleBrowserState::new(default_path, sample_paths));
             }
             self.preview = None;
         }
@@ -255,9 +255,9 @@ impl SampleBrowserPanel {
                         }
                     }
 
-                    let color = if entry.is_default
-                        && matches!(entry.kind, TreeLineKind::Root { .. })
-                    {
+                    let color = if selected {
+                        ui.visuals().selection.stroke.color
+                    } else if entry.is_default && matches!(entry.kind, TreeLineKind::Root { .. }) {
                         ui.visuals().weak_text_color()
                     } else if is_file {
                         ui.visuals().text_color()

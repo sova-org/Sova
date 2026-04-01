@@ -1,5 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
@@ -130,8 +130,8 @@ impl CodeEditor {
 
         // Completion: consume keys before TextEdit sees them
         let completion_open = self.completion.is_some();
-        let (ctrl_space, consumed_tab, consumed_prev, consumed_next, consumed_escape) =
-            ui.input_mut(|i| {
+        let (ctrl_space, consumed_tab, consumed_prev, consumed_next, consumed_escape) = ui
+            .input_mut(|i| {
                 let cs = i.consume_key(egui::Modifiers::CTRL, egui::Key::Space);
                 if completion_open {
                     (
@@ -275,13 +275,7 @@ impl CodeEditor {
                     .layouter(&mut layouter)
                     .show(ui);
 
-                paint_line_numbers(
-                    ui,
-                    &edit_output,
-                    gutter_rect.min.x,
-                    gutter_width,
-                    &font_id,
-                );
+                paint_line_numbers(ui, &edit_output, gutter_rect.min.x, gutter_width, &font_id);
 
                 output = Some(edit_output);
             });
@@ -316,7 +310,9 @@ impl CodeEditor {
         }
 
         // Only show hover tooltip when completion is closed
-        if self.completion.is_none() && let Some(ref_map) = reference {
+        if self.completion.is_none()
+            && let Some(ref_map) = reference
+        {
             show_hover_tooltip(ui, &edit_output, text, ref_map, syntax, ctx.sample_names);
         }
 
@@ -331,10 +327,7 @@ impl CodeEditor {
             self.suppress_completion = false;
         }
 
-        let cursor_char = edit_output
-            .cursor_range
-            .as_ref()
-            .map(|cr| cr.primary.index);
+        let cursor_char = edit_output.cursor_range.as_ref().map(|cr| cr.primary.index);
 
         let (prefix_start, prefix_end_byte, prefix) = cursor_char
             .map(|cc| {
@@ -589,11 +582,18 @@ fn split_section_with_highlights(
                 format: base_fmt.clone(),
             });
         }
-        let bg = if i == current_match { current_bg } else { highlight_bg };
+        let bg = if i == current_match {
+            current_bg
+        } else {
+            highlight_bg
+        };
         out.push(LayoutSection {
             leading_space: 0.0,
             byte_range: overlap_start..overlap_end,
-            format: TextFormat { background: bg, ..base_fmt.clone() },
+            format: TextFormat {
+                background: bg,
+                ..base_fmt.clone()
+            },
         });
         pos = overlap_end;
     }
@@ -768,18 +768,10 @@ fn paint_peer_cursors(
         );
 
         // Name label above caret
-        let label_bg = Color32::from_rgba_unmultiplied(
-            peer.color.r(),
-            peer.color.g(),
-            peer.color.b(),
-            180,
-        );
+        let label_bg =
+            Color32::from_rgba_unmultiplied(peer.color.r(), peer.color.g(), peer.color.b(), 180);
         let label_font = FontId::monospace(font_id.size * 0.7);
-        let label_galley = painter.layout_no_wrap(
-            peer.name.clone(),
-            label_font,
-            Color32::WHITE,
-        );
+        let label_galley = painter.layout_no_wrap(peer.name.clone(), label_font, Color32::WHITE);
         let label_w = label_galley.size().x + 4.0;
         let label_h = label_galley.size().y + 2.0;
         let clip = ui.clip_rect();
@@ -788,10 +780,8 @@ fn paint_peer_cursors(
         } else {
             screen_y - label_h
         };
-        let label_rect = egui::Rect::from_min_size(
-            egui::pos2(screen_x, label_y),
-            egui::vec2(label_w, label_h),
-        );
+        let label_rect =
+            egui::Rect::from_min_size(egui::pos2(screen_x, label_y), egui::vec2(label_w, label_h));
         painter.rect_filled(label_rect, 0.0, label_bg);
         painter.galley(
             egui::pos2(label_rect.min.x + 2.0, label_rect.min.y + 1.0),
@@ -842,7 +832,8 @@ fn paint_annotations(
     let highlight_color = Color32::from_rgba_unmultiplied(255, 200, 60, 40);
 
     // Collect InsertText annotations per line to paint at end of line
-    let mut line_texts: std::collections::BTreeMap<usize, String> = std::collections::BTreeMap::new();
+    let mut line_texts: std::collections::BTreeMap<usize, String> =
+        std::collections::BTreeMap::new();
 
     for annotation in annotations {
         match annotation {
@@ -852,9 +843,13 @@ fn paint_annotations(
                 } else {
                     continue;
                 };
-                if galley.rows.get(row_idx).is_none() { continue; }
+                if galley.rows.get(row_idx).is_none() {
+                    continue;
+                }
                 let entry = line_texts.entry(pos.line).or_default();
-                if !entry.is_empty() { entry.push(' '); }
+                if !entry.is_empty() {
+                    entry.push(' ');
+                }
                 entry.push_str(text);
             }
             Annotation::Highlight(start, end) => {
@@ -870,7 +865,9 @@ fn paint_annotations(
                 };
 
                 for row_idx in start_row..=end_row {
-                    let Some(row) = galley.rows.get(row_idx) else { continue };
+                    let Some(row) = galley.rows.get(row_idx) else {
+                        continue;
+                    };
                     let x_start = if row_idx == start_row {
                         glyph_x(&row.glyphs, start.col.unwrap_or(0))
                     } else {
@@ -897,18 +894,17 @@ fn paint_annotations(
     let clip = ui.clip_rect();
     for (line, text) in &line_texts {
         let row_idx = line_to_row[*line];
-        let Some(row) = galley.rows.get(row_idx) else { continue };
+        let Some(row) = galley.rows.get(row_idx) else {
+            continue;
+        };
         let line_end_x = glyph_x(&row.glyphs, row.glyphs.len());
         let screen_x = galley_pos.x + line_end_x + 8.0;
-        if screen_x >= clip.max.x { continue; }
+        if screen_x >= clip.max.x {
+            continue;
+        }
         let screen_y = galley_pos.y + row.pos.y;
         let avail = clip.max.x - screen_x;
-        let galley = painter.layout(
-            text.to_string(),
-            annotation_font.clone(),
-            text_color,
-            avail,
-        );
+        let galley = painter.layout(text.to_string(), annotation_font.clone(), text_color, avail);
         painter.galley(egui::pos2(screen_x, screen_y), galley, text_color);
     }
 }
@@ -994,7 +990,11 @@ fn lookup_reference<'a>(
         if key.to_ascii_lowercase() == word_lower {
             return Some(entry);
         }
-        if entry.aliases.iter().any(|a| a.to_ascii_lowercase() == word_lower) {
+        if entry
+            .aliases
+            .iter()
+            .any(|a| a.to_ascii_lowercase() == word_lower)
+        {
             return Some(entry);
         }
     }
@@ -1200,91 +1200,99 @@ fn paint_completion_popup(
                 if let Some(opacity) = opacity {
                     opacity.override_widget_visuals(ui);
                 }
-                    ui.set_max_width(350.0);
-                    let row_height = font_id.size + 16.0;
-                    let accent = ui.visuals().selection.bg_fill;
-                    let text_color = ui.visuals().text_color();
-                    let weak_color = ui.visuals().weak_text_color();
-                    let small_font = FontId::proportional(font_id.size * 0.8);
+                ui.set_max_width(350.0);
+                let row_height = font_id.size + 16.0;
+                let accent = ui.visuals().selection.bg_fill;
+                let text_color = ui.visuals().text_color();
+                let weak_color = ui.visuals().weak_text_color();
+                let small_font = FontId::proportional(font_id.size * 0.8);
 
-                    egui::ScrollArea::vertical()
-                        .max_height(popup_max_height)
-                        .show(ui, |ui| {
-                            for (i, entry) in state.entries.iter().enumerate() {
-                                let selected = i == state.selected;
-                                let (rect, resp) = ui.allocate_exact_size(
-                                    egui::vec2(ui.available_width().max(250.0), row_height),
-                                    egui::Sense::click(),
+                egui::ScrollArea::vertical()
+                    .max_height(popup_max_height)
+                    .show(ui, |ui| {
+                        for (i, entry) in state.entries.iter().enumerate() {
+                            let selected = i == state.selected;
+                            let (rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width().max(250.0), row_height),
+                                egui::Sense::click(),
+                            );
+
+                            if selected {
+                                ui.painter().rect_filled(rect, 0.0, accent);
+                            } else if resp.hovered() {
+                                ui.painter().rect_filled(
+                                    rect,
+                                    0.0,
+                                    ui.visuals().widgets.hovered.bg_fill,
                                 );
-
-                                if selected {
-                                    ui.painter().rect_filled(rect, 0.0, accent);
-                                } else if resp.hovered() {
-                                    ui.painter().rect_filled(
-                                        rect,
-                                        0.0,
-                                        ui.visuals().widgets.hovered.bg_fill,
-                                    );
-                                }
-
-                                // Label with fuzzy highlights
-                                let label_pos = rect.min + egui::vec2(4.0, 2.0);
-                                if entry.label_matches.is_empty() {
-                                    ui.painter().text(
-                                        label_pos,
-                                        egui::Align2::LEFT_TOP,
-                                        &entry.label,
-                                        FontId::monospace(font_id.size),
-                                        if selected {
-                                            ui.visuals().selection.stroke.color
-                                        } else {
-                                            text_color
-                                        },
-                                    );
-                                } else {
-                                    let (normal, highlight) = if selected {
-                                        let sel = ui.visuals().selection.stroke.color;
-                                        (sel.gamma_multiply(0.7), sel)
-                                    } else {
-                                        (text_color, accent)
-                                    };
-                                    super::paint_highlighted_text(
-                                        ui,
-                                        label_pos,
-                                        &entry.label,
-                                        &entry.label_matches,
-                                        FontId::monospace(font_id.size),
-                                        normal,
-                                        highlight,
-                                    );
-                                }
-
-                                // Category right-aligned
-                                if let Some(cat) = &entry.category {
-                                    ui.painter().text(
-                                        egui::pos2(rect.max.x - 4.0, rect.min.y + 2.0),
-                                        egui::Align2::RIGHT_TOP,
-                                        cat,
-                                        small_font.clone(),
-                                        if selected { ui.visuals().selection.stroke.color.gamma_multiply(0.7) } else { weak_color },
-                                    );
-                                }
-
-                                // Description below label
-                                ui.painter().text(
-                                    rect.min + egui::vec2(4.0, font_id.size + 2.0),
-                                    egui::Align2::LEFT_TOP,
-                                    truncate_str(&entry.description, 60),
-                                    small_font.clone(),
-                                    if selected { ui.visuals().selection.stroke.color.gamma_multiply(0.7) } else { weak_color },
-                                );
-
-                                if selected {
-                                    resp.scroll_to_me(None);
-                                }
                             }
-                        });
-                });
+
+                            // Label with fuzzy highlights
+                            let label_pos = rect.min + egui::vec2(4.0, 2.0);
+                            if entry.label_matches.is_empty() {
+                                ui.painter().text(
+                                    label_pos,
+                                    egui::Align2::LEFT_TOP,
+                                    &entry.label,
+                                    FontId::monospace(font_id.size),
+                                    if selected {
+                                        ui.visuals().selection.stroke.color
+                                    } else {
+                                        text_color
+                                    },
+                                );
+                            } else {
+                                let (normal, highlight) = if selected {
+                                    let sel = ui.visuals().selection.stroke.color;
+                                    (sel.gamma_multiply(0.7), sel)
+                                } else {
+                                    (text_color, accent)
+                                };
+                                super::paint_highlighted_text(
+                                    ui,
+                                    label_pos,
+                                    &entry.label,
+                                    &entry.label_matches,
+                                    FontId::monospace(font_id.size),
+                                    normal,
+                                    highlight,
+                                );
+                            }
+
+                            // Category right-aligned
+                            if let Some(cat) = &entry.category {
+                                ui.painter().text(
+                                    egui::pos2(rect.max.x - 4.0, rect.min.y + 2.0),
+                                    egui::Align2::RIGHT_TOP,
+                                    cat,
+                                    small_font.clone(),
+                                    if selected {
+                                        ui.visuals().selection.stroke.color.gamma_multiply(0.7)
+                                    } else {
+                                        weak_color
+                                    },
+                                );
+                            }
+
+                            // Description below label
+                            ui.painter().text(
+                                rect.min + egui::vec2(4.0, font_id.size + 2.0),
+                                egui::Align2::LEFT_TOP,
+                                truncate_str(&entry.description, 60),
+                                small_font.clone(),
+                                if selected {
+                                    ui.visuals().selection.stroke.color.gamma_multiply(0.7)
+                                } else {
+                                    weak_color
+                                },
+                            );
+
+                            if selected {
+                                resp.scroll_to_me(None);
+                            }
+                        }
+                    });
+            });
         });
 }
 

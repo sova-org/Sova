@@ -1,17 +1,25 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Rect}, style::{Style, Stylize}, widgets::{StatefulWidget, Widget}};
-use sova_core::{scene::script::Script, schedule::{ActionTiming, SchedulerMessage}};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    style::{Style, Stylize},
+    widgets::{StatefulWidget, Widget},
+};
+use sova_core::{
+    scene::script::Script,
+    schedule::{ActionTiming, SchedulerMessage},
+};
 use tui_textarea::{CursorMove, TextArea};
 
 use crate::{app::AppState, event::AppEvent, popup::PopupValue};
 
 pub struct EditWidget {
-    text_area: TextArea<'static>
+    text_area: TextArea<'static>,
 }
 
 impl Default for EditWidget {
     fn default() -> Self {
-        let mut text_area : TextArea = Default::default();
+        let mut text_area: TextArea = Default::default();
         text_area.set_line_number_style(Style::default().dark_gray());
         Self { text_area }
     }
@@ -20,16 +28,11 @@ impl Default for EditWidget {
 fn upload_script(state: &mut AppState, script: Script) {
     let (line_id, frame_id) = state.selected;
     state.events.send(
-        SchedulerMessage::SetScript(
-            line_id, 
-            frame_id, 
-            script,
-            ActionTiming::Immediate
-        ).into()
+        SchedulerMessage::SetScript(line_id, frame_id, script, ActionTiming::Immediate).into(),
     );
-    state.events.send(
-        AppEvent::Positive("Sent script".to_owned())
-    );
+    state
+        .events
+        .send(AppEvent::Positive("Sent script".to_owned()));
 }
 
 fn upload_snippet(state: &mut AppState, content: String) {
@@ -38,14 +41,12 @@ fn upload_snippet(state: &mut AppState, content: String) {
     };
     let mut script = frame.script().clone();
     script.set_content(content);
-    state.events.send(
-        SchedulerMessage::RunSnippet(
-            script, frame.duration
-        ).into()
-    );
-    state.events.send(
-        AppEvent::Positive("Tested snippet".to_owned())
-    );
+    state
+        .events
+        .send(SchedulerMessage::RunSnippet(script, frame.duration).into());
+    state
+        .events
+        .send(AppEvent::Positive("Tested snippet".to_owned()));
 }
 
 fn upload_content(state: &mut AppState, content: String) {
@@ -67,14 +68,14 @@ fn upload_lang(state: &mut AppState, lang: String) {
 }
 
 impl EditWidget {
-
     pub fn open(&mut self, state: &AppState) {
         let Some(frame) = state.selected_frame() else {
             return;
         };
         let content = frame.script().content();
         self.text_area = content.lines().into();
-        self.text_area.set_line_number_style(Style::default().dark_gray());
+        self.text_area
+            .set_line_number_style(Style::default().dark_gray());
     }
 
     pub fn get_help() -> &'static str {
@@ -85,14 +86,14 @@ impl EditWidget {
         "
     }
 
-    pub fn process_event(&mut self, state: &mut AppState, mut event: KeyEvent) { 
+    pub fn process_event(&mut self, state: &mut AppState, mut event: KeyEvent) {
         match event.code {
             KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
                 upload_content(state, self.get_content());
-            } 
+            }
             KeyCode::Char('t') if event.modifiers == KeyModifiers::CONTROL => {
                 upload_snippet(state, self.get_content());
-            } 
+            }
             KeyCode::Char('a') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.select_all();
             }
@@ -100,15 +101,19 @@ impl EditWidget {
                 let Some(frame) = state.selected_frame() else {
                     return;
                 };
-                let langs : Vec<String> = state.languages.languages().map(str::to_owned).collect();
-                let i = langs.iter().position(|l| l == frame.script().lang()).unwrap_or_default();
+                let langs: Vec<String> = state.languages.languages().map(str::to_owned).collect();
+                let i = langs
+                    .iter()
+                    .position(|l| l == frame.script().lang())
+                    .unwrap_or_default();
                 state.events.send(AppEvent::Popup(
-                    "Script language".to_owned(), 
-                    "Which language to use for this script ?".to_owned(), 
+                    "Script language".to_owned(),
+                    "Which language to use for this script ?".to_owned(),
                     PopupValue::Choice(i, langs),
                     Box::new(|state, x| {
                         upload_lang(state, x.into());
-                    })));
+                    }),
+                ));
             }
             KeyCode::Char('w') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.start_selection();
@@ -119,18 +124,18 @@ impl EditWidget {
                 if let Some(clipboard) = &mut state.clipboard {
                     let _ = clipboard.set_text(self.text_area.yank_text());
                 }
-                state.events.send(
-                    AppEvent::Positive("Text yanked !".to_owned())
-                );
+                state
+                    .events
+                    .send(AppEvent::Positive("Text yanked !".to_owned()));
             }
             KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.cut();
                 if let Some(clipboard) = &mut state.clipboard {
                     let _ = clipboard.set_text(self.text_area.yank_text());
                 }
-                state.events.send(
-                    AppEvent::Positive("Text yanked !".to_owned())
-                );
+                state
+                    .events
+                    .send(AppEvent::Positive("Text yanked !".to_owned()));
             }
             KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
                 if let Some(clipboard) = &mut state.clipboard {
@@ -142,15 +147,11 @@ impl EditWidget {
             }
             KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.undo();
-                state.events.send(
-                    AppEvent::Positive("Undo !".to_owned())
-                );
+                state.events.send(AppEvent::Positive("Undo !".to_owned()));
             }
             KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.redo();
-                state.events.send(
-                    AppEvent::Positive("Redo !".to_owned())
-                );
+                state.events.send(AppEvent::Positive("Redo !".to_owned()));
             }
             KeyCode::Char('q') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.move_cursor(CursorMove::Head);
@@ -171,7 +172,6 @@ impl EditWidget {
     pub fn get_content(&self) -> String {
         self.text_area.lines().join("\n")
     }
-
 }
 
 impl StatefulWidget for &EditWidget {

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
-    hash::{self, DefaultHasher, Hash, Hasher}, thread::{self, ThreadId},
+    hash::{self, DefaultHasher, Hash, Hasher},
+    thread::{self, ThreadId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -149,7 +150,7 @@ pub struct ScriptExecution {
     pub stack: VecDeque<VariableValue>,
     pub scheduled_time: SyncTime,
     interpreter: Option<Box<dyn Interpreter>>,
-    thread_id: ThreadId
+    thread_id: ThreadId,
 }
 
 impl ScriptExecution {
@@ -164,23 +165,23 @@ impl ScriptExecution {
             instance_vars,
             stack: VecDeque::new(),
             interpreter: Some(interpreter),
-            thread_id: thread::current().id()
+            thread_id: thread::current().id(),
         }
     }
 
     pub fn interpreter_mut(&mut self) -> Option<&mut Box<dyn Interpreter>> {
         if thread::current().id() == self.thread_id {
-            return self.interpreter.as_mut()
+            return self.interpreter.as_mut();
         } else {
-            return None
+            return None;
         }
     }
 
     pub fn interpreter(&self) -> Option<&Box<dyn Interpreter>> {
         if thread::current().id() == self.thread_id {
-            return self.interpreter.as_ref()
+            return self.interpreter.as_ref();
         } else {
-            return None
+            return None;
         }
     }
 
@@ -243,7 +244,10 @@ impl ScriptExecution {
     }
 
     pub fn annotations(&self) -> Vec<Annotation> {
-        self.interpreter.as_ref().map(|i| i.annotations()).unwrap_or_default()
+        self.interpreter
+            .as_ref()
+            .map(|i| i.annotations())
+            .unwrap_or_default()
     }
 }
 

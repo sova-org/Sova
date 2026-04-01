@@ -26,29 +26,24 @@ pub struct EvaluationContext<'a> {
     #[serde(skip)]
     pub device_map: &'a DeviceMap,
     #[serde(skip)]
-    pub errors: &'a ErrorQueue
+    pub errors: &'a ErrorQueue,
 }
 
 impl<'a> EvaluationContext<'a> {
-
-    pub fn redefine<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
-        let value : VariableValue = value.into();
+    pub fn redefine<T: Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+        let value: VariableValue = value.into();
         match var {
             Variable::Global(n) => {
-                self.global_vars
-                    .insert(n.clone(), value);
+                self.global_vars.insert(n.clone(), value);
             }
             Variable::Line(n) => {
-                self.line_vars
-                    .insert(n.clone(), value);
+                self.line_vars.insert(n.clone(), value);
             }
             Variable::Frame(n) => {
-                self.frame_vars
-                    .insert(n.clone(), value);
+                self.frame_vars.insert(n.clone(), value);
             }
             Variable::Instance(n) => {
-                self.instance_vars
-                    .insert(n.clone(), value);
+                self.instance_vars.insert(n.clone(), value);
             }
             Variable::StackBack => {
                 self.stack.push_back(value);
@@ -60,8 +55,8 @@ impl<'a> EvaluationContext<'a> {
         };
     }
 
-    pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
-        let mut value : VariableValue = value.into();
+    pub fn set_var<T: Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+        let mut value: VariableValue = value.into();
         if !matches!(var, Variable::StackBack) && !matches!(var, Variable::StackFront) {
             if let Some(target) = self.value_ref(var) {
                 value.as_type(target, self);
@@ -69,20 +64,16 @@ impl<'a> EvaluationContext<'a> {
         }
         match var {
             Variable::Global(n) => {
-                self.global_vars
-                    .insert(n.clone(), value);
+                self.global_vars.insert(n.clone(), value);
             }
             Variable::Line(n) => {
-                self.line_vars
-                    .insert(n.clone(), value);
+                self.line_vars.insert(n.clone(), value);
             }
             Variable::Frame(n) => {
-                self.frame_vars
-                    .insert(n.clone(), value);
+                self.frame_vars.insert(n.clone(), value);
             }
             Variable::Instance(n) => {
-                self.instance_vars
-                    .insert(n.clone(), value);
+                self.instance_vars.insert(n.clone(), value);
             }
             Variable::StackBack => {
                 self.stack.push_back(value);
@@ -106,12 +97,8 @@ impl<'a> EvaluationContext<'a> {
             Variable::Constant(x) => {
                 return x.clone();
             }
-            Variable::StackBack => {
-                return self.stack.pop_back().unwrap_or_default()
-            }
-            Variable::StackFront => {
-                return self.stack.pop_front().unwrap_or_default()
-            }
+            Variable::StackBack => return self.stack.pop_back().unwrap_or_default(),
+            Variable::StackFront => return self.stack.pop_front().unwrap_or_default(),
         };
         if let Some(VariableValue::Generator(g)) = res {
             g.get_current(self)
@@ -126,12 +113,8 @@ impl<'a> EvaluationContext<'a> {
             Variable::Line(n) => self.line_vars.has(n),
             Variable::Frame(n) => self.frame_vars.has(n),
             Variable::Instance(n) => self.instance_vars.has(n),
-            Variable::Environment(_) | Variable::Constant(_) => {
-                true
-            }
-            Variable::StackBack | Variable::StackFront => {
-                !self.stack.is_empty()
-            }
+            Variable::Environment(_) | Variable::Constant(_) => true,
+            Variable::StackBack | Variable::StackFront => !self.stack.is_empty(),
         }
     }
 
@@ -142,12 +125,8 @@ impl<'a> EvaluationContext<'a> {
             Variable::Frame(n) => self.frame_vars.get(n),
             Variable::Instance(n) => self.instance_vars.get(n),
             Variable::Constant(x) => Some(x),
-            Variable::StackBack => {
-                self.stack.back()
-            }
-            Variable::StackFront => {
-                self.stack.front()
-            }
+            Variable::StackBack => self.stack.back(),
+            Variable::StackFront => self.stack.front(),
             Variable::Environment(_) => None,
         }
     }
@@ -158,12 +137,8 @@ impl<'a> EvaluationContext<'a> {
             Variable::Line(n) => self.line_vars.get_mut(n),
             Variable::Frame(n) => self.frame_vars.get_mut(n),
             Variable::Instance(n) => self.instance_vars.get_mut(n),
-            Variable::StackBack => {
-                self.stack.back_mut()
-            }
-            Variable::StackFront => {
-                self.stack.front_mut()
-            }
+            Variable::StackBack => self.stack.back_mut(),
+            Variable::StackFront => self.stack.front_mut(),
             Variable::Constant(_) | Variable::Environment(_) => None,
         }
     }
@@ -184,7 +159,7 @@ impl<'a> EvaluationContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
-            errors: self.errors
+            errors: self.errors,
         }
     }
 
@@ -208,7 +183,7 @@ impl<'a> EvaluationContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
-            errors: self.errors
+            errors: self.errors,
         }
     }
 }
@@ -230,7 +205,7 @@ pub struct PartialContext<'a> {
     pub structure: Option<&'a Vec<Vec<f64>>>,
     pub clock: Option<&'a Clock>,
     pub device_map: Option<&'a DeviceMap>,
-    pub errors: Option<&'a ErrorQueue>
+    pub errors: Option<&'a ErrorQueue>,
 }
 
 impl<'a> PartialContext<'a> {
@@ -260,8 +235,9 @@ impl<'a> PartialContext<'a> {
     }
 
     /// Creates another partial context sharing the same fields as its parent, but allowing override of some.
-    pub fn child<'b>(&'b mut self) -> PartialContext<'b> 
-        where 'a : 'b 
+    pub fn child<'b>(&'b mut self) -> PartialContext<'b>
+    where
+        'a: 'b,
     {
         PartialContext {
             logic_date: self.logic_date,
@@ -278,7 +254,7 @@ impl<'a> PartialContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
-            errors: self.errors
+            errors: self.errors,
         }
     }
 }
@@ -303,7 +279,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             structure: partial.structure.unwrap(),
             clock: partial.clock.unwrap(),
             device_map: partial.device_map.unwrap(),
-            errors: partial.errors.unwrap()
+            errors: partial.errors.unwrap(),
         }
     }
 }

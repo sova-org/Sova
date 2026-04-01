@@ -4,16 +4,14 @@ use sova_core::scene::{Line, Scene};
 use sova_core::schedule::SovaNotification;
 
 use clap::Parser;
-use tokio_util::sync::CancellationToken;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
-use sova_server::{
-    AudioEngineState, AudioRestartConfig, ClientRegistry, SovaCoreServer,
-};
+use sova_server::{AudioEngineState, AudioRestartConfig, ClientRegistry, SovaCoreServer};
 
 #[cfg(feature = "audio")]
 use sova_server::audio::spawn_audio_thread;
@@ -222,7 +220,7 @@ async fn main() {
         cli.password,
         master_gain,
     );
-    
+
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
     let token = CancellationToken::new();

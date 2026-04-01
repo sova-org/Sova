@@ -13,6 +13,38 @@ pub(crate) struct Alt {
     pub count: u16,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PatAnnotatedHit {
+    pub position: f64,
+    pub gate: f64,
+    pub alt: Option<Alt>,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SourceChar {
+    ch: char,
+    start: usize,
+    end: usize,
+}
+
+trait PatternToken {
+    fn ch(&self) -> char;
+}
+
+impl PatternToken for char {
+    fn ch(&self) -> char {
+        *self
+    }
+}
+
+impl PatternToken for SourceChar {
+    fn ch(&self) -> char {
+        self.ch
+    }
+}
+
 pub(crate) fn parse_pattern(input: &str) -> Result<Arc<[PatHit]>, String> {
     let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
     let total = count_slots(&chars, 0, chars.len())?;
@@ -24,11 +56,35 @@ pub(crate) fn parse_pattern(input: &str) -> Result<Arc<[PatHit]>, String> {
     Ok(hits.into())
 }
 
-fn count_slots(chars: &[char], start: usize, end: usize) -> Result<usize, String> {
+pub(crate) fn parse_pattern_annotated(input: &str) -> Result<Vec<PatAnnotatedHit>, String> {
+    let chars: Vec<SourceChar> = input
+        .char_indices()
+        .filter_map(|(start, ch)| {
+            if ch.is_whitespace() {
+                None
+            } else {
+                Some(SourceChar {
+                    ch,
+                    start,
+                    end: start + ch.len_utf8(),
+                })
+            }
+        })
+        .collect();
+    let total = count_slots(&chars, 0, chars.len())?;
+    if total == 0 {
+        return Err("empty pattern".into());
+    }
+    let mut hits = Vec::new();
+    collect_hits_annotated(&chars, 0, chars.len(), 0.0, 1.0, total, None, &mut hits)?;
+    Ok(hits)
+}
+
+fn count_slots<T: PatternToken>(chars: &[T], start: usize, end: usize) -> Result<usize, String> {
     let mut count = 0usize;
     let mut i = start;
     while i < end {
-        match chars[i] {
+        match chars[i].ch() {
             'x' | '.' | '-' => {
                 let (repeat, consumed) = parse_repeat(chars, i + 1, end);
                 count += repeat;
@@ -77,7 +133,11 @@ fn collect_hits(
                 if rep_consumed > 0 {
                     for _ in 0..repeat {
                         let pos = offset + slot as f64 * slot_width;
-                        hits.push(PatHit { position: pos, gate: slot_width, alt: alt.clone() });
+                        hits.push(PatHit {
+                            position: pos,
+                            gate: slot_width,
+                            alt: alt.clone(),
+                        });
                         slot += 1;
                     }
                     i += 1 + rep_consumed;
@@ -85,7 +145,11 @@ fn collect_hits(
                     let pos = offset + slot as f64 * slot_width;
                     let dashes = count_ahead(chars, i + 1, end, '-');
                     let gate = slot_width * (1 + dashes) as f64;
-                    hits.push(PatHit { position: pos, gate, alt: alt.clone() });
+                    hits.push(PatHit {
+                        position: pos,
+                        gate,
+                        alt: alt.clone(),
+                    });
                     i += 1 + dashes;
                     slot += 1 + dashes;
                 }
@@ -112,7 +176,16 @@ fn collect_hits(
                 }
                 for _ in 0..repeat {
                     let sub_offset = offset + slot as f64 * slot_width;
-                    collect_hits(chars, inner_start, inner_end, sub_offset, slot_width, sub_total, alt.clone(), hits)?;
+                    collect_hits(
+                        chars,
+                        inner_start,
+                        inner_end,
+                        sub_offset,
+                        slot_width,
+                        sub_total,
+                        alt.clone(),
+                        hits,
+                    )?;
                     slot += 1;
                 }
                 i = close + 1 + consumed;
@@ -134,8 +207,20 @@ fn collect_hits(
                         if sub_total == 0 {
                             continue;
                         }
-                        let a = Alt { index: alt_idx as u16, count: alt_count };
-                        collect_hits(chars, seg_start, seg_end, sub_offset, slot_width, sub_total, Some(a), hits)?;
+                        let a = Alt {
+                            index: alt_idx as u16,
+                            count: alt_count,
+                        };
+                        collect_hits(
+                            chars,
+                            seg_start,
+                            seg_end,
+                            sub_offset,
+                            slot_width,
+                            sub_total,
+                            Some(a),
+                            hits,
+                        )?;
                     }
                     slot += 1;
                 }
@@ -147,18 +232,143 @@ fn collect_hits(
     Ok(())
 }
 
-fn count_ahead(chars: &[char], from: usize, end: usize, target: char) -> usize {
+fn collect_hits_annotated(
+    chars: &[SourceChar],
+    start: usize,
+    end: usize,
+    offset: f64,
+    width: f64,
+    total: usize,
+    alt: Option<Alt>,
+    hits: &mut Vec<PatAnnotatedHit>,
+) -> Result<(), String> {
+    let slot_width = width / total as f64;
+    let mut slot = 0usize;
+    let mut i = start;
+
+    while i < end {
+        match chars[i].ch {
+            'x' => {
+                let (repeat, rep_consumed) = parse_repeat(chars, i + 1, end);
+                if rep_consumed > 0 {
+                    let token_end = chars[i + rep_consumed].end;
+                    for _ in 0..repeat {
+                        let pos = offset + slot as f64 * slot_width;
+                        hits.push(PatAnnotatedHit {
+                            position: pos,
+                            gate: slot_width,
+                            alt: alt.clone(),
+                            start: chars[i].start,
+                            end: token_end,
+                        });
+                        slot += 1;
+                    }
+                    i += 1 + rep_consumed;
+                } else {
+                    let pos = offset + slot as f64 * slot_width;
+                    let dashes = count_ahead(chars, i + 1, end, '-');
+                    let gate = slot_width * (1 + dashes) as f64;
+                    hits.push(PatAnnotatedHit {
+                        position: pos,
+                        gate,
+                        alt: alt.clone(),
+                        start: chars[i].start,
+                        end: chars[i + dashes].end,
+                    });
+                    i += 1 + dashes;
+                    slot += 1 + dashes;
+                }
+            }
+            '.' => {
+                let (repeat, consumed) = parse_repeat(chars, i + 1, end);
+                slot += repeat;
+                i += 1 + consumed;
+            }
+            '-' => {
+                return Err("'-' without preceding 'x'".into());
+            }
+            '[' => {
+                let close = find_closing(chars, i)?;
+                let (repeat, consumed) = parse_repeat(chars, close + 1, end);
+                let inner_start = i + 1;
+                let inner_end = close;
+                if inner_start == inner_end {
+                    return Err("empty subdivision '[]'".into());
+                }
+                let sub_total = count_slots(chars, inner_start, inner_end)?;
+                if sub_total == 0 {
+                    return Err("empty subdivision '[]'".into());
+                }
+                for _ in 0..repeat {
+                    let sub_offset = offset + slot as f64 * slot_width;
+                    collect_hits_annotated(
+                        chars,
+                        inner_start,
+                        inner_end,
+                        sub_offset,
+                        slot_width,
+                        sub_total,
+                        alt.clone(),
+                        hits,
+                    )?;
+                    slot += 1;
+                }
+                i = close + 1 + consumed;
+            }
+            '<' => {
+                let close = find_closing(chars, i)?;
+                let (repeat, consumed) = parse_repeat(chars, close + 1, end);
+                let inner_start = i + 1;
+                let inner_end = close;
+                let alternatives = split_alternatives(chars, inner_start, inner_end)?;
+                if alternatives.is_empty() {
+                    return Err("empty alternation '<>'".into());
+                }
+                let alt_count = alternatives.len() as u16;
+                for _ in 0..repeat {
+                    let sub_offset = offset + slot as f64 * slot_width;
+                    for (alt_idx, &(seg_start, seg_end)) in alternatives.iter().enumerate() {
+                        let sub_total = count_slots(chars, seg_start, seg_end)?;
+                        if sub_total == 0 {
+                            continue;
+                        }
+                        let a = Alt {
+                            index: alt_idx as u16,
+                            count: alt_count,
+                        };
+                        collect_hits_annotated(
+                            chars,
+                            seg_start,
+                            seg_end,
+                            sub_offset,
+                            slot_width,
+                            sub_total,
+                            Some(a),
+                            hits,
+                        )?;
+                    }
+                    slot += 1;
+                }
+                i = close + 1 + consumed;
+            }
+            _ => unreachable!(),
+        }
+    }
+    Ok(())
+}
+
+fn count_ahead<T: PatternToken>(chars: &[T], from: usize, end: usize, target: char) -> usize {
     let mut n = 0;
     let mut i = from;
-    while i < end && chars[i] == target {
+    while i < end && chars[i].ch() == target {
         n += 1;
         i += 1;
     }
     n
 }
 
-fn find_closing(chars: &[char], open_pos: usize) -> Result<usize, String> {
-    let open = chars[open_pos];
+fn find_closing<T: PatternToken>(chars: &[T], open_pos: usize) -> Result<usize, String> {
+    let open = chars[open_pos].ch();
     let close = match open {
         '[' => ']',
         '<' => '>',
@@ -167,9 +377,9 @@ fn find_closing(chars: &[char], open_pos: usize) -> Result<usize, String> {
     let mut depth = 1;
     let mut i = open_pos + 1;
     while i < chars.len() {
-        if chars[i] == open {
+        if chars[i].ch() == open {
             depth += 1;
-        } else if chars[i] == close {
+        } else if chars[i].ch() == close {
             depth -= 1;
             if depth == 0 {
                 return Ok(i);
@@ -180,12 +390,16 @@ fn find_closing(chars: &[char], open_pos: usize) -> Result<usize, String> {
     Err(format!("unmatched '{open}'"))
 }
 
-fn split_alternatives(chars: &[char], start: usize, end: usize) -> Result<Vec<(usize, usize)>, String> {
+fn split_alternatives<T: PatternToken>(
+    chars: &[T],
+    start: usize,
+    end: usize,
+) -> Result<Vec<(usize, usize)>, String> {
     let mut ranges = Vec::new();
     let mut seg_start = start;
     let mut i = start;
     while i < end {
-        match chars[i] {
+        match chars[i].ch() {
             '|' => {
                 ranges.push((seg_start, i));
                 seg_start = i + 1;
@@ -201,15 +415,16 @@ fn split_alternatives(chars: &[char], start: usize, end: usize) -> Result<Vec<(u
     Ok(ranges)
 }
 
-fn parse_repeat(chars: &[char], from: usize, end: usize) -> (usize, usize) {
-    if from < end && chars[from] == '*' {
+fn parse_repeat<T: PatternToken>(chars: &[T], from: usize, end: usize) -> (usize, usize) {
+    if from < end && chars[from].ch() == '*' {
         let mut i = from + 1;
-        while i < end && chars[i].is_ascii_digit() {
+        while i < end && chars[i].ch().is_ascii_digit() {
             i += 1;
         }
         if i > from + 1 {
             let n: usize = chars[from + 1..i]
                 .iter()
+                .map(PatternToken::ch)
                 .collect::<String>()
                 .parse()
                 .unwrap_or(1);
@@ -217,6 +432,63 @@ fn parse_repeat(chars: &[char], from: usize, end: usize) -> (usize, usize) {
         }
     }
     (1, 0)
+}
+
+/// Split a pattern string into top-level slot substrings.
+/// Each slot is: a char (+ optional `*N`), or a bracket group (+ optional `*N`).
+fn top_level_slots(input: &str) -> Result<Vec<String>, String> {
+    let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut slots = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            'x' | '.' | '-' => {
+                let (_, rep_consumed) = parse_repeat(&chars, i + 1, chars.len());
+                let end = i + 1 + rep_consumed;
+                slots.push(chars[i..end].iter().collect());
+                i = end;
+            }
+            '[' | '<' => {
+                let close = find_closing(&chars, i)?;
+                let (_, rep_consumed) = parse_repeat(&chars, close + 1, chars.len());
+                let end = close + 1 + rep_consumed;
+                slots.push(chars[i..end].iter().collect());
+                i = end;
+            }
+            c => return Err(format!("unknown pattern char '{c}'")),
+        }
+    }
+    Ok(slots)
+}
+
+pub(crate) fn rotate_pattern(input: &str, n: i64) -> Result<String, String> {
+    let mut slots = top_level_slots(input)?;
+    if slots.is_empty() {
+        return Ok(String::new());
+    }
+    let len = slots.len() as i64;
+    let shift = ((n % len) + len) % len;
+    slots.rotate_right(shift as usize);
+    Ok(slots.join(""))
+}
+
+pub(crate) fn reverse_pattern(input: &str) -> Result<String, String> {
+    let mut slots = top_level_slots(input)?;
+    slots.reverse();
+    Ok(slots.join(""))
+}
+
+pub(crate) fn invert_pattern(input: &str) -> Result<String, String> {
+    let chars: Vec<char> = input.chars().filter(|c| !c.is_whitespace()).collect();
+    Ok(chars
+        .iter()
+        .map(|c| match c {
+            'x' => '.',
+            '.' => 'x',
+            '-' => 'x',
+            other => *other,
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -437,6 +709,16 @@ mod tests {
         assert_eq!(hits.len(), 0);
     }
 
+    #[test]
+    fn repeat_256_uniform_gate() {
+        let hits = parse_pattern("x*256").unwrap();
+        assert_eq!(hits.len(), 256);
+        let gate = 1.0 / 256.0;
+        for (i, h) in hits.iter().enumerate() {
+            assert_hit(h, i as f64 / 256.0, gate);
+        }
+    }
+
     // --- whitespace ---
 
     #[test]
@@ -445,6 +727,24 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert_hit(&hits[0], 0.0, 0.25);
         assert_hit(&hits[1], 0.5, 0.25);
+    }
+
+    #[test]
+    fn annotated_hit_spans_preserve_source_ranges() {
+        let hits = parse_pattern_annotated("x--x..[xx.]").unwrap();
+        assert_eq!(hits.len(), 4);
+        assert_eq!((hits[0].start, hits[0].end), (0, 3));
+        assert_eq!((hits[1].start, hits[1].end), (3, 4));
+        assert_eq!((hits[2].start, hits[2].end), (7, 8));
+        assert_eq!((hits[3].start, hits[3].end), (8, 9));
+    }
+
+    #[test]
+    fn annotated_hit_spans_keep_whitespace_offsets() {
+        let hits = parse_pattern_annotated("x . x .").unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_eq!((hits[0].start, hits[0].end), (0, 1));
+        assert_eq!((hits[1].start, hits[1].end), (4, 5));
     }
 
     // --- errors ---
@@ -477,5 +777,72 @@ mod tests {
     #[test]
     fn error_pipe_outside() {
         assert!(parse_pattern("x|x").is_err());
+    }
+
+    // --- transforms ---
+
+    #[test]
+    fn rotate_right() {
+        // [x, ., ., x] → rotate_right(1) → [x, x, ., .]
+        assert_eq!(rotate_pattern("x..x", 1).unwrap(), "xx..");
+    }
+
+    #[test]
+    fn rotate_left() {
+        // x . . x → rotate left by 1 → . . x x
+        assert_eq!(rotate_pattern("x..x", -1).unwrap(), "..xx");
+    }
+
+    #[test]
+    fn rotate_preserves_brackets() {
+        // x [xx] . → rotate right by 1 → . x [xx]
+        assert_eq!(rotate_pattern("x[xx].", 1).unwrap(), ".x[xx]");
+    }
+
+    #[test]
+    fn rotate_with_repeat() {
+        // x . *2 → slots: ["x", ".*2"] → rotate right 1 → .*2 x
+        assert_eq!(rotate_pattern("x.*2", 1).unwrap(), ".*2x");
+    }
+
+    #[test]
+    fn rotate_zero() {
+        assert_eq!(rotate_pattern("x.x.", 0).unwrap(), "x.x.");
+    }
+
+    #[test]
+    fn rotate_full_cycle() {
+        assert_eq!(rotate_pattern("x.x.", 4).unwrap(), "x.x.");
+    }
+
+    #[test]
+    fn reverse_simple() {
+        assert_eq!(reverse_pattern("x...").unwrap(), "...x");
+    }
+
+    #[test]
+    fn reverse_with_brackets() {
+        assert_eq!(reverse_pattern("x.[xx.]").unwrap(), "[xx.].x");
+    }
+
+    #[test]
+    fn reverse_preserves_alternation() {
+        assert_eq!(reverse_pattern("x<a|b>.").unwrap(), ".<a|b>x");
+    }
+
+    #[test]
+    fn invert_simple() {
+        assert_eq!(invert_pattern("x.x.").unwrap(), ".x.x");
+    }
+
+    #[test]
+    fn invert_elongation() {
+        // x-- becomes .xx (elongation of a now-rest becomes hits)
+        assert_eq!(invert_pattern("x--.").unwrap(), ".xxx");
+    }
+
+    #[test]
+    fn invert_preserves_brackets() {
+        assert_eq!(invert_pattern("[x.x]").unwrap(), "[.x.]");
     }
 }

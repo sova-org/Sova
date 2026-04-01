@@ -278,7 +278,7 @@ impl SceneWidget {
                     (Span::from(frame_name), Span::from(frame_infos))
                 };
 
-                let active = line_pos.iter().any(|(f,_)| *f == frame_index);
+                let active = line_pos.iter().any(|(f, _)| *f == frame_index);
                 if active {
                     frame_name = frame_name.bg(Color::White).fg(Color::Black);
                 }

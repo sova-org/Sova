@@ -1,4 +1,5 @@
 use eframe::egui;
+use egui::text::TextWrapping;
 
 use crate::client_bridge::ClientBridge;
 use crate::settings::AppearanceSettings;
@@ -88,8 +89,7 @@ impl ChatPanel {
                         crate::widgets::hint::set(ui.ctx(), t!("chat.hint.send"));
                     }
 
-                    let enter =
-                        resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     if (enter || send_btn.clicked()) && !self.input.trim().is_empty() {
                         let text = self.input.trim().to_owned();
                         bridge.send_chat(&text);
@@ -117,17 +117,14 @@ impl ChatPanel {
                         if messages.is_empty() {
                             ui.centered_and_justified(|ui| {
                                 ui.label(
-                                    egui::RichText::new(t!("chat.no_messages"))
-                                        .color(COLOR_MUTED),
+                                    egui::RichText::new(t!("chat.no_messages")).color(COLOR_MUTED),
                                 );
                             });
                         } else {
                             for msg in messages {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new(&msg.time)
-                                            .small()
-                                            .color(COLOR_MUTED),
+                                        egui::RichText::new(&msg.time).small().color(COLOR_MUTED),
                                     );
                                     if msg.system {
                                         ui.label(
@@ -141,7 +138,25 @@ impl ChatPanel {
                                                 .strong()
                                                 .color(username_color(&msg.user)),
                                         );
-                                        ui.label(&msg.message);
+                                        let mut job = egui::text::LayoutJob {
+                                            wrap: TextWrapping {
+                                                max_width: ui.available_width(),
+                                                ..Default::default()
+                                            },
+                                            ..Default::default()
+                                        };
+                                        widgets::append_inline_markdown(
+                                            &mut job,
+                                            &msg.message,
+                                            &egui::TextFormat {
+                                                font_id: egui::FontId::proportional(14.0),
+                                                color: ui.visuals().text_color(),
+                                                ..Default::default()
+                                            },
+                                            ui.visuals().strong_text_color(),
+                                            ui.visuals().code_bg_color,
+                                        );
+                                        ui.label(job);
                                     }
                                 });
                             }

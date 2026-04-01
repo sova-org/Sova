@@ -51,10 +51,7 @@ impl ScopePanel {
                 .text(t!("scope.fill").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.fill"));
-        ui.add(
-            egui::Slider::new(&mut self.settings.glow, 0.0..=1.0)
-                .text("Glow"),
-        );
+        ui.add(egui::Slider::new(&mut self.settings.glow, 0.0..=1.0).text("Glow"));
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {

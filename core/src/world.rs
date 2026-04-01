@@ -93,7 +93,7 @@ impl World {
         log_println!("[-] Exiting world...");
     }
 
-    /// Add the [TimedMessage] to the priority queue, 
+    /// Add the [TimedMessage] to the priority queue,
     /// eventually subtracting micros to the scheduled date to anticipate latency
     fn handle_timed_message(&mut self, mut timed_message: TimedMessage) {
         // Regular message - add to queue for timed execution

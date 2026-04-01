@@ -1,4 +1,7 @@
-use sova_core::{compiler::{CompilationError, Compiler}, vm::Language};
+use sova_core::{
+    compiler::{CompilationError, Compiler},
+    vm::Language,
+};
 use std::collections::BTreeMap;
 
 use sova_core::vm::{Program, debug_print};
@@ -18,7 +21,7 @@ impl Language for BaliCompiler {
         "bali"
     }
     fn version(&self) -> (usize, usize, usize) {
-        (1,0,0)
+        (1, 0, 0)
     }
     fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
         use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
@@ -29,11 +32,20 @@ impl Language for BaliCompiler {
                 SyntaxRule::new(Variable, r"\b(dev|ch|v|dur):"),
                 SyntaxRule::new(Number, r"-?\d+\.\d+|-?\d+"),
                 SyntaxRule::new(Special, r"\(//|\b\d+//\d+\b|:f\b"),
-                SyntaxRule::new(Keyword, r"\(\b(loop|eucloop|binloop|spread|ramp|with|pick|alt|seq|for|if|fun)\b|\(\?|\(>>|\(<<|\(>|\(<"),
-                SyntaxRule::new(Builtin, r"\(\b(note|def|prog|control|at|chanpress|osc|dirt)\b"),
+                SyntaxRule::new(
+                    Keyword,
+                    r"\(\b(loop|eucloop|binloop|spread|ramp|with|pick|alt|seq|for|if|fun)\b|\(\?|\(>>|\(<<|\(>|\(<",
+                ),
+                SyntaxRule::new(
+                    Builtin,
+                    r"\(\b(note|def|prog|control|at|chanpress|osc|dirt)\b",
+                ),
                 SyntaxRule::new(Operator, r":(neg|rev|step)\b|sh:"),
                 SyntaxRule::new(Operator, r"\(\b(and|or|not|lt|leq|gt|geq|==|!=)\b"),
-                SyntaxRule::new(Operator, r"\(\b(rand|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b|\(\+|\(\*|\(-|\(/|\(%"),
+                SyntaxRule::new(
+                    Operator,
+                    r"\(\b(rand|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b|\(\+|\(\*|\(-|\(/|\(%",
+                ),
                 SyntaxRule::new(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
                 SyntaxRule::new(Punctuation, r"[(){}\[\]<>!]"),
             ],
@@ -42,7 +54,6 @@ impl Language for BaliCompiler {
 }
 
 impl Compiler for BaliCompiler {
-
     fn compile(
         &self,
         script: &str,
@@ -140,7 +151,7 @@ mod tests {
     fn syntax_highlights_sample() {
         use TokenCategory::*;
         let tokens = categories_for(
-            "; a bali program\n(loop 4 (note 60 90 dev:1 ch:1) (+ 1 2) :kick \"hello\" 3//4 :f)"
+            "; a bali program\n(loop 4 (note 60 90 dev:1 ch:1) (+ 1 2) :kick \"hello\" 3//4 :f)",
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
