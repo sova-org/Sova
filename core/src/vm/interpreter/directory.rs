@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use crate::{
     log_error,
@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct InterpreterDirectory {
-    pub factories: HashMap<String, Arc<dyn InterpreterFactory>>,
+    pub factories: BTreeMap<String, Arc<dyn InterpreterFactory>>,
     asm_factory: ASMInterpreterFactory,
 }
 
