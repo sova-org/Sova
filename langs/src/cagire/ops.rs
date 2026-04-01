@@ -157,13 +157,26 @@ pub enum Op {
 impl Op {
     pub(crate) fn attach_span(&mut self, span: Span) {
         match self {
-            Op::Rand(s) | Op::ExpRand(s) | Op::LogRand(s) | Op::Coin(s)
-            | Op::Cycle(s) | Op::PCycle(s) | Op::Bounce(s) | Op::PBounce(s)
-            | Op::Choose(s) | Op::WChoose(s)
-            | Op::ChanceExec(s) | Op::ProbExec(s)
-            | Op::Every(s) | Op::Except(s) | Op::EveryOffset(s) | Op::ExceptOffset(s)
-            | Op::Bjork(s) | Op::PBjork(s)
-            | Op::Count(s) | Op::Index(s) => *s = Some(span),
+            Op::Rand(s)
+            | Op::ExpRand(s)
+            | Op::LogRand(s)
+            | Op::Coin(s)
+            | Op::Cycle(s)
+            | Op::PCycle(s)
+            | Op::Bounce(s)
+            | Op::PBounce(s)
+            | Op::Choose(s)
+            | Op::WChoose(s)
+            | Op::ChanceExec(s)
+            | Op::ProbExec(s)
+            | Op::Every(s)
+            | Op::Except(s)
+            | Op::EveryOffset(s)
+            | Op::ExceptOffset(s)
+            | Op::Bjork(s)
+            | Op::PBjork(s)
+            | Op::Count(s)
+            | Op::Index(s) => *s = Some(span),
             _ => {}
         }
     }

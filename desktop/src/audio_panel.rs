@@ -4,8 +4,8 @@ use eframe::egui;
 use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
-use sova_server::audio::doux_audio::{self, AudioDeviceInfo, AudioHostInfo};
 use sova_server::AudioRestartConfig;
+use sova_server::audio::doux_audio::{self, AudioDeviceInfo, AudioHostInfo};
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -306,7 +306,10 @@ impl AudioPanel {
 
         #[cfg(feature = "default-samples")]
         ui.horizontal(|ui| {
-            ui.colored_label(egui::Color32::GRAY, self.default_samples_path.display().to_string());
+            ui.colored_label(
+                egui::Color32::GRAY,
+                self.default_samples_path.display().to_string(),
+            );
             ui.weak("(built-in)");
         });
 

@@ -160,7 +160,6 @@ impl Default for WindowSettings {
     }
 }
 
-
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerSettings {

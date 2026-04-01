@@ -10,9 +10,9 @@ mod chat_panel;
 mod client_bridge;
 mod client_panel;
 mod devices_panel;
+mod doc_panel;
 mod feedback_engine;
 mod fonts;
-mod doc_panel;
 mod icons;
 mod log_panel;
 mod options_panel;
@@ -38,19 +38,58 @@ use sova_server::ClientMessage;
 include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
 
 const DEMOS_GENERAL: &[(&str, &[u8])] = &[
-    ("Aliens near us", include_bytes!("../assets/demos/demos/aliens_near_us.sova")),
-    ("2005 algorave", include_bytes!("../assets/demos/demos/2005_algorave.sova")),
-    ("By the pond", include_bytes!("../assets/demos/demos/by_the_pond.sova")),
-    ("Classic move", include_bytes!("../assets/demos/demos/classic_move.sova")),
-    ("Lush elegiac stuff", include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova")),
-    ("Intense boots and cats", include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova")),
-    ("Infinite gongs", include_bytes!("../assets/demos/demos/infinite_gongs.sova")),
-    ("Chill 808", include_bytes!("../assets/demos/demos/chill_808.sova")),
-    ("Mayo sandwich", include_bytes!("../assets/demos/demos/mayo_sandwich.sova")),
-    ("First day with my modular", include_bytes!("../assets/demos/demos/first_day_with_my_modular.sova")),
-    ("Bit after bit", include_bytes!("../assets/demos/demos/bit_after_bit.sova")),
-    ("Some soup ?", include_bytes!("../assets/demos/demos/some_soup.sova")),
-    ("Storm of sand", include_bytes!("../assets/demos/demos/darude.sova")),
+    (
+        "Aliens near us",
+        include_bytes!("../assets/demos/demos/aliens_near_us.sova"),
+    ),
+    (
+        "2005 algorave",
+        include_bytes!("../assets/demos/demos/2005_algorave.sova"),
+    ),
+    (
+        "By the pond",
+        include_bytes!("../assets/demos/demos/by_the_pond.sova"),
+    ),
+    (
+        "Classic move",
+        include_bytes!("../assets/demos/demos/classic_move.sova"),
+    ),
+    (
+        "Lush elegiac stuff",
+        include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova"),
+    ),
+    (
+        "Intense boots and cats",
+        include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova"),
+    ),
+    (
+        "Infinite gongs",
+        include_bytes!("../assets/demos/demos/infinite_gongs.sova"),
+    ),
+    (
+        "Chill 808",
+        include_bytes!("../assets/demos/demos/chill_808.sova"),
+    ),
+    (
+        "Mayo sandwich",
+        include_bytes!("../assets/demos/demos/mayo_sandwich.sova"),
+    ),
+    (
+        "First day with my modular",
+        include_bytes!("../assets/demos/demos/first_day_with_my_modular.sova"),
+    ),
+    (
+        "Bit after bit",
+        include_bytes!("../assets/demos/demos/bit_after_bit.sova"),
+    ),
+    (
+        "Some soup ?",
+        include_bytes!("../assets/demos/demos/some_soup.sova"),
+    ),
+    (
+        "Storm of sand",
+        include_bytes!("../assets/demos/demos/darude.sova"),
+    ),
 ];
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
@@ -94,10 +133,20 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
         style.spacing.indent_ends_with_horizontal_line = true;
 
         let ui_size = a.ui_font_size;
-        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(ui_size));
-        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(ui_size));
-        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional((ui_size - 2.0).max(8.0)));
-        style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(ui_size + 7.0));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Body, egui::FontId::proportional(ui_size));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Button, egui::FontId::proportional(ui_size));
+        style.text_styles.insert(
+            egui::TextStyle::Small,
+            egui::FontId::proportional((ui_size - 2.0).max(8.0)),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Heading,
+            egui::FontId::proportional(ui_size + 7.0),
+        );
 
         style.animation_time = a.animation_time;
     });
@@ -274,17 +323,21 @@ impl SovaApp {
         }
         ctx.input(|i| {
             if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Comma) {
-                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options);
+                self.doc_panel
+                    .toggle_settings_tab(doc_panel::SettingsTab::Options);
             }
             if i.modifiers.command && i.modifiers.shift {
                 if i.key_pressed(egui::Key::S) {
-                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
+                    self.doc_panel
+                        .toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::A) {
-                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config);
+                    self.doc_panel
+                        .toggle_settings_tab(doc_panel::SettingsTab::Config);
                 }
                 if i.key_pressed(egui::Key::I) {
-                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices);
+                    self.doc_panel
+                        .toggle_settings_tab(doc_panel::SettingsTab::Devices);
                 }
                 if i.key_pressed(egui::Key::O) {
                     self.scope_panel.open = !self.scope_panel.open;
@@ -299,7 +352,8 @@ impl SovaApp {
                     self.scope_bar_panel.open = !self.scope_bar_panel.open;
                 }
                 if i.key_pressed(egui::Key::L) {
-                    self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
+                    self.doc_panel
+                        .toggle_settings_tab(doc_panel::SettingsTab::Logs);
                 }
                 if i.key_pressed(egui::Key::B) {
                     self.debug_open = !self.debug_open;
@@ -396,7 +450,8 @@ impl SovaApp {
             .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge
             .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
-        self.bridge.send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
+        self.bridge
+            .send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
         self.push_recent_scene(path.to_path_buf());
     }
 
@@ -408,7 +463,8 @@ impl SovaApp {
             .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge
             .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
-        self.bridge.send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
+        self.bridge
+            .send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
     }
 
     fn push_recent_scene(&mut self, path: std::path::PathBuf) {
@@ -485,7 +541,8 @@ impl eframe::App for SovaApp {
         self.bridge.poll();
         if self.bridge.just_connected {
             self.bridge.just_connected = false;
-            self.bridge.send(ClientMessage::SetMasterVolume(self.effective_gain()));
+            self.bridge
+                .send(ClientMessage::SetMasterVolume(self.effective_gain()));
         }
         let audio_running = self.bridge.audio_state().running || self.bridge.has_feedback();
         if audio_running && !self.was_audio_running {
@@ -501,385 +558,406 @@ impl eframe::App for SovaApp {
                     .inner_margin(egui::Margin::symmetric(8, 4)),
             )
             .show(ctx, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
-                let icon = egui::Image::new(egui::include_image!("../assets/icon.png"))
-                    .fit_to_exact_size(egui::vec2(20.0, 20.0));
-                let r = ui.add(egui::Button::image(icon).frame(false));
-                if r.hovered() {
-                    widgets::hint::set(ctx, t!("hint.about_sova"));
-                }
-                if r.clicked() {
-                    self.about_open = !self.about_open;
-                }
-                let r = ui.menu_button(t!("menu.file"), |ui| {
-                    let connected = self.bridge.is_connected();
-                    if ui
-                        .add_enabled(connected, egui::Button::new(t!("menu.save_scene")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.save_scene();
+                egui::MenuBar::new().ui(ui, |ui| {
+                    let icon = egui::Image::new(egui::include_image!("../assets/icon.png"))
+                        .fit_to_exact_size(egui::vec2(20.0, 20.0));
+                    let r = ui.add(egui::Button::image(icon).frame(false));
+                    if r.hovered() {
+                        widgets::hint::set(ctx, t!("hint.about_sova"));
                     }
-                    if ui
-                        .add_enabled(connected, egui::Button::new(t!("menu.load_scene")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.load_scene(ActionTiming::Immediate);
+                    if r.clicked() {
+                        self.about_open = !self.about_open;
                     }
-                    if ui
-                        .add_enabled(connected, egui::Button::new(t!("menu.load_scene_at_end")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.load_scene(ActionTiming::AtNextPhase);
-                    }
-                    if ui
-                        .add_enabled(connected, egui::Button::new(t!("menu.reset_scene")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.confirm_reset_scene.open(
-                            t!("reset_scene.title"),
-                            t!("reset_scene.message"),
-                        );
-                    }
-                    let has_recent = !self.recent_scenes.is_empty();
-                    ui.add_enabled_ui(connected && has_recent, |ui| {
-                        ui.menu_button(t!("menu.recent"), |ui| {
-                            let mut load_path = None;
-                            let mut clear = false;
-                            for path in &self.recent_scenes {
-                                if !path.exists() {
-                                    continue;
+                    let r = ui.menu_button(t!("menu.file"), |ui| {
+                        let connected = self.bridge.is_connected();
+                        if ui
+                            .add_enabled(connected, egui::Button::new(t!("menu.save_scene")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.save_scene();
+                        }
+                        if ui
+                            .add_enabled(connected, egui::Button::new(t!("menu.load_scene")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.load_scene(ActionTiming::Immediate);
+                        }
+                        if ui
+                            .add_enabled(connected, egui::Button::new(t!("menu.load_scene_at_end")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.load_scene(ActionTiming::AtNextPhase);
+                        }
+                        if ui
+                            .add_enabled(connected, egui::Button::new(t!("menu.reset_scene")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.confirm_reset_scene
+                                .open(t!("reset_scene.title"), t!("reset_scene.message"));
+                        }
+                        let has_recent = !self.recent_scenes.is_empty();
+                        ui.add_enabled_ui(connected && has_recent, |ui| {
+                            ui.menu_button(t!("menu.recent"), |ui| {
+                                let mut load_path = None;
+                                let mut clear = false;
+                                for path in &self.recent_scenes {
+                                    if !path.exists() {
+                                        continue;
+                                    }
+                                    let label = path
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().into_owned())
+                                        .unwrap_or_else(|| path.display().to_string());
+                                    let btn =
+                                        ui.button(&label).on_hover_text(path.display().to_string());
+                                    if btn.clicked() {
+                                        load_path = Some(path.clone());
+                                        ui.close();
+                                    }
                                 }
-                                let label = path
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().into_owned())
-                                    .unwrap_or_else(|| path.display().to_string());
-                                let btn =
-                                    ui.button(&label).on_hover_text(path.display().to_string());
-                                if btn.clicked() {
-                                    load_path = Some(path.clone());
+                                ui.separator();
+                                if ui.button(t!("menu.clear")).clicked() {
+                                    clear = true;
                                     ui.close();
                                 }
-                            }
-                            ui.separator();
-                            if ui.button(t!("menu.clear")).clicked() {
-                                clear = true;
-                                ui.close();
-                            }
-                            if let Some(p) = load_path {
-                                self.load_scene_from_path(&p, ActionTiming::Immediate);
-                            }
-                            if clear {
-                                self.recent_scenes.clear();
-                            }
+                                if let Some(p) = load_path {
+                                    self.load_scene_from_path(&p, ActionTiming::Immediate);
+                                }
+                                if clear {
+                                    self.recent_scenes.clear();
+                                }
+                            });
                         });
-                    });
-                    ui.add_enabled_ui(connected, |ui| {
-                        ui.menu_button(t!("menu.demos"), |ui| {
-                            let mut demo_submenu = |label: &str, demos: &[(&str, &[u8])]| {
-                                ui.add_enabled_ui(!demos.is_empty(), |ui| {
-                                    ui.menu_button(label, |ui| {
-                                        // Split demos into groups at separator boundaries
-                                        let mut groups: Vec<Vec<(&str, &[u8])>> = vec![vec![]];
-                                        for (name, bytes) in demos {
-                                            if *name == "\x00" {
-                                                groups.push(vec![]);
-                                            } else {
-                                                groups.last_mut().unwrap().push((name, bytes));
-                                            }
-                                        }
-                                        groups.retain(|g| !g.is_empty());
-
-                                        let total_items: usize = groups.iter().map(|g| g.len()).sum();
-                                        let n_cols = if total_items > 30 {
-                                            3
-                                        } else if total_items > 15 {
-                                            2
-                                        } else {
-                                            1
-                                        };
-
-                                        if n_cols == 1 {
-                                            for (gi, group) in groups.iter().enumerate() {
-                                                if gi > 0 {
-                                                    ui.separator();
+                        ui.add_enabled_ui(connected, |ui| {
+                            ui.menu_button(t!("menu.demos"), |ui| {
+                                let mut demo_submenu = |label: &str, demos: &[(&str, &[u8])]| {
+                                    ui.add_enabled_ui(!demos.is_empty(), |ui| {
+                                        ui.menu_button(label, |ui| {
+                                            // Split demos into groups at separator boundaries
+                                            let mut groups: Vec<Vec<(&str, &[u8])>> = vec![vec![]];
+                                            for (name, bytes) in demos {
+                                                if *name == "\x00" {
+                                                    groups.push(vec![]);
+                                                } else {
+                                                    groups.last_mut().unwrap().push((name, bytes));
                                                 }
-                                                for (name, bytes) in group {
-                                                    if ui.button(*name).clicked() {
-                                                        self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
-                                                        ui.close();
+                                            }
+                                            groups.retain(|g| !g.is_empty());
+
+                                            let total_items: usize =
+                                                groups.iter().map(|g| g.len()).sum();
+                                            let n_cols = if total_items > 30 {
+                                                3
+                                            } else if total_items > 15 {
+                                                2
+                                            } else {
+                                                1
+                                            };
+
+                                            if n_cols == 1 {
+                                                for (gi, group) in groups.iter().enumerate() {
+                                                    if gi > 0 {
+                                                        ui.separator();
+                                                    }
+                                                    for (name, bytes) in group {
+                                                        if ui.button(*name).clicked() {
+                                                            self.load_scene_from_bytes(
+                                                                bytes,
+                                                                ActionTiming::Immediate,
+                                                            );
+                                                            ui.close();
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        } else {
-                                            // Distribute groups across columns, balancing item count
-                                            let target = total_items.div_ceil(n_cols);
-                                            let mut columns: Vec<Vec<usize>> = vec![vec![]; n_cols];
-                                            let mut col = 0;
-                                            let mut col_count = 0;
-                                            for (gi, group) in groups.iter().enumerate() {
-                                                columns[col].push(gi);
-                                                col_count += group.len();
-                                                if col_count >= target && col + 1 < n_cols {
-                                                    col += 1;
-                                                    col_count = 0;
+                                            } else {
+                                                // Distribute groups across columns, balancing item count
+                                                let target = total_items.div_ceil(n_cols);
+                                                let mut columns: Vec<Vec<usize>> =
+                                                    vec![vec![]; n_cols];
+                                                let mut col = 0;
+                                                let mut col_count = 0;
+                                                for (gi, group) in groups.iter().enumerate() {
+                                                    columns[col].push(gi);
+                                                    col_count += group.len();
+                                                    if col_count >= target && col + 1 < n_cols {
+                                                        col += 1;
+                                                        col_count = 0;
+                                                    }
                                                 }
-                                            }
 
-                                            ui.columns(n_cols, |cols| {
-                                                for (ci, col_groups) in columns.iter().enumerate() {
-                                                    for (i, &gi) in col_groups.iter().enumerate() {
-                                                        if i > 0 {
-                                                            cols[ci].separator();
-                                                        }
-                                                        for (name, bytes) in &groups[gi] {
-                                                            if cols[ci].button(*name).clicked() {
-                                                                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
-                                                                cols[ci].close();
+                                                ui.columns(n_cols, |cols| {
+                                                    for (ci, col_groups) in
+                                                        columns.iter().enumerate()
+                                                    {
+                                                        for (i, &gi) in
+                                                            col_groups.iter().enumerate()
+                                                        {
+                                                            if i > 0 {
+                                                                cols[ci].separator();
+                                                            }
+                                                            for (name, bytes) in &groups[gi] {
+                                                                if cols[ci].button(*name).clicked()
+                                                                {
+                                                                    self.load_scene_from_bytes(
+                                                                        bytes,
+                                                                        ActionTiming::Immediate,
+                                                                    );
+                                                                    cols[ci].close();
+                                                                }
                                                             }
                                                         }
                                                     }
-                                                }
-                                            });
-                                        }
+                                                });
+                                            }
+                                        });
                                     });
-                                });
-                            };
-                            demo_submenu("Cagire", DEMOS_CAGIRE);
-                            demo_submenu("Boinx", DEMOS_BOINX);
-                            demo_submenu("Demos", DEMOS_GENERAL);
+                                };
+                                demo_submenu("Cagire", DEMOS_CAGIRE);
+                                demo_submenu("Boinx", DEMOS_BOINX);
+                                demo_submenu("Demos", DEMOS_GENERAL);
+                            });
                         });
-                    });
-                    ui.separator();
-                    if ui.button(t!("menu.exit")).clicked() {
-                        ui.close();
-                        if self.server.is_running() {
-                            self.confirm_exit.open(t!("exit.title"), t!("exit.message"));
-                        } else {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    }
-                });
-                if r.response.hovered() {
-                    widgets::hint::set(ctx, t!("hint.file_operations"));
-                }
-                let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
-                let (mod_sym, shift_sym) = if is_mac {
-                    ("⌘", "⇧")
-                } else {
-                    ("Ctrl+", "Shift+")
-                };
-                let r = ui.menu_button(t!("menu.server"), |ui| {
-                    if self.server.is_running() {
-                        if ui.button(t!("menu.stop_server")).clicked() {
+                        ui.separator();
+                        if ui.button(t!("menu.exit")).clicked() {
                             ui.close();
-                            self.bridge.disconnect();
-                            self.server.stop();
+                            if self.server.is_running() {
+                                self.confirm_exit.open(t!("exit.title"), t!("exit.message"));
+                            } else {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
                         }
-                    } else if ui.button(t!("menu.start_server")).clicked() {
-                        ui.close();
-                        self.server.start(self.audio.generate_audio_config());
+                    });
+                    if r.response.hovered() {
+                        widgets::hint::set(ctx, t!("hint.file_operations"));
                     }
+                    let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
+                    let (mod_sym, shift_sym) = if is_mac {
+                        ("⌘", "⇧")
+                    } else {
+                        ("Ctrl+", "Shift+")
+                    };
+                    let r = ui.menu_button(t!("menu.server"), |ui| {
+                        if self.server.is_running() {
+                            if ui.button(t!("menu.stop_server")).clicked() {
+                                ui.close();
+                                self.bridge.disconnect();
+                                self.server.stop();
+                            }
+                        } else if ui.button(t!("menu.start_server")).clicked() {
+                            ui.close();
+                            self.server.start(self.audio.generate_audio_config());
+                        }
+                        if self.bridge.is_connected() {
+                            ui.separator();
+                            if ui.button(t!("common.disconnect")).clicked() {
+                                ui.close();
+                                self.bridge.disconnect();
+                            }
+                            if let Some(input) = &mut self.rename_input {
+                                let r = ui.text_edit_singleline(input);
+                                if r.lost_focus() {
+                                    if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                        && !input.trim().is_empty()
+                                    {
+                                        let new_name = input.trim().to_owned();
+                                        self.bridge.send(ClientMessage::SetName {
+                                            name: new_name.clone(),
+                                            password: None,
+                                        });
+                                        self.bridge.set_confirmed_username(new_name);
+                                        self.rename_input = None;
+                                        ui.close();
+                                    } else {
+                                        self.rename_input = None;
+                                    }
+                                } else {
+                                    r.request_focus();
+                                }
+                            } else if ui.button(t!("menu.rename")).clicked() {
+                                let current =
+                                    self.bridge.confirmed_username().unwrap_or("").to_owned();
+                                self.rename_input = Some(current);
+                            }
+                        }
+                    });
+                    if r.response.hovered() {
+                        widgets::hint::set(ctx, t!("hint.server_menu"));
+                    }
+                    let r = ui.menu_button(t!("menu.engine"), |ui| {
+                        let enabled = self.bridge.is_connected();
+                        if ui
+                            .add_enabled(enabled, egui::Button::new(t!("menu.restart_audio")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.bridge
+                                .restart_audio(self.audio.generate_audio_config());
+                        }
+                        if ui
+                            .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))
+                            .clicked()
+                        {
+                            ui.close();
+                            self.bridge.send(ClientMessage::RestartCore);
+                        }
+                    });
+                    if r.response.hovered() {
+                        widgets::hint::set(ctx, t!("hint.engine_menu"));
+                    }
+
+                    let r = ui.menu_button(t!("menu.audio"), |ui| {
+                        let menu_checkbox =
+                            |ui: &mut egui::Ui,
+                             checked: &mut bool,
+                             label: std::borrow::Cow<'_, str>,
+                             shortcut: &str| {
+                                let text = egui::RichText::new(shortcut).weak();
+                                ui.checkbox(checked, label).on_hover_text(text);
+                            };
+
+                        menu_checkbox(
+                            ui,
+                            &mut self.scope_panel.open,
+                            t!("scope.title"),
+                            &format!("{mod_sym}{shift_sym}O"),
+                        );
+                        menu_checkbox(
+                            ui,
+                            &mut self.spectrum_panel.open,
+                            t!("spectrum.title"),
+                            &format!("{mod_sym}{shift_sym}P"),
+                        );
+                        menu_checkbox(
+                            ui,
+                            &mut self.vu_meter_panel.open,
+                            t!("cmd.vu_meter"),
+                            &format!("{mod_sym}{shift_sym}U"),
+                        );
+                        menu_checkbox(
+                            ui,
+                            &mut self.scope_bar_panel.open,
+                            t!("cmd.scope_bar"),
+                            &format!("{mod_sym}{shift_sym}W"),
+                        );
+                    });
+                    if r.response.hovered() {
+                        widgets::hint::set(ctx, t!("hint.audio_menu"));
+                    }
+                    let r = ui.menu_button(t!("menu.view"), |ui| {
+                        let menu_checkbox =
+                            |ui: &mut egui::Ui,
+                             checked: &mut bool,
+                             label: std::borrow::Cow<'_, str>,
+                             shortcut: &str| {
+                                let text = egui::RichText::new(shortcut).weak();
+                                ui.checkbox(checked, label).on_hover_text(text);
+                            };
+
+                        menu_checkbox(
+                            ui,
+                            &mut self.chat_panel.open,
+                            t!("chat.title"),
+                            &format!("{mod_sym}{shift_sym}C"),
+                        );
+                        {
+                            let sample_browser_available =
+                                !self.bridge.is_connected() || self.server.is_running();
+                            ui.add_enabled_ui(sample_browser_available, |ui| {
+                                menu_checkbox(
+                                    ui,
+                                    &mut self.sample_browser_panel.open,
+                                    t!("sample_browser.title"),
+                                    &format!("{mod_sym}{shift_sym}E"),
+                                );
+                            });
+                        }
+                        menu_checkbox(
+                            ui,
+                            &mut self.visuals.open,
+                            t!("visuals.title"),
+                            &format!("{mod_sym}{shift_sym}V"),
+                        );
+                        ui.separator();
+                        menu_checkbox(
+                            ui,
+                            &mut self.debug_open,
+                            t!("debug.title"),
+                            &format!("{mod_sym}{shift_sym}B"),
+                        );
+                        ui.separator();
+                        if ui.button(t!("menu.keybindings")).clicked() {
+                            self.keybindings_open = !self.keybindings_open;
+                            ui.close();
+                        }
+                    });
+                    if r.response.hovered() {
+                        widgets::hint::set(ctx, t!("hint.view_menu"));
+                    }
+
                     if self.bridge.is_connected() {
                         ui.separator();
-                        if ui.button(t!("common.disconnect")).clicked() {
-                            ui.close();
-                            self.bridge.disconnect();
+                        if let Some(transport_bar::TransportAction::Panic) =
+                            self.transport_bar.show_inline(ui, ctx, &self.bridge)
+                        {
+                            self.muted = true;
+                            self.bridge.send(ClientMessage::SetMasterVolume(0.0));
                         }
-                        if let Some(input) = &mut self.rename_input {
-                            let r = ui.text_edit_singleline(input);
-                            if r.lost_focus() {
-                                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !input.trim().is_empty() {
-                                    let new_name = input.trim().to_owned();
-                                    self.bridge.send(ClientMessage::SetName { name: new_name.clone(), password: None });
-                                    self.bridge.set_confirmed_username(new_name);
-                                    self.rename_input = None;
-                                    ui.close();
-                                } else {
-                                    self.rename_input = None;
-                                }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let audio = self.bridge.audio_state();
+                        if audio.running {
+                            let cpu_pct = audio.cpu_load * 100.0;
+                            let cpu_color = if cpu_pct >= 80.0 {
+                                egui::Color32::from_rgb(255, 80, 80)
+                            } else if cpu_pct >= 50.0 {
+                                egui::Color32::from_rgb(255, 180, 50)
                             } else {
-                                r.request_focus();
-                            }
-                        } else if ui.button(t!("menu.rename")).clicked() {
-                            let current = self.bridge.confirmed_username().unwrap_or("").to_owned();
-                            self.rename_input = Some(current);
+                                ui.visuals().text_color()
+                            };
+                            let text = format!("V:{}  CPU {:.0}%", audio.active_voices, cpu_pct);
+                            ui.colored_label(cpu_color, text);
                         }
-                    }
-                });
-                if r.response.hovered() {
-                    widgets::hint::set(ctx, t!("hint.server_menu"));
-                }
-                let r = ui.menu_button(t!("menu.engine"), |ui| {
-                    let enabled = self.bridge.is_connected();
-                    if ui
-                        .add_enabled(enabled, egui::Button::new(t!("menu.restart_audio")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.bridge.restart_audio(self.audio.generate_audio_config());
-                    }
-                    if ui
-                        .add_enabled(enabled, egui::Button::new(t!("menu.restart_core")))
-                        .clicked()
-                    {
-                        ui.close();
-                        self.bridge.send(ClientMessage::RestartCore);
-                    }
-                });
-                if r.response.hovered() {
-                    widgets::hint::set(ctx, t!("hint.engine_menu"));
-                }
 
-                let r = ui.menu_button(t!("menu.audio"), |ui| {
-                    let menu_checkbox = |ui: &mut egui::Ui,
-                                         checked: &mut bool,
-                                         label: std::borrow::Cow<'_, str>,
-                                         shortcut: &str| {
-                        let text = egui::RichText::new(shortcut).weak();
-                        ui.checkbox(checked, label).on_hover_text(text);
-                    };
+                        let mut vol = if self.muted { 0.0 } else { self.master_volume };
+                        let slider = egui::Slider::new(&mut vol, 0.0..=1.0).show_value(false);
+                        let r = ui.add_sized([100.0, ui.available_height()], slider);
+                        if r.changed() {
+                            self.master_volume = vol;
+                            self.muted = false;
+                            self.bridge
+                                .send(ClientMessage::SetMasterVolume(self.effective_gain()));
+                        }
+                        if r.hovered() {
+                            widgets::hint::set(ctx, t!("hint.master_volume"));
+                        }
 
-                    menu_checkbox(
-                        ui,
-                        &mut self.scope_panel.open,
-                        t!("scope.title"),
-                        &format!("{mod_sym}{shift_sym}O"),
-                    );
-                    menu_checkbox(
-                        ui,
-                        &mut self.spectrum_panel.open,
-                        t!("spectrum.title"),
-                        &format!("{mod_sym}{shift_sym}P"),
-                    );
-                    menu_checkbox(
-                        ui,
-                        &mut self.vu_meter_panel.open,
-                        t!("cmd.vu_meter"),
-                        &format!("{mod_sym}{shift_sym}U"),
-                    );
-                    menu_checkbox(
-                        ui,
-                        &mut self.scope_bar_panel.open,
-                        t!("cmd.scope_bar"),
-                        &format!("{mod_sym}{shift_sym}W"),
-                    );
-                });
-                if r.response.hovered() {
-                    widgets::hint::set(ctx, t!("hint.audio_menu"));
-                }
-                let r = ui.menu_button(t!("menu.view"), |ui| {
-                    let menu_checkbox = |ui: &mut egui::Ui,
-                                         checked: &mut bool,
-                                         label: std::borrow::Cow<'_, str>,
-                                         shortcut: &str| {
-                        let text = egui::RichText::new(shortcut).weak();
-                        ui.checkbox(checked, label).on_hover_text(text);
-                    };
-
-                    menu_checkbox(
-                        ui,
-                        &mut self.chat_panel.open,
-                        t!("chat.title"),
-                        &format!("{mod_sym}{shift_sym}C"),
-                    );
-                    {
-                        let sample_browser_available =
-                            !self.bridge.is_connected() || self.server.is_running();
-                        ui.add_enabled_ui(sample_browser_available, |ui| {
-                            menu_checkbox(
-                                ui,
-                                &mut self.sample_browser_panel.open,
-                                t!("sample_browser.title"),
-                                &format!("{mod_sym}{shift_sym}E"),
-                            );
-                        });
-                    }
-                    menu_checkbox(
-                        ui,
-                        &mut self.visuals.open,
-                        t!("visuals.title"),
-                        &format!("{mod_sym}{shift_sym}V"),
-                    );
-                    ui.separator();
-                    menu_checkbox(
-                        ui,
-                        &mut self.debug_open,
-                        t!("debug.title"),
-                        &format!("{mod_sym}{shift_sym}B"),
-                    );
-                    ui.separator();
-                    if ui.button(t!("menu.keybindings")).clicked() {
-                        self.keybindings_open = !self.keybindings_open;
-                        ui.close();
-                    }
-                });
-                if r.response.hovered() {
-                    widgets::hint::set(ctx, t!("hint.view_menu"));
-                }
-
-                if self.bridge.is_connected() {
-                    ui.separator();
-                    if let Some(transport_bar::TransportAction::Panic) =
-                        self.transport_bar.show_inline(ui, ctx, &self.bridge)
-                    {
-                        self.muted = true;
-                        self.bridge.send(ClientMessage::SetMasterVolume(0.0));
-                    }
-                }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let audio = self.bridge.audio_state();
-                    if audio.running {
-                        let cpu_pct = audio.cpu_load * 100.0;
-                        let cpu_color = if cpu_pct >= 80.0 {
-                            egui::Color32::from_rgb(255, 80, 80)
-                        } else if cpu_pct >= 50.0 {
-                            egui::Color32::from_rgb(255, 180, 50)
+                        let icon = if self.muted || self.master_volume == 0.0 {
+                            icons::MUTE
                         } else {
-                            ui.visuals().text_color()
+                            icons::UNMUTE
                         };
-                        let text = format!("V:{}  CPU {:.0}%", audio.active_voices, cpu_pct);
-                        ui.colored_label(cpu_color, text);
-                    }
-
-                    let mut vol = if self.muted { 0.0 } else { self.master_volume };
-                    let slider = egui::Slider::new(&mut vol, 0.0..=1.0).show_value(false);
-                    let r = ui.add_sized([100.0, ui.available_height()], slider);
-                    if r.changed() {
-                        self.master_volume = vol;
-                        self.muted = false;
-                        self.bridge
-                            .send(ClientMessage::SetMasterVolume(self.effective_gain()));
-                    }
-                    if r.hovered() {
-                        widgets::hint::set(ctx, t!("hint.master_volume"));
-                    }
-
-                    let icon = if self.muted || self.master_volume == 0.0 {
-                        icons::MUTE
-                    } else {
-                        icons::UNMUTE
-                    };
-                    let btn = ui.button(icon);
-                    if btn.clicked() {
-                        self.muted = !self.muted;
-                        self.bridge.send(ClientMessage::SetMasterVolume(self.effective_gain()));
-                    }
-                    if btn.hovered() {
-                        let hint = if self.muted {
-                            t!("hint.unmute")
-                        } else {
-                            t!("hint.mute")
-                        };
-                        widgets::hint::set(ctx, hint);
-                    }
+                        let btn = ui.button(icon);
+                        if btn.clicked() {
+                            self.muted = !self.muted;
+                            self.bridge
+                                .send(ClientMessage::SetMasterVolume(self.effective_gain()));
+                        }
+                        if btn.hovered() {
+                            let hint = if self.muted {
+                                t!("hint.unmute")
+                            } else {
+                                t!("hint.mute")
+                            };
+                            widgets::hint::set(ctx, hint);
+                        }
+                    });
                 });
             });
-        });
 
         if let Some((msg, _)) = self.bridge.last_error.take() {
             self.toasts.push(widgets::ToastLevel::Error, msg);
@@ -898,9 +976,14 @@ impl eframe::App for SovaApp {
         }
 
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
-        if self.scope_bar_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
-            self.scope_bar_panel
-                .show_bottom_panel(ctx, self.bridge.scope_data(), &self.scope_panel.settings);
+        if self.scope_bar_panel.open
+            && (self.bridge.audio_state().running || self.bridge.has_feedback())
+        {
+            self.scope_bar_panel.show_bottom_panel(
+                ctx,
+                self.bridge.scope_data(),
+                &self.scope_panel.settings,
+            );
         }
 
         // Sidebar (docs + settings + logs, must be before VU meter and CentralPanel)
@@ -914,11 +997,9 @@ impl eframe::App for SovaApp {
             appearance: &mut self.appearance,
             dismissed_tips: &mut self.dismissed_tips,
         };
-        let (sidebar_server_action, sidebar_appearance_changed) = self.doc_panel.show_side_panel(
-            ctx,
-            &self.bridge,
-            settings_ctx,
-        );
+        let (sidebar_server_action, sidebar_appearance_changed) =
+            self.doc_panel
+                .show_side_panel(ctx, &self.bridge, settings_ctx);
         match sidebar_server_action {
             ServerAction::Start => {
                 self.server.start(self.audio.generate_audio_config());
@@ -935,7 +1016,9 @@ impl eframe::App for SovaApp {
         }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)
-        if self.vu_meter_panel.open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
+        if self.vu_meter_panel.open
+            && (self.bridge.audio_state().running || self.bridge.has_feedback())
+        {
             let vu_side = match self.doc_panel.settings.side {
                 DocSide::Left => egui::containers::panel::Side::Right,
                 DocSide::Right => egui::containers::panel::Side::Left,
@@ -976,13 +1059,23 @@ impl eframe::App for SovaApp {
             egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    let pending_edits: Vec<_> = self.bridge.pending_script_edits.drain(..).collect();
+                    let pending_edits: Vec<_> =
+                        self.bridge.pending_script_edits.drain(..).collect();
                     let sample_names = self.sample_browser_panel.sample_names();
-                    self.scene_panel.show(ui, &self.bridge, self.appearance.visuals_enabled, self.appearance.scene_opacity, &self.editor_settings, pending_edits, &sample_names);
+                    self.scene_panel.show(
+                        ui,
+                        &self.bridge,
+                        self.appearance.visuals_enabled,
+                        self.appearance.scene_opacity,
+                        &self.editor_settings,
+                        pending_edits,
+                        &sample_names,
+                    );
                 });
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {
-                    self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
+                    self.doc_panel
+                        .open_settings_tab(doc_panel::SettingsTab::Config);
                 } else {
                     self.doc_panel.settings.collapsed = true;
                 }
@@ -993,7 +1086,8 @@ impl eframe::App for SovaApp {
             self.vu_meter_panel.open = panels.vu_meter;
             self.scope_bar_panel.open = panels.scope_bar;
             if panels.logs != self.doc_panel.is_logs_open() {
-                self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs);
+                self.doc_panel
+                    .toggle_settings_tab(doc_panel::SettingsTab::Logs);
             }
             self.debug_open = panels.debug;
         } else {
@@ -1011,10 +1105,12 @@ impl eframe::App for SovaApp {
                 self.server.stop();
             }
             if action.open_server_config {
-                self.doc_panel.open_settings_tab(doc_panel::SettingsTab::Config);
+                self.doc_panel
+                    .open_settings_tab(doc_panel::SettingsTab::Config);
             }
             if action.start_feedback && !self.server.is_running() && !self.bridge.has_feedback() {
-                self.bridge.start_feedback(self.audio.generate_audio_config());
+                self.bridge
+                    .start_feedback(self.audio.generate_audio_config());
             }
         }
 
@@ -1031,8 +1127,14 @@ impl eframe::App for SovaApp {
         #[cfg(not(feature = "default-samples"))]
         let default_sample_path: Option<&std::path::Path> = None;
         let is_hosting = self.server.is_running();
-        self.sample_browser_panel
-            .show(ctx, &self.bridge, default_sample_path, sample_paths, &self.appearance, is_hosting);
+        self.sample_browser_panel.show(
+            ctx,
+            &self.bridge,
+            default_sample_path,
+            sample_paths,
+            &self.appearance,
+            is_hosting,
+        );
 
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data, &self.appearance);
@@ -1055,7 +1157,8 @@ impl eframe::App for SovaApp {
         widgets::about_dialog(ctx, &mut self.about_open);
 
         self.command_palette.update_states(&widgets::PanelStates {
-            sidebar: self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings,
+            sidebar: self.doc_panel.is_expanded()
+                && self.doc_panel.mode() == doc_panel::SidebarMode::Settings,
             devices: self.devices.open,
             scope: self.scope_panel.open,
             spectrum: self.spectrum_panel.open,
@@ -1076,7 +1179,9 @@ impl eframe::App for SovaApp {
         }
 
         // Contextual tips (first match wins)
-        let tip_id = if self.doc_panel.is_expanded() && self.doc_panel.mode() == doc_panel::SidebarMode::Settings {
+        let tip_id = if self.doc_panel.is_expanded()
+            && self.doc_panel.mode() == doc_panel::SidebarMode::Settings
+        {
             Some("settings")
         } else if self.devices.open {
             Some("devices")
@@ -1103,22 +1208,36 @@ impl eframe::App for SovaApp {
 
 impl SovaApp {
     fn effective_gain(&self) -> f32 {
-        if self.muted { 0.0 } else { self.master_volume * self.master_volume }
+        if self.muted {
+            0.0
+        } else {
+            self.master_volume * self.master_volume
+        }
     }
 
     fn execute_command(&mut self, cmd: widgets::CommandId) {
         use widgets::CommandId::*;
         match cmd {
-            Server => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
-            Audio => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Config),
-            Devices => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Devices),
+            Server => self
+                .doc_panel
+                .toggle_settings_tab(doc_panel::SettingsTab::Config),
+            Audio => self
+                .doc_panel
+                .toggle_settings_tab(doc_panel::SettingsTab::Config),
+            Devices => self
+                .doc_panel
+                .toggle_settings_tab(doc_panel::SettingsTab::Devices),
             Scope => self.scope_panel.open = !self.scope_panel.open,
             Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
             VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,
             ScopeBar => self.scope_bar_panel.open = !self.scope_bar_panel.open,
             Chat => self.chat_panel.open = !self.chat_panel.open,
-            Logs => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Logs),
-            Options => self.doc_panel.toggle_settings_tab(doc_panel::SettingsTab::Options),
+            Logs => self
+                .doc_panel
+                .toggle_settings_tab(doc_panel::SettingsTab::Logs),
+            Options => self
+                .doc_panel
+                .toggle_settings_tab(doc_panel::SettingsTab::Options),
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,
@@ -1164,10 +1283,8 @@ impl SovaApp {
             }
             ResetScene => {
                 if self.bridge.is_connected() {
-                    self.confirm_reset_scene.open(
-                        t!("reset_scene.title"),
-                        t!("reset_scene.message"),
-                    );
+                    self.confirm_reset_scene
+                        .open(t!("reset_scene.title"), t!("reset_scene.message"));
                 }
             }
             ZoomIn => {

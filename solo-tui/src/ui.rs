@@ -7,7 +7,9 @@ use ratatui::{
 use crate::{
     app::App,
     page::Page,
-    widgets::{configure_widget::ConfigureWidget, footer::Footer, header::Header, time_widget::TimeWidget},
+    widgets::{
+        configure_widget::ConfigureWidget, footer::Footer, header::Header, time_widget::TimeWidget,
+    },
 };
 
 impl Widget for &mut App {
@@ -24,8 +26,7 @@ impl Widget for &mut App {
 
         let title = match self.state.page {
             Page::Scene => {
-                self.scene_widget
-                    .render(content_area, buf, &mut self.state);
+                self.scene_widget.render(content_area, buf, &mut self.state);
                 "scene"
             }
             Page::Devices => {
@@ -34,14 +35,13 @@ impl Widget for &mut App {
                 "devices"
             }
             Page::Edit => {
-                self.edit_widget
-                    .render(content_area, buf, &mut self.state);
+                self.edit_widget.render(content_area, buf, &mut self.state);
                 "edit"
             }
             Page::Configure => {
                 ConfigureWidget.render(content_area, buf, &mut self.state);
                 "configure"
-            },
+            }
             Page::Time => {
                 TimeWidget.render(content_area, buf, &mut self.state);
                 "time"

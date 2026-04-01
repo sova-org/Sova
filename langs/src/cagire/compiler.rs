@@ -64,7 +64,10 @@ fn tokenize(input: &str) -> Vec<Token> {
                 }
                 s.push(ch);
             }
-            tokens.push(Token { kind: TokenKind::Str(s), span: Span { start, end } });
+            tokens.push(Token {
+                kind: TokenKind::Str(s),
+                span: Span { start, end },
+            });
             continue;
         }
 
@@ -84,7 +87,10 @@ fn tokenize(input: &str) -> Vec<Token> {
             }
             tokens.push(Token {
                 kind: TokenKind::Word(";".to_string()),
-                span: Span { start, end: start + 1 },
+                span: Span {
+                    start,
+                    end: start + 1,
+                },
             });
             continue;
         }
@@ -109,21 +115,27 @@ fn tokenize(input: &str) -> Vec<Token> {
             && word.as_bytes()[1].is_ascii_digit()
         {
             Cow::Owned(format!("0{word}"))
-        } else if word.starts_with("-.")
-            && word.len() > 2
-            && word.as_bytes()[2].is_ascii_digit()
-        {
+        } else if word.starts_with("-.") && word.len() > 2 && word.as_bytes()[2].is_ascii_digit() {
             Cow::Owned(format!("-0{}", &word[1..]))
         } else {
             Cow::Borrowed(&word)
         };
 
         if let Ok(i) = word_to_parse.parse::<i64>() {
-            tokens.push(Token { kind: TokenKind::Int(i), span });
+            tokens.push(Token {
+                kind: TokenKind::Int(i),
+                span,
+            });
         } else if let Ok(f) = word_to_parse.parse::<f64>() {
-            tokens.push(Token { kind: TokenKind::Float(f), span });
+            tokens.push(Token {
+                kind: TokenKind::Float(f),
+                span,
+            });
         } else {
-            tokens.push(Token { kind: TokenKind::Word(word), span });
+            tokens.push(Token {
+                kind: TokenKind::Word(word),
+                span,
+            });
         }
     }
 
@@ -140,10 +152,7 @@ fn extend(ops: &mut Vec<Op>, spans: &mut Vec<Span>, other_ops: Vec<Op>, other_sp
     spans.extend(other_spans);
 }
 
-fn compile(
-    tokens: &[Token],
-    dict: &mut Dictionary,
-) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
+fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
     let mut ops = Vec::new();
     let mut spans = Vec::new();
     let mut i = 0;
@@ -162,8 +171,16 @@ fn compile(
                         compile_quotation(&tokens[i + 1..], sp, dict)?;
                     i += consumed;
                     let close_span = tokens.get(i).map_or(sp, |t| t.span);
-                    let full_span = Span { start: sp.start, end: close_span.end };
-                    push(&mut ops, &mut spans, Op::Quotation(Arc::from(quote_ops), Arc::from(quote_spans)), full_span);
+                    let full_span = Span {
+                        start: sp.start,
+                        end: close_span.end,
+                    };
+                    push(
+                        &mut ops,
+                        &mut spans,
+                        Op::Quotation(Arc::from(quote_ops), Arc::from(quote_spans)),
+                        full_span,
+                    );
                 } else if word == ")" {
                     return Err(err("unexpected ')'", sp));
                 } else if word == "[" {
@@ -189,7 +206,12 @@ fn compile(
                         push(&mut ops, &mut spans, Op::BranchIfZero(then_ops.len()), sp);
                         extend(&mut ops, &mut spans, then_ops, then_spans);
                     } else {
-                        push(&mut ops, &mut spans, Op::BranchIfZero(then_ops.len() + 1), sp);
+                        push(
+                            &mut ops,
+                            &mut spans,
+                            Op::BranchIfZero(then_ops.len() + 1),
+                            sp,
+                        );
                         extend(&mut ops, &mut spans, then_ops, then_spans);
                         push(&mut ops, &mut spans, Op::Branch(else_ops.len()), sp);
                         extend(&mut ops, &mut spans, else_ops, else_spans);
@@ -210,8 +232,7 @@ fn compile(
                     }
                 } else if word == "pat" {
                     if let Some(Op::PushStr(s)) = ops.last() {
-                        pattern::parse_pattern(s)
-                            .map_err(|e| err(format!("pat: {e}"), sp))?;
+                        pattern::parse_pattern(s).map_err(|e| err(format!("pat: {e}"), sp))?;
                     }
                     push(&mut ops, &mut spans, Op::PatPush, sp);
                 } else if word == "case" {
@@ -383,7 +404,8 @@ fn compile_case(
                 }
                 "of" if depth == 1 => last_of = Some(i),
                 "endof" if depth == 1 => {
-                    let of_pos = last_of.ok_or_else(|| err("'endof' without matching 'of'", tok.span))?;
+                    let of_pos =
+                        last_of.ok_or_else(|| err("'endof' without matching 'of'", tok.span))?;
                     clauses.push((of_pos, i));
                     last_of = None;
                 }
@@ -407,7 +429,12 @@ fn compile_case(
         extend(&mut ops, &mut op_spans, test_ops, test_spans);
         push(&mut ops, &mut op_spans, Op::Over, of_span);
         push(&mut ops, &mut op_spans, Op::Eq, of_span);
-        push(&mut ops, &mut op_spans, Op::BranchIfZero(body_ops.len() + 2), of_span);
+        push(
+            &mut ops,
+            &mut op_spans,
+            Op::BranchIfZero(body_ops.len() + 2),
+            of_span,
+        );
         push(&mut ops, &mut op_spans, Op::Drop, of_span);
         extend(&mut ops, &mut op_spans, body_ops, body_spans);
         branch_fixups.push(ops.len());
@@ -440,7 +467,10 @@ fn compile_at(
     let mut paren_depth: i32 = 0;
     let mut bracket_depth: i32 = 0;
 
-    enum AtCloser { Dot, Done }
+    enum AtCloser {
+        Dot,
+        Done,
+    }
     let mut found: Option<(usize, AtCloser)> = None;
 
     for (i, tok) in tokens.iter().enumerate() {
@@ -452,10 +482,12 @@ fn compile_at(
                 "]" => bracket_depth -= 1,
                 "at" if paren_depth == 0 && bracket_depth == 0 => depth += 1,
                 "." if depth == 1 && paren_depth == 0 && bracket_depth == 0 => {
-                    found = Some((i, AtCloser::Dot)); break;
+                    found = Some((i, AtCloser::Dot));
+                    break;
                 }
                 "done" if depth == 1 && paren_depth == 0 && bracket_depth == 0 => {
-                    found = Some((i, AtCloser::Done)); break;
+                    found = Some((i, AtCloser::Done));
+                    break;
                 }
                 "." | "done" if paren_depth == 0 && bracket_depth == 0 => depth -= 1,
                 _ => {}
@@ -584,18 +616,19 @@ mod tests {
     #[test]
     fn test_french_note_names() {
         let mut dict = Dictionary::new();
-        let (ops, _) = compile_script("do4 mib4 sol#3 ré4 re4 si4 ti4 ut4 la3 fa5", &mut dict).unwrap();
+        let (ops, _) =
+            compile_script("do4 mib4 sol#3 ré4 re4 si4 ti4 ut4 la3 fa5", &mut dict).unwrap();
         assert_eq!(ops.len(), 10);
-        assert!(matches!(ops[0], Op::PushInt(60)));  // do4 = C4
-        assert!(matches!(ops[1], Op::PushInt(63)));  // mib4 = Eb4
-        assert!(matches!(ops[2], Op::PushInt(56)));  // sol#3 = G#3
-        assert!(matches!(ops[3], Op::PushInt(62)));  // ré4 = D4
-        assert!(matches!(ops[4], Op::PushInt(62)));  // re4 = D4
-        assert!(matches!(ops[5], Op::PushInt(71)));  // si4 = B4
-        assert!(matches!(ops[6], Op::PushInt(71)));  // ti4 = B4
-        assert!(matches!(ops[7], Op::PushInt(60)));  // ut4 = C4
-        assert!(matches!(ops[8], Op::PushInt(57)));  // la3 = A3
-        assert!(matches!(ops[9], Op::PushInt(77)));  // fa5 = F5
+        assert!(matches!(ops[0], Op::PushInt(60))); // do4 = C4
+        assert!(matches!(ops[1], Op::PushInt(63))); // mib4 = Eb4
+        assert!(matches!(ops[2], Op::PushInt(56))); // sol#3 = G#3
+        assert!(matches!(ops[3], Op::PushInt(62))); // ré4 = D4
+        assert!(matches!(ops[4], Op::PushInt(62))); // re4 = D4
+        assert!(matches!(ops[5], Op::PushInt(71))); // si4 = B4
+        assert!(matches!(ops[6], Op::PushInt(71))); // ti4 = B4
+        assert!(matches!(ops[7], Op::PushInt(60))); // ut4 = C4
+        assert!(matches!(ops[8], Op::PushInt(57))); // la3 = A3
+        assert!(matches!(ops[9], Op::PushInt(77))); // fa5 = F5
     }
 
     #[test]
@@ -644,6 +677,9 @@ mod tests {
         let mut dict = Dictionary::new();
         // ( . ) inside an at block must not be mistaken for the at closer
         let result = compile_script("0 0.5 at ( . ) 50 prob .", &mut dict);
-        assert!(result.is_ok(), "quoted emit inside at block should compile: {result:?}");
+        assert!(
+            result.is_ok(),
+            "quoted emit inside at block should compile: {result:?}"
+        );
     }
 }

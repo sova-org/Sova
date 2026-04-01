@@ -1,9 +1,22 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, thread};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+};
 
 use crossbeam_channel::Receiver;
-use sova_core::{Scene, clock::Clock, schedule::{SovaNotification, playback::PlaybackState}};
+use sova_core::{
+    Scene,
+    clock::Clock,
+    schedule::{SovaNotification, playback::PlaybackState},
+};
 
-use crate::{ClientRegistry, ServerMessage, server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw}};
+use crate::{
+    ClientRegistry, ServerMessage,
+    server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
+};
 
 fn notification_to_server_message(
     notif: SovaNotification,
@@ -14,9 +27,14 @@ fn notification_to_server_message(
         | SovaNotification::QuantumChanged(_)
         | SovaNotification::TempoChanged(_) => {
             clock.capture_app_state();
-            Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
+            Some(ServerMessage::ClockState(
+                clock.tempo(),
+                clock.beat(),
+                clock.micros(),
+                clock.quantum(),
+            ))
         }
-        notif => Some(ServerMessage::Notification(notif))
+        notif => Some(ServerMessage::Notification(notif)),
     }
 }
 
@@ -25,7 +43,7 @@ pub fn start_image_maintainer(
     scene_image: Arc<tokio::sync::Mutex<Scene>>,
     client_registry: ClientRegistry,
     is_playing: Arc<AtomicBool>,
-    mut clock: Clock
+    mut clock: Clock,
 ) {
     thread::spawn(move || {
         let position_broadcast_interval =
@@ -102,10 +120,10 @@ pub fn start_image_maintainer(
                             continue;
                         };
                         let droppable = matches!(
-                            &msg, 
+                            &msg,
                             ServerMessage::Notification(SovaNotification::FramePositionChanged(_))
-                            | ServerMessage::Notification(SovaNotification::Annotations(_))
-                            | ServerMessage::ClockState(..)
+                                | ServerMessage::Notification(SovaNotification::Annotations(_))
+                                | ServerMessage::ClockState(..)
                         );
                         broadcast_raw(&client_registry, &msg, droppable);
                     }

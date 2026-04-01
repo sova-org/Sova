@@ -117,14 +117,12 @@ impl ToastStack {
                     }
                     .gamma_multiply(alpha);
 
-                    let frame = egui::Frame::NONE
-                        .fill(bg)
-                        .inner_margin(egui::Margin {
-                            left: 10,
-                            right: 8,
-                            top: 6,
-                            bottom: 6,
-                        });
+                    let frame = egui::Frame::NONE.fill(bg).inner_margin(egui::Margin {
+                        left: 10,
+                        right: 8,
+                        top: 6,
+                        bottom: 6,
+                    });
 
                     let resp = frame.show(ui, |ui| {
                         ui.set_max_width(MAX_WIDTH - 20.0);
@@ -138,10 +136,8 @@ impl ToastStack {
                                     ..Default::default()
                                 };
                                 let font = egui::FontId::proportional(13.0);
-                                let name_color =
-                                    super::username_color(user).gamma_multiply(alpha);
-                                let text_color =
-                                    egui::Color32::from_white_alpha(alpha_byte);
+                                let name_color = super::username_color(user).gamma_multiply(alpha);
+                                let text_color = egui::Color32::from_white_alpha(alpha_byte);
                                 job.append(
                                     &format!("{user}: "),
                                     0.0,
@@ -164,16 +160,12 @@ impl ToastStack {
                             }
                             _ => {
                                 let text_color = match &toast.level {
-                                    ToastLevel::Error => {
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            255, 100, 100, alpha_byte,
-                                        )
-                                    }
-                                    ToastLevel::Warning => {
-                                        egui::Color32::from_rgba_unmultiplied(
-                                            255, 200, 100, alpha_byte,
-                                        )
-                                    }
+                                    ToastLevel::Error => egui::Color32::from_rgba_unmultiplied(
+                                        255, 100, 100, alpha_byte,
+                                    ),
+                                    ToastLevel::Warning => egui::Color32::from_rgba_unmultiplied(
+                                        255, 200, 100, alpha_byte,
+                                    ),
                                     _ => egui::Color32::from_white_alpha(alpha_byte),
                                 };
                                 ui.label(
@@ -188,10 +180,7 @@ impl ToastStack {
                     // Left accent border
                     let rect = resp.response.rect;
                     ui.painter().rect_filled(
-                        egui::Rect::from_min_size(
-                            rect.left_top(),
-                            egui::vec2(2.0, rect.height()),
-                        ),
+                        egui::Rect::from_min_size(rect.left_top(), egui::vec2(2.0, rect.height())),
                         egui::CornerRadius::ZERO,
                         accent,
                     );

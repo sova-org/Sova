@@ -9,7 +9,9 @@ use hydra_rust::renderer::{self, RenderUniforms, ShaderRenderer};
 
 use crate::settings::VisualsSettings;
 use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use crate::widgets::{CodeEditor, EditorContext, EditorSettings, COLOR_ERROR, COLOR_MUTED, COLOR_OK};
+use crate::widgets::{
+    COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext, EditorSettings,
+};
 
 pub struct VisualsEngine {
     renderer: Option<ShaderRenderer>,
@@ -98,8 +100,7 @@ impl VisualsEngine {
                         } else {
                             egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha)
                         };
-                        ui.painter()
-                            .rect_filled(body.response.rect, 0.0, flash);
+                        ui.painter().rect_filled(body.response.rect, 0.0, flash);
                         ui.ctx().request_repaint();
                     } else {
                         self.last_eval = None;
@@ -121,30 +122,27 @@ impl VisualsEngine {
                         t!("visuals.eval")
                     ))
                     .strong();
-                    if ui
-                        .add(egui::Button::new(eval_text).fill(accent))
-                        .clicked()
-                    {
+                    if ui.add(egui::Button::new(eval_text).fill(accent)).clicked() {
                         self.evaluate();
                     }
 
                     self.show_compilation_dot(ui);
 
                     if self.dirty {
-                        ui.label(
-                            egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR),
-                        );
+                        ui.label(egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR));
                     }
 
                     ui.add_space(4.0);
 
-                    if ui.checkbox(&mut self.shared, t!("visuals.share"))
+                    if ui
+                        .checkbox(&mut self.shared, t!("visuals.share"))
                         .on_hover_text(if self.shared {
                             t!("visuals.share_on")
                         } else {
                             t!("visuals.share_off")
                         })
-                        .changed() && !self.shared
+                        .changed()
+                        && !self.shared
                     {
                         self.remote_sender = None;
                     }
@@ -180,9 +178,7 @@ impl VisualsEngine {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output =
-                    self.editor
-                        .show(ui, editor_id, &mut self.code, &ctx);
+                let output = self.editor.show(ui, editor_id, &mut self.code, &ctx);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -261,7 +257,12 @@ impl VisualsEngine {
         };
         if self.code.is_empty() {
             renderer.compile_buffers(
-                &[Some(hydra_rust::shader::DEFAULT_SHADER.to_owned()), None, None, None],
+                &[
+                    Some(hydra_rust::shader::DEFAULT_SHADER.to_owned()),
+                    None,
+                    None,
+                    None,
+                ],
                 Default::default(),
             );
             self.error = None;
@@ -279,7 +280,14 @@ impl VisualsEngine {
         }
     }
 
-    pub fn paint_background_central(&mut self, ctx: &egui::Context, enabled: bool, beat: f32, tempo: f32, phase: f32) {
+    pub fn paint_background_central(
+        &mut self,
+        ctx: &egui::Context,
+        enabled: bool,
+        beat: f32,
+        tempo: f32,
+        phase: f32,
+    ) {
         if !enabled {
             return;
         }

@@ -3,7 +3,12 @@ use std::{env, sync::Arc};
 use crossbeam_channel::unbounded;
 use doux_sova::{DouxConfig, DouxManager, audio};
 use sova_core::{
-    Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, init, scene::Line, schedule::{ActionTiming, SchedulerMessage},
+    Scene,
+    clock::{Clock, ClockServer},
+    device_map::DeviceMap,
+    init,
+    scene::Line,
+    schedule::{ActionTiming, SchedulerMessage},
 };
 
 use crate::app::App;
@@ -21,16 +26,21 @@ const DEFAULT_QUANTUM: f64 = 4.0;
 const DEFAULT_MIDI_OUT: &str = "SovaOut";
 
 fn connect_engine(device_map: &DeviceMap, clock_server: &Arc<ClockServer>) -> DouxManager {
-    let clock : Clock = clock_server.into();
+    let clock: Clock = clock_server.into();
     // 1. List available devices (for UI)
     let devices = audio::list_output_devices();
     let mut default = String::new();
     for dev in &devices {
-        let default_marker = if dev.is_default { 
+        let default_marker = if dev.is_default {
             default = dev.name.clone();
-            " [default]" 
-        } else { "" };
-        println!("{}: {} (max {} ch){}", dev.index, dev.name, dev.max_channels, default_marker);
+            " [default]"
+        } else {
+            ""
+        };
+        println!(
+            "{}: {} (max {} ch){}",
+            dev.index, dev.name, dev.max_channels, default_marker
+        );
     }
 
     // 2. Create configuration

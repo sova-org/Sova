@@ -86,9 +86,8 @@ impl TransportBar {
 
         ui.separator();
 
-        let r = ui.monospace(
-            t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string(),
-        );
+        let r = ui
+            .monospace(t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string());
         if r.hovered() {
             crate::widgets::hint::set(ctx, t!("transport.hint.beat"));
         }
@@ -115,11 +114,7 @@ impl TransportBar {
             }
         } else {
             let resp = ui.monospace(
-                t!(
-                    "transport.tempo_value",
-                    val = format!("{:.1}", clock.tempo)
-                )
-                .to_string(),
+                t!("transport.tempo_value", val = format!("{:.1}", clock.tempo)).to_string(),
             );
             if resp.hovered() {
                 crate::widgets::hint::set(ctx, t!("transport.hint.tempo"));
@@ -148,8 +143,8 @@ impl TransportBar {
 
         if use_segments {
             let gap: f32 = 2.0;
-            let seg_w = (bar_width - (quantum_int.saturating_sub(1)) as f32 * gap)
-                / quantum_int as f32;
+            let seg_w =
+                (bar_width - (quantum_int.saturating_sub(1)) as f32 * gap) / quantum_int as f32;
 
             let (rect, phase_r) =
                 ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
@@ -218,14 +213,16 @@ impl TransportBar {
                     && let Ok(q) = self.quantum_buf.parse::<u32>()
                 {
                     let q = q.clamp(1, 16);
-                    bridge.send(SchedulerMessage::SetQuantum(q as f64, ActionTiming::Immediate));
+                    bridge.send(SchedulerMessage::SetQuantum(
+                        q as f64,
+                        ActionTiming::Immediate,
+                    ));
                 }
                 self.editing_quantum = false;
             }
         } else {
-            let resp = ui.monospace(
-                t!("transport.quantum_value", val = clock.quantum as u32).to_string(),
-            );
+            let resp =
+                ui.monospace(t!("transport.quantum_value", val = clock.quantum as u32).to_string());
             if resp.hovered() {
                 crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
             }
@@ -249,7 +246,10 @@ impl TransportBar {
                 ExecutionMode::AtQuantum => ExecutionMode::LongestLine,
                 ExecutionMode::LongestLine => ExecutionMode::Free,
             };
-            bridge.send(SchedulerMessage::SetSceneMode(next, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::SetSceneMode(
+                next,
+                ActionTiming::Immediate,
+            ));
         }
 
         if clock.playing {

@@ -6,66 +6,64 @@ pub enum PopupValue {
     Text(String),
     Float(f64),
     Int(i64),
-    Choice(usize, Vec<String>)
+    Choice(usize, Vec<String>),
 }
 
 impl PopupValue {
     pub fn is_float(&self) -> bool {
         match self {
             Self::Float(_) => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_bool(&self) -> bool {
         match self {
             Self::Bool(_) => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_int(&self) -> bool {
         match self {
             Self::Int(_) => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_text(&self) -> bool {
         match self {
             Self::Text(_) => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_choice(&self) -> bool {
         match self {
-            Self::Choice(_,_) => true,
-            _ => false
+            Self::Choice(_, _) => true,
+            _ => false,
         }
     }
 
     fn float(self) -> f64 {
         match self {
             Self::Float(x) => x,
-            _ => Default::default()
+            _ => Default::default(),
         }
     }
     fn bool(self) -> bool {
         match self {
             Self::Bool(x) => x,
-            _ => Default::default()
+            _ => Default::default(),
         }
     }
     fn int(self) -> i64 {
         match self {
             Self::Int(x) => x,
-            _ => Default::default()
+            _ => Default::default(),
         }
     }
     fn text(self) -> String {
         match self {
             Self::Text(x) => x,
-            Self::Choice(i, mut v) if i < v.len() => {
-                v.remove(i)
-            }
-            _ => Default::default()
+            Self::Choice(i, mut v) if i < v.len() => v.remove(i),
+            _ => Default::default(),
         }
     }
 }

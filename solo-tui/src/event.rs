@@ -1,7 +1,10 @@
 use color_eyre::eyre::WrapErr;
-use crossbeam_channel::{select, unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use ratatui::crossterm::event::{self, Event as CrosstermEvent};
-use sova_core::{LogMessage, schedule::{SchedulerMessage, SovaNotification}};
+use sova_core::{
+    LogMessage,
+    schedule::{SchedulerMessage, SovaNotification},
+};
 use std::{
     thread,
     time::{Duration, Instant},
@@ -15,7 +18,7 @@ pub enum Event {
     Tick,
     Crossterm(CrosstermEvent),
     App(AppEvent),
-    Notification(SovaNotification)
+    Notification(SovaNotification),
 }
 
 impl From<AppEvent> for Event {
@@ -41,7 +44,12 @@ pub enum AppEvent {
     Left,
     Up,
     Down,
-    Popup(String, String, PopupValue, Box<dyn FnOnce(&mut AppState, PopupValue) + Send>),
+    Popup(
+        String,
+        String,
+        PopupValue,
+        Box<dyn FnOnce(&mut AppState, PopupValue) + Send>,
+    ),
     ChangeScript,
     Info(String),
     Positive(String),
@@ -60,7 +68,7 @@ pub struct EventHandler {
     sender: Sender<Event>,
     receiver: Receiver<Event>,
     notifications: Receiver<SovaNotification>,
-    log_rx: Receiver<LogMessage>
+    log_rx: Receiver<LogMessage>,
 }
 
 impl EventHandler {
@@ -69,7 +77,12 @@ impl EventHandler {
         let (sender, receiver) = unbounded();
         let actor = EventThread::new(sender.clone());
         thread::spawn(|| actor.run());
-        Self { sender, receiver, notifications, log_rx }
+        Self {
+            sender,
+            receiver,
+            notifications,
+            log_rx,
+        }
     }
 
     /// Receives an event from the sender.

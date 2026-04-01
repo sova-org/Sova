@@ -6,7 +6,6 @@ use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use sova_core::{Scene, vm::LanguageCenter};
-use tokio_util::sync::CancellationToken;
 use std::sync::OnceLock;
 use std::thread::JoinHandle;
 use std::{
@@ -24,6 +23,7 @@ use tokio::{
     select, signal,
     sync::{Mutex, broadcast, mpsc},
 };
+use tokio_util::sync::CancellationToken;
 
 use sova_core::{
     clock::{Clock, ClockServer, SyncTime},
@@ -36,8 +36,8 @@ pub type TokioSender<T> = tokio::sync::mpsc::Sender<T>;
 
 use crate::message::ServerMessage;
 
-mod message_processing;
 mod image_maintainer;
+mod message_processing;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -80,10 +80,7 @@ impl BroadcastItem {
         match self {
             BroadcastItem::Raw { droppable, .. } => *droppable,
             BroadcastItem::Feedback(_) => false,
-            BroadcastItem::Filtered(_, msg) => matches!(
-                msg,
-                ServerMessage::PeerCursorMoved(..)
-            ),
+            BroadcastItem::Filtered(_, msg) => matches!(msg, ServerMessage::PeerCursorMoved(..)),
         }
     }
 }
@@ -241,7 +238,6 @@ pub struct SovaCoreServer {
 }
 
 impl SovaCoreServer {
-
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         ip: String,
@@ -260,7 +256,7 @@ impl SovaCoreServer {
     ) -> Self {
         let (core_restart_tx, core_restart_rx) = tokio::sync::mpsc::channel(128);
         SovaCoreServer {
-            ip, 
+            ip,
             port,
             clock_server,
             devices,
@@ -283,18 +279,18 @@ impl SovaCoreServer {
 
     pub fn state(&self) -> ServerState {
         ServerState::new(
-            self.scene_image.clone(), 
-            self.clock_server.clone(), 
-            self.devices.clone(), 
-            self.sched_iface.get().unwrap().clone(), 
-            self.client_registry.clone(), 
+            self.scene_image.clone(),
+            self.clock_server.clone(),
+            self.devices.clone(),
+            self.sched_iface.get().unwrap().clone(),
+            self.client_registry.clone(),
             self.clients.clone(),
-            self.languages.clone(), 
-            self.is_playing.clone(), 
+            self.languages.clone(),
+            self.is_playing.clone(),
             self.audio_engine_state.clone(),
-            self.audio_restart_tx.clone(), 
-            self.audio_cmd_tx.clone(), 
-            self.core_restart_tx.clone(), 
+            self.audio_restart_tx.clone(),
+            self.audio_cmd_tx.clone(),
+            self.core_restart_tx.clone(),
             self.password.clone(),
             self.master_gain.clone(),
         )
@@ -319,18 +315,26 @@ impl SovaCoreServer {
             scene.clone(),
             ActionTiming::Immediate,
         )) {
-            return (new_world, new_sched, Some(format!("Failed to set scene: {e}")));
+            return (
+                new_world,
+                new_sched,
+                Some(format!("Failed to set scene: {e}")),
+            );
         }
         self.set_scheduler_connection(new_iface, new_update);
         broadcast_raw(&self.client_registry, &ServerMessage::CoreRestarted, false);
-        broadcast_raw(&self.client_registry, &ServerMessage::Notification(SovaNotification::UpdatedScene(scene)), false);
+        broadcast_raw(
+            &self.client_registry,
+            &ServerMessage::Notification(SovaNotification::UpdatedScene(scene)),
+            false,
+        );
         (new_world, new_sched, None)
     }
 
     pub fn set_scheduler_connection(
-        &self, 
-        sched_iface: Sender<SchedulerMessage>, 
-        sched_update: Receiver<SovaNotification>
+        &self,
+        sched_iface: Sender<SchedulerMessage>,
+        sched_update: Receiver<SovaNotification>,
     ) {
         self.start_image_maintainer(sched_update);
         match self.sched_iface.get() {
@@ -342,7 +346,6 @@ impl SovaCoreServer {
                 let _ = self.sched_iface.set(Arc::new(RwLock::new(sched_iface)));
             }
         }
-        
     }
 
     pub async fn start(&mut self, token: CancellationToken) -> io::Result<()> {
@@ -360,7 +363,7 @@ impl SovaCoreServer {
                 match log_rx.recv().await {
                     Ok(notif @ SovaNotification::Log(_)) => {
                         broadcast_raw(&bridge_registry, &ServerMessage::Notification(notif), false);
-                    },
+                    }
                     Err(broadcast::error::RecvError::Lagged(_)) | Ok(_) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
@@ -492,7 +495,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let hello_msg: ServerMessage;
 
     match read_message_internal(&mut reader, &client_addr_str).await {
-        Ok(Some(ClientMessage::SetName { name: new_name, password })) => {
+        Ok(Some(ClientMessage::SetName {
+            name: new_name,
+            password,
+        })) => {
             if let Some(required) = &state.password {
                 if password.as_deref() != Some(required.as_str()) {
                     eprintln!(
@@ -766,7 +772,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                             {
                                 break;
                             }
-                        }                        
+                        }
                     }
                 }
             }
@@ -836,10 +842,13 @@ fn enrich_with_sound_docs(languages: &mut [sova_core::vm::language::LanguageDefi
             let sig = if src.params.is_empty() {
                 None
             } else {
-                Some(src.params.iter()
-                    .map(|(name, desc)| format!("{name}: {desc}"))
-                    .collect::<Vec<_>>()
-                    .join(", "))
+                Some(
+                    src.params
+                        .iter()
+                        .map(|(name, desc)| format!("{name}: {desc}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
             };
             let mut entry = ReferenceEntry::new(src.description)
                 .with_category(format!("Sound: {}", src.category));
@@ -854,8 +863,7 @@ fn enrich_with_sound_docs(languages: &mut [sova_core::vm::language::LanguageDefi
 
         for preset in &gm_presets {
             let desc = format!("GM {} (program {})", preset.family, preset.program);
-            let mut entry = ReferenceEntry::new(desc)
-                .with_category("Sound: GM");
+            let mut entry = ReferenceEntry::new(desc).with_category("Sound: GM");
             if !preset.aliases.is_empty() {
                 let aliases: Vec<&str> = preset.aliases.iter().copied().collect();
                 entry = entry.with_aliases(&aliases);

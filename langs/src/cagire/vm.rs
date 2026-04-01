@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 use sova_core::clock::SyncTime;
 use sova_core::protocol::osc::OSCMessage;
-use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
+use sova_core::vm::EvaluationContext;
 
-use super::compiler::{Dictionary, compile_script};
+use super::compiler::{compile_script, Dictionary};
 use super::ops::Op;
 use super::pattern;
-use super::types::{CagireError, CmdRegister, ResolvedValue, Span, Stack, Value, float_to_value};
+use super::types::{float_to_value, CagireError, CmdRegister, ResolvedValue, Span, Stack, Value};
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -45,7 +45,11 @@ impl StepContext {
             step: ctx.frame_triggers,
             beat,
             tempo,
-            phase: if quantum > 0.0 { (beat / quantum).fract() } else { 0.0 },
+            phase: if quantum > 0.0 {
+                (beat / quantum).fract()
+            } else {
+                0.0
+            },
             slot: ctx.line_index,
             runs: ctx.frame_triggers,
             iter: ctx.line_iterations,
@@ -59,35 +63,44 @@ impl StepContext {
 }
 
 pub(super) struct CagireVM {
+    source: String,
     pub vars: HashMap<String, Value>,
     pub dict: Dictionary,
     pub rng: StdRng,
     global_params: Vec<(&'static str, Value)>,
     pub resolved: Vec<(Span, ResolvedValue)>,
     pub selected: Vec<Span>,
+    pub event_annotations: Vec<Vec<Span>>,
+    active_emit_annotations: Vec<Span>,
 }
 
 impl CagireVM {
     #[cfg(test)]
     pub fn new() -> Self {
         Self {
+            source: String::new(),
             vars: HashMap::new(),
             dict: Dictionary::new(),
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
             resolved: Vec::new(),
             selected: Vec::new(),
+            event_annotations: Vec::new(),
+            active_emit_annotations: Vec::new(),
         }
     }
 
     pub fn with_dict(dict: Dictionary) -> Self {
         Self {
+            source: String::new(),
             vars: HashMap::new(),
             dict,
             rng: StdRng::from_os_rng(),
             global_params: Vec::new(),
             resolved: Vec::new(),
             selected: Vec::new(),
+            event_annotations: Vec::new(),
+            active_emit_annotations: Vec::new(),
         }
     }
 
@@ -96,8 +109,12 @@ impl CagireVM {
         script: &str,
         ctx: &mut EvaluationContext,
     ) -> Result<Vec<(ConcreteEvent, SyncTime)>, CagireError> {
+        self.source.clear();
+        self.source.push_str(script);
         self.resolved.clear();
         self.selected.clear();
+        self.event_annotations.clear();
+        self.active_emit_annotations.clear();
         if script.trim().is_empty() {
             return Err(CagireError::new("empty script", Span::default()));
         }
@@ -110,6 +127,37 @@ impl CagireVM {
         self.execute_ops(&ops, &spans, &sctx, ctx, &mut stack, &mut events, &mut cmd)?;
         self.global_params = cmd.take_global();
         Ok(events)
+    }
+
+    fn push_event(
+        &mut self,
+        events: &mut Vec<(ConcreteEvent, SyncTime)>,
+        event: ConcreteEvent,
+        time: SyncTime,
+    ) {
+        events.push((event, time));
+        self.event_annotations
+            .push(self.active_emit_annotations.clone());
+    }
+
+    fn pattern_hit_span(&self, origin: Span, local_start: usize, local_end: usize) -> Option<Span> {
+        if origin == Span::default() || local_start >= local_end {
+            return None;
+        }
+        let token = self.source.get(origin.start..origin.end)?;
+        if !token.starts_with('"') || !token.ends_with('"') || token.len() < 2 {
+            return Some(origin);
+        }
+
+        let content_start = origin.start + 1;
+        let content_end = origin.end - 1;
+        let start = content_start + local_start;
+        let end = content_start + local_end;
+        if start >= end || end > content_end {
+            return Some(origin);
+        }
+
+        Some(Span { start, end })
     }
 
     fn execute_ops(
@@ -127,12 +175,16 @@ impl CagireVM {
 
         macro_rules! at {
             ($expr:expr) => {
-                $expr.map_err(|msg: String| CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default()))
+                $expr.map_err(|msg: String| {
+                    CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default())
+                })
             };
         }
 
         macro_rules! span {
-            () => { op_spans.get(pc).copied().unwrap_or_default() };
+            () => {
+                op_spans.get(pc).copied().unwrap_or_default()
+            };
         }
 
         while pc < ops.len() {
@@ -155,7 +207,9 @@ impl CagireVM {
                         stack.push(v.clone(), o);
                     }
                 }
-                Op::Drop => { at!(stack.pop())?; }
+                Op::Drop => {
+                    at!(stack.pop())?;
+                }
                 Op::Swap => {
                     at!(stack.ensure(2))?;
                     let len = stack.len();
@@ -238,19 +292,31 @@ impl CagireVM {
                     let count = at!(stack.pop_int())? as usize;
                     at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    sort_paired(&mut stack.values[start..], &mut stack.origins[start..], false);
+                    sort_paired(
+                        &mut stack.values[start..],
+                        &mut stack.origins[start..],
+                        false,
+                    );
                 }
                 Op::RSort => {
                     let count = at!(stack.pop_int())? as usize;
                     at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    sort_paired(&mut stack.values[start..], &mut stack.origins[start..], true);
+                    sort_paired(
+                        &mut stack.values[start..],
+                        &mut stack.origins[start..],
+                        true,
+                    );
                 }
                 Op::Sum => {
                     let count = at!(stack.pop_int())? as usize;
                     at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    let total: f64 = stack.values.drain(start..).map(|v| v.as_float().unwrap_or(0.0)).sum();
+                    let total: f64 = stack
+                        .values
+                        .drain(start..)
+                        .map(|v| v.as_float().unwrap_or(0.0))
+                        .sum();
                     stack.origins.truncate(start);
                     stack.push(float_to_value(total), span!());
                 }
@@ -258,7 +324,11 @@ impl CagireVM {
                     let count = at!(stack.pop_int())? as usize;
                     at!(stack.ensure(count))?;
                     let start = stack.len() - count;
-                    let product: f64 = stack.values.drain(start..).map(|v| v.as_float().unwrap_or(1.0)).product();
+                    let product: f64 = stack
+                        .values
+                        .drain(start..)
+                        .map(|v| v.as_float().unwrap_or(1.0))
+                        .product();
                     stack.origins.truncate(start);
                     stack.push(float_to_value(product), span!());
                 }
@@ -280,20 +350,50 @@ impl CagireVM {
                     if b.as_float().map_or(true, |v| v == 0.0) {
                         return Err(CagireError::new("modulo by zero", span!()));
                     }
-                    stack.push(at!(lift_binary(a, b, |x, y| (x as i64 % y as i64) as f64))?, span!());
+                    stack.push(
+                        at!(lift_binary(a, b, |x, y| (x as i64 % y as i64) as f64))?,
+                        span!(),
+                    );
                 }
-                Op::Neg => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| -x))?, span!()); }
-                Op::Abs => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.abs()))?, span!()); }
-                Op::Floor => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.floor()))?, span!()); }
-                Op::Ceil => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.ceil()))?, span!()); }
-                Op::Round => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.round()))?, span!()); }
+                Op::Neg => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| -x))?, span!());
+                }
+                Op::Abs => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.abs()))?, span!());
+                }
+                Op::Floor => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.floor()))?, span!());
+                }
+                Op::Ceil => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.ceil()))?, span!());
+                }
+                Op::Round => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.round()))?, span!());
+                }
                 Op::Min => at!(stack.binary_op(|a, b| a.min(b)))?,
                 Op::Max => at!(stack.binary_op(|a, b| a.max(b)))?,
                 Op::Pow => at!(stack.binary_op(|a, b| a.powf(b)))?,
-                Op::Sqrt => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.sqrt()))?, span!()); }
-                Op::Sin => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.sin()))?, span!()); }
-                Op::Cos => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.cos()))?, span!()); }
-                Op::Log => { let v = at!(stack.pop())?; stack.push(at!(lift_unary(v, |x| x.ln()))?, span!()); }
+                Op::Sqrt => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.sqrt()))?, span!());
+                }
+                Op::Sin => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.sin()))?, span!());
+                }
+                Op::Cos => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.cos()))?, span!());
+                }
+                Op::Log => {
+                    let v = at!(stack.pop())?;
+                    stack.push(at!(lift_unary(v, |x| x.ln()))?, span!());
+                }
 
                 Op::Eq => at!(stack.cmp_op(|a, b| (a - b).abs() < f64::EPSILON))?,
                 Op::Ne => at!(stack.cmp_op(|a, b| (a - b).abs() >= f64::EPSILON))?,
@@ -302,12 +402,35 @@ impl CagireVM {
                 Op::Le => at!(stack.cmp_op(|a, b| a <= b))?,
                 Op::Ge => at!(stack.cmp_op(|a, b| a >= b))?,
 
-                Op::And => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a && b { 1 } else { 0 }), span!()); }
-                Op::Or => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a || b { 1 } else { 0 }), span!()); }
-                Op::Not => { let v = at!(stack.pop_bool())?; stack.push(Value::Int(if v { 0 } else { 1 }), span!()); }
-                Op::Xor => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if a ^ b { 1 } else { 0 }), span!()); }
-                Op::Nand => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if !(a && b) { 1 } else { 0 }), span!()); }
-                Op::Nor => { let b = at!(stack.pop_bool())?; let a = at!(stack.pop_bool())?; stack.push(Value::Int(if !(a || b) { 1 } else { 0 }), span!()); }
+                Op::And => {
+                    let b = at!(stack.pop_bool())?;
+                    let a = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if a && b { 1 } else { 0 }), span!());
+                }
+                Op::Or => {
+                    let b = at!(stack.pop_bool())?;
+                    let a = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if a || b { 1 } else { 0 }), span!());
+                }
+                Op::Not => {
+                    let v = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if v { 0 } else { 1 }), span!());
+                }
+                Op::Xor => {
+                    let b = at!(stack.pop_bool())?;
+                    let a = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if a ^ b { 1 } else { 0 }), span!());
+                }
+                Op::Nand => {
+                    let b = at!(stack.pop_bool())?;
+                    let a = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if !(a && b) { 1 } else { 0 }), span!());
+                }
+                Op::Nor => {
+                    let b = at!(stack.pop_bool())?;
+                    let a = at!(stack.pop_bool())?;
+                    stack.push(Value::Int(if !(a || b) { 1 } else { 0 }), span!());
+                }
 
                 Op::BranchIfZero(offset) => {
                     let v = at!(stack.pop())?;
@@ -365,7 +488,8 @@ impl CagireVM {
                 Op::SetKeep => {
                     let name = at!(stack.pop())?;
                     let name = at!(name.as_str())?.to_string();
-                    let val = at!(stack.last().ok_or_else(|| "stack underflow".to_string()))?.clone();
+                    let val =
+                        at!(stack.last().ok_or_else(|| "stack underflow".to_string()))?.clone();
                     self.set_var(&name, val, eval_ctx);
                 }
 
@@ -392,17 +516,29 @@ impl CagireVM {
                     let a = at!(stack.pop())?;
                     match (&a, &b) {
                         (Value::Int(a_i), Value::Int(b_i)) => {
-                            let (lo, hi) = if a_i <= b_i { (*a_i, *b_i) } else { (*b_i, *a_i) };
+                            let (lo, hi) = if a_i <= b_i {
+                                (*a_i, *b_i)
+                            } else {
+                                (*b_i, *a_i)
+                            };
                             let val = self.rng.random_range(lo..=hi);
-                            if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(val))); }
+                            if let Some(s) = word_span {
+                                self.resolved.push((*s, ResolvedValue::Int(val)));
+                            }
                             stack.push(Value::Int(val), span!());
                         }
                         _ => {
                             let a_f = at!(a.as_float())?;
                             let b_f = at!(b.as_float())?;
                             let (lo, hi) = if a_f <= b_f { (a_f, b_f) } else { (b_f, a_f) };
-                            let val = if (hi - lo).abs() < f64::EPSILON { lo } else { self.rng.random_range(lo..hi) };
-                            if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
+                            let val = if (hi - lo).abs() < f64::EPSILON {
+                                lo
+                            } else {
+                                self.rng.random_range(lo..hi)
+                            };
+                            if let Some(s) = word_span {
+                                self.resolved.push((*s, ResolvedValue::Float(val)));
+                            }
                             stack.push(Value::Float(val), span!());
                         }
                     }
@@ -410,21 +546,35 @@ impl CagireVM {
                 Op::ExpRand(word_span) => {
                     let hi = at!(stack.pop_float())?;
                     let lo = at!(stack.pop_float())?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("exprand requires positive values", span!())); }
+                    if lo <= 0.0 || hi <= 0.0 {
+                        return Err(CagireError::new(
+                            "exprand requires positive values",
+                            span!(),
+                        ));
+                    }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
                     let val = lo * (hi / lo).powf(u);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Float(val)));
+                    }
                     stack.push(Value::Float(val), span!());
                 }
                 Op::LogRand(word_span) => {
                     let hi = at!(stack.pop_float())?;
                     let lo = at!(stack.pop_float())?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("logrand requires positive values", span!())); }
+                    if lo <= 0.0 || hi <= 0.0 {
+                        return Err(CagireError::new(
+                            "logrand requires positive values",
+                            span!(),
+                        ));
+                    }
                     let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
                     let u: f64 = self.rng.random();
                     let val = hi * (lo / hi).powf(u);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Float(val))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Float(val)));
+                    }
                     stack.push(Value::Float(val), span!());
                 }
                 Op::Seed => {
@@ -434,51 +584,94 @@ impl CagireVM {
 
                 Op::Cycle(word_span) | Op::PCycle(word_span) => {
                     let count = at!(stack.pop_int())? as usize;
-                    if count == 0 { return Err(CagireError::new("cycle count must be > 0", span!())); }
+                    if count == 0 {
+                        return Err(CagireError::new("cycle count must be > 0", span!()));
+                    }
                     let idx = match &ops[pc] {
                         Op::Cycle(_) => ctx.runs,
                         _ => ctx.iter,
                     } % count;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Int(idx as i64)));
+                    }
+                    drain_select_run(
+                        count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx,
+                    )?;
                 }
 
                 Op::Choose(word_span) => {
                     let count = at!(stack.pop_int())? as usize;
-                    if count == 0 { return Err(CagireError::new("choose count must be > 0", span!())); }
+                    if count == 0 {
+                        return Err(CagireError::new("choose count must be > 0", span!()));
+                    }
                     let idx = self.rng.random_range(0..count);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Int(idx as i64)));
+                    }
+                    drain_select_run(
+                        count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx,
+                    )?;
                 }
 
                 Op::Bounce(word_span) | Op::PBounce(word_span) => {
                     let count = at!(stack.pop_int())? as usize;
-                    if count == 0 { return Err(CagireError::new("bounce count must be > 0", span!())); }
+                    if count == 0 {
+                        return Err(CagireError::new("bounce count must be > 0", span!()));
+                    }
                     let counter = match &ops[pc] {
                         Op::Bounce(_) => ctx.runs,
                         _ => ctx.iter,
                     };
-                    let idx = if count == 1 { 0 } else {
+                    let idx = if count == 1 {
+                        0
+                    } else {
                         let period = 2 * (count - 1);
                         let raw = counter % period;
-                        if raw < count { raw } else { period - raw }
+                        if raw < count {
+                            raw
+                        } else {
+                            period - raw
+                        }
                     };
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(idx as i64))); }
-                    drain_select_run(count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Int(idx as i64)));
+                    }
+                    drain_select_run(
+                        count, idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx,
+                    )?;
                 }
 
                 Op::Index(word_span) => {
                     let idx = at!(stack.pop_int())?;
                     let count = at!(stack.pop_int())? as usize;
-                    if count == 0 { return Err(CagireError::new("index count must be > 0", span!())); }
-                    let resolved_idx = ((idx % count as i64 + count as i64) % count as i64) as usize;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(resolved_idx as i64))); }
-                    drain_select_run(count, resolved_idx, stack, events, cmd, self, op_spans, pc, ctx, eval_ctx)?;
+                    if count == 0 {
+                        return Err(CagireError::new("index count must be > 0", span!()));
+                    }
+                    let resolved_idx =
+                        ((idx % count as i64 + count as i64) % count as i64) as usize;
+                    if let Some(s) = word_span {
+                        self.resolved
+                            .push((*s, ResolvedValue::Int(resolved_idx as i64)));
+                    }
+                    drain_select_run(
+                        count,
+                        resolved_idx,
+                        stack,
+                        events,
+                        cmd,
+                        self,
+                        op_spans,
+                        pc,
+                        ctx,
+                        eval_ctx,
+                    )?;
                 }
 
                 Op::WChoose(word_span) => {
                     let count = at!(stack.pop_int())? as usize;
-                    if count == 0 { return Err(CagireError::new("wchoose count must be > 0", span!())); }
+                    if count == 0 {
+                        return Err(CagireError::new("wchoose count must be > 0", span!()));
+                    }
                     let pairs_needed = count * 2;
                     at!(stack.ensure(pairs_needed))?;
                     let start = stack.len() - pairs_needed;
@@ -487,13 +680,20 @@ impl CagireVM {
                     for i in 0..count {
                         let val = stack.values[start + i * 2].clone();
                         let w = at!(stack.values[start + i * 2 + 1].as_float())?;
-                        if w < 0.0 { return Err(CagireError::new("wchoose: negative weight", span!())); }
+                        if w < 0.0 {
+                            return Err(CagireError::new("wchoose: negative weight", span!()));
+                        }
                         values.push(val);
                         weights.push(w);
                     }
                     stack.truncate(start);
                     let total: f64 = weights.iter().sum();
-                    if total <= 0.0 { return Err(CagireError::new("wchoose: total weight must be > 0", span!())); }
+                    if total <= 0.0 {
+                        return Err(CagireError::new(
+                            "wchoose: total weight must be > 0",
+                            span!(),
+                        ));
+                    }
                     let threshold: f64 = self.rng.random::<f64>() * total;
                     let mut cumulative = 0.0;
                     let mut selected_idx = count - 1;
@@ -504,7 +704,10 @@ impl CagireVM {
                             break;
                         }
                     }
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Int(selected_idx as i64))); }
+                    if let Some(s) = word_span {
+                        self.resolved
+                            .push((*s, ResolvedValue::Int(selected_idx as i64)));
+                    }
                     let selected = values.swap_remove(selected_idx);
                     select_and_run(selected, stack, events, cmd, self, ctx, eval_ctx)?;
                 }
@@ -518,9 +721,13 @@ impl CagireVM {
                         _ => threshold / 100.0,
                     };
                     let hit = val < limit;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -528,18 +735,26 @@ impl CagireVM {
                 Op::Coin(word_span) => {
                     let val: f64 = self.rng.random();
                     let result = val < 0.5;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(result))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(result)));
+                    }
                     stack.push(Value::Int(if result { 1 } else { 0 }), span!());
                 }
 
                 Op::Every(word_span) => {
                     let n = at!(stack.pop_int())?;
                     let (quot, quot_origin) = at!(stack.pop_with_origin())?;
-                    if n <= 0 { return Err(CagireError::new("every count must be > 0", span!())); }
+                    if n <= 0 {
+                        return Err(CagireError::new("every count must be > 0", span!()));
+                    }
                     let hit = ctx.iter as i64 % n == 0;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -547,11 +762,17 @@ impl CagireVM {
                 Op::Except(word_span) => {
                     let n = at!(stack.pop_int())?;
                     let (quot, quot_origin) = at!(stack.pop_with_origin())?;
-                    if n <= 0 { return Err(CagireError::new("except count must be > 0", span!())); }
+                    if n <= 0 {
+                        return Err(CagireError::new("except count must be > 0", span!()));
+                    }
                     let hit = ctx.iter as i64 % n != 0;
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -560,11 +781,17 @@ impl CagireVM {
                     let offset = at!(stack.pop_int())?;
                     let n = at!(stack.pop_int())?;
                     let (quot, quot_origin) = at!(stack.pop_with_origin())?;
-                    if n <= 0 { return Err(CagireError::new("every+ count must be > 0", span!())); }
+                    if n <= 0 {
+                        return Err(CagireError::new("every+ count must be > 0", span!()));
+                    }
                     let hit = ctx.iter as i64 % n == offset.rem_euclid(n);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -573,11 +800,17 @@ impl CagireVM {
                     let offset = at!(stack.pop_int())?;
                     let n = at!(stack.pop_int())?;
                     let (quot, quot_origin) = at!(stack.pop_with_origin())?;
-                    if n <= 0 { return Err(CagireError::new("except+ count must be > 0", span!())); }
+                    if n <= 0 {
+                        return Err(CagireError::new("except+ count must be > 0", span!()));
+                    }
                     let hit = ctx.iter as i64 % n != offset.rem_euclid(n);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -586,22 +819,34 @@ impl CagireVM {
                     let n = at!(stack.pop_int())?;
                     let k = at!(stack.pop_int())?;
                     let (quot, quot_origin) = at!(stack.pop_with_origin())?;
-                    if n <= 0 || k < 0 { return Err(CagireError::new("bjork: n must be > 0, k must be >= 0", span!())); }
+                    if n <= 0 || k < 0 {
+                        return Err(CagireError::new(
+                            "bjork: n must be > 0, k must be >= 0",
+                            span!(),
+                        ));
+                    }
                     let counter = match &ops[pc] {
                         Op::Bjork(_) => ctx.runs,
                         _ => ctx.iter,
                     };
                     let pos = counter % n as usize;
                     let hit = k >= n || euclidean_hit(k as usize, n as usize, pos);
-                    if let Some(s) = word_span { self.resolved.push((*s, ResolvedValue::Bool(hit))); }
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
                     if hit {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
 
                 Op::Quotation(quote_ops, quote_spans) => {
-                    stack.push(Value::Quotation(quote_ops.clone(), quote_spans.clone()), span!());
+                    stack.push(
+                        Value::Quotation(quote_ops.clone(), quote_spans.clone()),
+                        span!(),
+                    );
                 }
 
                 Op::When | Op::Unless => {
@@ -612,7 +857,9 @@ impl CagireVM {
                         _ => !cond.is_truthy(),
                     };
                     if should_run {
-                        if quot_origin != Span::default() { self.selected.push(quot_origin); }
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -621,13 +868,22 @@ impl CagireVM {
                     let cond = at!(stack.pop())?;
                     let false_quot = at!(stack.pop())?;
                     let true_quot = at!(stack.pop())?;
-                    let quot = if cond.is_truthy() { true_quot } else { false_quot };
+                    let quot = if cond.is_truthy() {
+                        true_quot
+                    } else {
+                        false_quot
+                    };
                     run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                 }
 
                 Op::Pick => {
                     let idx_i = at!(stack.pop_int())?;
-                    if idx_i < 0 { return Err(CagireError::new(format!("pick index must be >= 0, got {idx_i}"), span!())); }
+                    if idx_i < 0 {
+                        return Err(CagireError::new(
+                            format!("pick index must be >= 0, got {idx_i}"),
+                            span!(),
+                        ));
+                    }
                     let idx = idx_i as usize;
                     let mut quots: Vec<Value> = Vec::new();
                     while let Ok(val) = stack.pop() {
@@ -640,14 +896,32 @@ impl CagireVM {
                     }
                     quots.reverse();
                     if idx >= quots.len() {
-                        return Err(CagireError::new(format!("pick index {} out of range (have {} quotations)", idx, quots.len()), span!()));
+                        return Err(CagireError::new(
+                            format!(
+                                "pick index {} out of range (have {} quotations)",
+                                idx,
+                                quots.len()
+                            ),
+                            span!(),
+                        ));
                     }
-                    run_quotation(quots.swap_remove(idx), stack, events, cmd, self, ctx, eval_ctx)?;
+                    run_quotation(
+                        quots.swap_remove(idx),
+                        stack,
+                        events,
+                        cmd,
+                        self,
+                        ctx,
+                        eval_ctx,
+                    )?;
                 }
 
                 Op::Mtof => {
                     let note = at!(stack.pop_float())?;
-                    stack.push(Value::Float(440.0 * 2.0_f64.powf((note - 69.0) / 12.0)), span!());
+                    stack.push(
+                        Value::Float(440.0 * 2.0_f64.powf((note - 69.0) / 12.0)),
+                        span!(),
+                    );
                 }
                 Op::Ftom => {
                     let freq = at!(stack.pop_float())?;
@@ -655,7 +929,9 @@ impl CagireVM {
                 }
 
                 Op::Degree(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
+                    if pattern.is_empty() {
+                        return Err(CagireError::new("empty scale pattern", span!()));
+                    }
                     let key = self.read_key();
                     let len = pattern.len() as i64;
                     at!(stack.ensure(1))?;
@@ -681,13 +957,19 @@ impl CagireVM {
                 Op::Transpose => {
                     let n = at!(stack.pop_int())?;
                     for val in stack.values.iter_mut() {
-                        if let Value::Int(v) = val { *v += n; }
+                        if let Value::Int(v) = val {
+                            *v += n;
+                        }
                     }
                 }
 
                 Op::Invert => {
                     at!(stack.ensure(2))?;
-                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let start = stack
+                        .values
+                        .iter()
+                        .rposition(|v| !matches!(v, Value::Int(_)))
+                        .map_or(0, |i| i + 1);
                     let bottom = at!(stack.values[start].as_int())? + 12;
                     stack.remove(start);
                     stack.push(Value::Int(bottom), span!());
@@ -696,7 +978,11 @@ impl CagireVM {
                 Op::DownInvert => {
                     at!(stack.ensure(2))?;
                     let top = at!(stack.pop_int())? - 12;
-                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let start = stack
+                        .values
+                        .iter()
+                        .rposition(|v| !matches!(v, Value::Int(_)))
+                        .map_or(0, |i| i + 1);
                     stack.insert(start, Value::Int(top), span!());
                 }
 
@@ -705,7 +991,11 @@ impl CagireVM {
                     let len = stack.len();
                     let note = at!(stack.values[len - 2].as_int())? - 12;
                     stack.remove(len - 2);
-                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let start = stack
+                        .values
+                        .iter()
+                        .rposition(|v| !matches!(v, Value::Int(_)))
+                        .map_or(0, |i| i + 1);
                     stack.insert(start, Value::Int(note), span!());
                 }
 
@@ -714,7 +1004,11 @@ impl CagireVM {
                     let len = stack.len();
                     let note = at!(stack.values[len - 3].as_int())? - 12;
                     stack.remove(len - 3);
-                    let start = stack.values.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let start = stack
+                        .values
+                        .iter()
+                        .rposition(|v| !matches!(v, Value::Int(_)))
+                        .map_or(0, |i| i + 1);
                     stack.insert(start, Value::Int(note), span!());
                 }
 
@@ -724,7 +1018,9 @@ impl CagireVM {
                 }
 
                 Op::DiatonicTriad(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
+                    if pattern.is_empty() {
+                        return Err(CagireError::new("empty scale pattern", span!()));
+                    }
                     let degree = at!(stack.pop_int())?;
                     let key = self.read_key();
                     let len = pattern.len() as i64;
@@ -737,7 +1033,9 @@ impl CagireVM {
                 }
 
                 Op::DiatonicSeventh(pattern) => {
-                    if pattern.is_empty() { return Err(CagireError::new("empty scale pattern", span!())); }
+                    if pattern.is_empty() {
+                        return Err(CagireError::new("empty scale pattern", span!()));
+                    }
                     let degree = at!(stack.pop_int())?;
                     let key = self.read_key();
                     let len = pattern.len() as i64;
@@ -758,13 +1056,15 @@ impl CagireVM {
                 Op::SetTempo => {
                     let tempo = at!(stack.pop_float())?;
                     let clamped = tempo.clamp(20.0, 300.0);
-                    self.vars.insert("__tempo__".to_string(), Value::Float(clamped));
+                    self.vars
+                        .insert("__tempo__".to_string(), Value::Float(clamped));
                 }
 
                 Op::SetSpeed => {
                     let speed = at!(stack.pop_float())?;
                     let clamped = speed.clamp(0.125, 8.0);
-                    self.vars.insert("__speed__".to_string(), Value::Float(clamped));
+                    self.vars
+                        .insert("__speed__".to_string(), Value::Float(clamped));
                 }
 
                 Op::Loop => {
@@ -780,8 +1080,11 @@ impl CagireVM {
                     let in_hi = at!(stack.pop_float())?;
                     let in_lo = at!(stack.pop_float())?;
                     let val = at!(stack.pop_float())?;
-                    let t = if (in_hi - in_lo).abs() < f64::EPSILON { 0.0 }
-                            else { (val - in_lo) / (in_hi - in_lo) };
+                    let t = if (in_hi - in_lo).abs() < f64::EPSILON {
+                        0.0
+                    } else {
+                        (val - in_lo) / (in_hi - in_lo)
+                    };
                     stack.push(Value::Float(out_lo + t * (out_hi - out_lo)), span!());
                 }
 
@@ -789,7 +1092,9 @@ impl CagireVM {
                     let hi = at!(stack.pop_float())?;
                     let lo = at!(stack.pop_float())?;
                     let val = at!(stack.pop_float())?;
-                    if lo <= 0.0 || hi <= 0.0 { return Err(CagireError::new("expmap requires positive bounds", span!())); }
+                    if lo <= 0.0 || hi <= 0.0 {
+                        return Err(CagireError::new("expmap requires positive bounds", span!()));
+                    }
                     stack.push(Value::Float(lo * (hi / lo).powf(val)), span!());
                 }
 
@@ -813,12 +1118,13 @@ impl CagireVM {
                 Op::AtLoop(body_ops, body_spans) => {
                     at!(stack.ensure(1))?;
                     let values = std::mem::take(&mut stack.values);
-                    stack.origins.clear();
+                    let origins = std::mem::take(&mut stack.origins);
 
                     // Single string → pattern mode (with gates + alternation)
                     if values.len() == 1 {
                         if let Value::Str(ref s) = values[0] {
-                            let hits = at!(pattern::parse_pattern(s))?;
+                            let hits = at!(pattern::parse_pattern_annotated(s))?;
+                            let origin = origins.first().copied().unwrap_or_default();
                             let n = hits.len();
                             for (i, hit) in hits.iter().enumerate() {
                                 if let Some(alt) = &hit.alt {
@@ -845,7 +1151,17 @@ impl CagireVM {
 
                                 cmd.set_delta_secs(delta_secs);
                                 cmd.set_param("gate", Value::Float(hit.gate * ctx.step_duration));
-                                self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
+                                let highlight_span =
+                                    self.pattern_hit_span(origin, hit.start, hit.end);
+                                if let Some(span) = highlight_span {
+                                    self.active_emit_annotations.push(span);
+                                }
+                                self.execute_ops(
+                                    body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                                )?;
+                                if highlight_span.is_some() {
+                                    self.active_emit_annotations.pop();
+                                }
                                 cmd.clear_params();
                                 cmd.clear_sound();
                             }
@@ -877,7 +1193,9 @@ impl CagireVM {
                         };
 
                         cmd.set_delta_secs(delta_secs);
-                        self.execute_ops(body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd)?;
+                        self.execute_ops(
+                            body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                        )?;
                         cmd.clear_params();
                         cmd.clear_sound();
                     }
@@ -968,18 +1286,26 @@ impl CagireVM {
                     stack.push(Value::Float(perlin_noise_1d(freq * ctx.beat)), span!());
                 }
 
-                Op::ClearCmd => { cmd.clear(); }
+                Op::ClearCmd => {
+                    cmd.clear();
+                }
 
                 Op::IntRange => {
                     let end = at!(stack.pop_int())?;
                     let start = at!(stack.pop_int())?;
                     let count = (end - start).unsigned_abs() + 1;
-                    if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", span!())); }
+                    if count > 10_000 {
+                        return Err(CagireError::new("range too large (max 10000)", span!()));
+                    }
                     let sp = span!();
                     if start <= end {
-                        for i in start..=end { stack.push(Value::Int(i), sp); }
+                        for i in start..=end {
+                            stack.push(Value::Int(i), sp);
+                        }
                     } else {
-                        for i in (end..=start).rev() { stack.push(Value::Int(i), sp); }
+                        for i in (end..=start).rev() {
+                            stack.push(Value::Int(i), sp);
+                        }
                     }
                 }
 
@@ -987,15 +1313,21 @@ impl CagireVM {
                     let step = at!(stack.pop_float())?;
                     let end = at!(stack.pop_float())?;
                     let start = at!(stack.pop_float())?;
-                    if step == 0.0 { return Err(CagireError::new("step cannot be zero", span!())); }
+                    if step == 0.0 {
+                        return Err(CagireError::new("step cannot be zero", span!()));
+                    }
                     let ascending = step > 0.0;
                     let mut val = start;
                     let mut count = 0u32;
                     let sp = span!();
                     loop {
-                        if (ascending && val > end) || (!ascending && val < end) { break; }
+                        if (ascending && val > end) || (!ascending && val < end) {
+                            break;
+                        }
                         count += 1;
-                        if count > 10_000 { return Err(CagireError::new("range too large (max 10000)", span!())); }
+                        if count > 10_000 {
+                            return Err(CagireError::new("range too large (max 10000)", span!()));
+                        }
                         stack.push(float_to_value(val), sp);
                         val += step;
                     }
@@ -1004,20 +1336,26 @@ impl CagireVM {
                 Op::Generate => {
                     let count = at!(stack.pop_int())?;
                     let quot = at!(stack.pop())?;
-                    if count < 0 { return Err(CagireError::new("gen count must be >= 0", span!())); }
+                    if count < 0 {
+                        return Err(CagireError::new("gen count must be >= 0", span!()));
+                    }
                     let mut results = Vec::with_capacity(count as usize);
                     for _ in 0..count {
                         run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
                         results.push(at!(stack.pop())?);
                     }
                     let sp = span!();
-                    for val in results { stack.push(val, sp); }
+                    for val in results {
+                        stack.push(val, sp);
+                    }
                 }
 
                 Op::Times => {
                     let quot = at!(stack.pop())?;
                     let count = at!(stack.pop_int())?;
-                    if count < 0 { return Err(CagireError::new("times count must be >= 0", span!())); }
+                    if count < 0 {
+                        return Err(CagireError::new("times count must be >= 0", span!()));
+                    }
                     for i in 0..count {
                         self.vars.insert("i".to_string(), Value::Int(i));
                         run_quotation(quot.clone(), stack, events, cmd, self, ctx, eval_ctx)?;
@@ -1028,7 +1366,9 @@ impl CagireVM {
                     let count = at!(stack.pop_int())?;
                     let ratio = at!(stack.pop_float())?;
                     let start = at!(stack.pop_float())?;
-                    if count < 0 { return Err(CagireError::new("geom.. count must be >= 0", span!())); }
+                    if count < 0 {
+                        return Err(CagireError::new("geom.. count must be >= 0", span!()));
+                    }
                     let sp = span!();
                     let mut val = start;
                     for _ in 0..count {
@@ -1040,7 +1380,9 @@ impl CagireVM {
                 Op::Euclid => {
                     let n = at!(stack.pop_int())?;
                     let k = at!(stack.pop_int())?;
-                    if k < 0 || n < 0 { return Err(CagireError::new("euclid: k and n must be >= 0", span!())); }
+                    if k < 0 || n < 0 {
+                        return Err(CagireError::new("euclid: k and n must be >= 0", span!()));
+                    }
                     let sp = span!();
                     for val in euclidean_rhythm(k as usize, n as usize, 0) {
                         stack.push(Value::Float(val), sp);
@@ -1051,7 +1393,12 @@ impl CagireVM {
                     let r = at!(stack.pop_int())?;
                     let n = at!(stack.pop_int())?;
                     let k = at!(stack.pop_int())?;
-                    if k < 0 || n < 0 || r < 0 { return Err(CagireError::new("euclidrot: k, n, and r must be >= 0", span!())); }
+                    if k < 0 || n < 0 || r < 0 {
+                        return Err(CagireError::new(
+                            "euclidrot: k, n, and r must be >= 0",
+                            span!(),
+                        ));
+                    }
                     let sp = span!();
                     for val in euclidean_rhythm(k as usize, n as usize, r as usize) {
                         stack.push(Value::Float(val), sp);
@@ -1060,8 +1407,12 @@ impl CagireVM {
 
                 Op::Subdivide => {
                     let n = at!(stack.pop_int())?;
-                    if n < 1 { return Err(CagireError::new("div: n must be >= 1", span!())); }
-                    if n > 10_000 { return Err(CagireError::new("div: n too large (max 10000)", span!())); }
+                    if n < 1 {
+                        return Err(CagireError::new("div: n must be >= 1", span!()));
+                    }
+                    if n > 10_000 {
+                        return Err(CagireError::new("div: n too large (max 10000)", span!()));
+                    }
                     let nf = n as f64;
                     let sp = span!();
                     for i in 0..n {
@@ -1072,8 +1423,12 @@ impl CagireVM {
                 Op::Swing => {
                     let ratio = at!(stack.pop_float())?;
                     let n = at!(stack.pop_int())?;
-                    if n < 1 { return Err(CagireError::new("swing: n must be >= 1", span!())); }
-                    if n > 10_000 { return Err(CagireError::new("swing: n too large (max 10000)", span!())); }
+                    if n < 1 {
+                        return Err(CagireError::new("swing: n must be >= 1", span!()));
+                    }
+                    if n > 10_000 {
+                        return Err(CagireError::new("swing: n too large (max 10000)", span!()));
+                    }
                     let pair_len = 2.0 / n as f64;
                     let sp = span!();
                     for i in 0..n {
@@ -1091,22 +1446,47 @@ impl CagireVM {
                     let period = at!(stack.pop_float())? * ctx.step_duration;
                     let max = at!(stack.pop_float())?;
                     let min = at!(stack.pop_float())?;
-                    let suffix = match shape { 1 => "t", 2 => "w", 3 => "q", _ => "" };
-                    stack.push(Value::Str(format!("{min}~{max}:{period}{suffix}").into()), span!());
+                    let suffix = match shape {
+                        1 => "t",
+                        2 => "w",
+                        3 => "q",
+                        _ => "",
+                    };
+                    stack.push(
+                        Value::Str(format!("{min}~{max}:{period}{suffix}").into()),
+                        span!(),
+                    );
                 }
                 Op::ModSlide(curve) => {
                     let dur = at!(stack.pop_float())? * ctx.step_duration;
                     let end = at!(stack.pop_float())?;
                     let start = at!(stack.pop_float())?;
-                    let suffix = match curve { 1 => "e", 2 => "s", 3 => "i", 4 => "o", 5 => "p", _ => "" };
-                    stack.push(Value::Str(format!("{start}>{end}:{dur}{suffix}").into()), span!());
+                    let suffix = match curve {
+                        1 => "e",
+                        2 => "s",
+                        3 => "i",
+                        4 => "o",
+                        5 => "p",
+                        _ => "",
+                    };
+                    stack.push(
+                        Value::Str(format!("{start}>{end}:{dur}{suffix}").into()),
+                        span!(),
+                    );
                 }
                 Op::ModRnd(dist) => {
                     let period = at!(stack.pop_float())? * ctx.step_duration;
                     let max = at!(stack.pop_float())?;
                     let min = at!(stack.pop_float())?;
-                    let suffix = match dist { 1 => "s", 2 => "d", _ => "" };
-                    stack.push(Value::Str(format!("{min}?{max}:{period}{suffix}").into()), span!());
+                    let suffix = match dist {
+                        1 => "s",
+                        2 => "d",
+                        _ => "",
+                    };
+                    stack.push(
+                        Value::Str(format!("{min}?{max}:{period}{suffix}").into()),
+                        span!(),
+                    );
                 }
                 Op::ModEnv => {
                     let release = at!(stack.pop_float())? * ctx.step_duration;
@@ -1160,32 +1540,51 @@ impl CagireVM {
                 Op::GetMidiCC => {
                     let chan = at!(stack.pop_int())?;
                     let cc = at!(stack.pop_int())?;
-                    let device_id = cmd.params().iter()
+                    let device_id = cmd
+                        .params()
+                        .iter()
                         .find(|(k, _)| *k == "device")
                         .and_then(|(_, v)| v.as_int().ok())
                         .map(|d| d.max(0) as usize)
                         .unwrap_or(ctx.default_device);
-                    let cc_value = eval_ctx.device_map.get_input_cc(
-                        device_id, cc as i8, chan as i8
-                    ).unwrap_or_default();
+                    let cc_value = eval_ctx
+                        .device_map
+                        .get_input_cc(device_id, cc as i8, chan as i8)
+                        .unwrap_or_default();
                     stack.push(Value::Int(cc_value), span!());
                 }
 
                 Op::MidiClock => {
                     let dev = get_cmd_dev(cmd, ctx);
-                    events.push((ConcreteEvent::MidiClock(dev), offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::MidiClock(dev),
+                        offset_micros(ctx, 0.0),
+                    );
                 }
                 Op::MidiStart => {
                     let dev = get_cmd_dev(cmd, ctx);
-                    events.push((ConcreteEvent::MidiStart(dev), offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::MidiStart(dev),
+                        offset_micros(ctx, 0.0),
+                    );
                 }
                 Op::MidiStop => {
                     let dev = get_cmd_dev(cmd, ctx);
-                    events.push((ConcreteEvent::MidiStop(dev), offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::MidiStop(dev),
+                        offset_micros(ctx, 0.0),
+                    );
                 }
                 Op::MidiContinue => {
                     let dev = get_cmd_dev(cmd, ctx);
-                    events.push((ConcreteEvent::MidiContinue(dev), offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::MidiContinue(dev),
+                        offset_micros(ctx, 0.0),
+                    );
                 }
 
                 Op::Mark => {
@@ -1203,11 +1602,16 @@ impl CagireVM {
                         for (event, _) in events.iter_mut() {
                             if let ConcreteEvent::Generic(VariableValue::Map(args), ..) = event {
                                 for (k, v) in cmd.params() {
-                                    if *k == "device" { continue; }
+                                    if *k == "device" {
+                                        continue;
+                                    }
                                     let param_str = v.to_param_string();
                                     if let Ok(f) = param_str.parse::<f64>() {
                                         if is_tempo_scaled_param(k) {
-                                            args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
+                                            args.insert(
+                                                k.to_string(),
+                                                VariableValue::Float(f * ctx.step_duration),
+                                            );
                                         } else {
                                             args.insert(k.to_string(), VariableValue::Float(f));
                                         }
@@ -1229,14 +1633,28 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}", at!(name.as_str())?);
                     let message = OSCMessage::new(path, vec![]);
-                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::Osc {
+                            message,
+                            device_id: 2,
+                        },
+                        offset_micros(ctx, 0.0),
+                    );
                 }
 
                 Op::Overdub => {
                     let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}/overdub/1", at!(name.as_str())?);
                     let message = OSCMessage::new(path, vec![]);
-                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::Osc {
+                            message,
+                            device_id: 2,
+                        },
+                        offset_micros(ctx, 0.0),
+                    );
                 }
 
                 Op::Orec => {
@@ -1244,15 +1662,33 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}/orbit/{}", at!(name.as_str())?, orbit);
                     let message = OSCMessage::new(path, vec![]);
-                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::Osc {
+                            message,
+                            device_id: 2,
+                        },
+                        offset_micros(ctx, 0.0),
+                    );
                 }
 
                 Op::Odub => {
                     let orbit = at!(stack.pop_int())?;
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}/overdub/1/orbit/{}", at!(name.as_str())?, orbit);
+                    let path = format!(
+                        "/doux/rec/{}/overdub/1/orbit/{}",
+                        at!(name.as_str())?,
+                        orbit
+                    );
                     let message = OSCMessage::new(path, vec![]);
-                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                    self.push_event(
+                        events,
+                        ConcreteEvent::Osc {
+                            message,
+                            device_id: 2,
+                        },
+                        offset_micros(ctx, 0.0),
+                    );
                 }
 
                 Op::Forget => {
@@ -1262,7 +1698,7 @@ impl CagireVM {
 
                 Op::Print => {
                     let val = at!(stack.pop())?;
-                    events.push((ConcreteEvent::Print(val.to_param_string()), 0));
+                    self.push_event(events, ConcreteEvent::Print(val.to_param_string()), 0);
                 }
             }
             pc += 1;
@@ -1350,7 +1786,10 @@ impl CagireVM {
             let deltas: Vec<f64> = if cmd.deltas().is_empty() {
                 vec![0.0]
             } else {
-                cmd.deltas().iter().filter_map(|v| v.as_float().ok()).collect()
+                cmd.deltas()
+                    .iter()
+                    .filter_map(|v| v.as_float().ok())
+                    .collect()
             };
 
             for poly_idx in 0..poly_count {
@@ -1388,20 +1827,28 @@ impl CagireVM {
         });
 
         let find_param = |name: &str| -> Option<&Value> {
-            params.iter().rev().find(|(k, _)| *k == name)
+            params
+                .iter()
+                .rev()
+                .find(|(k, _)| *k == name)
                 .or_else(|| cmd.global_params().iter().rev().find(|(k, _)| *k == name))
                 .map(|(_, v)| v)
         };
         let get_int = |name: &str| -> Option<i64> {
-            find_param(name)
-                .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
+            find_param(name).and_then(|v| {
+                resolve_cycling(v, poly_idx)
+                    .as_float()
+                    .ok()
+                    .map(|f| f as i64)
+            })
         };
         let get_float = |name: &str| -> Option<f64> {
-            find_param(name)
-                .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok())
+            find_param(name).and_then(|v| resolve_cycling(v, poly_idx).as_float().ok())
         };
 
-        let dev = get_int("device").unwrap_or(ctx.default_device as i64).max(0) as usize;
+        let dev = get_int("device")
+            .unwrap_or(ctx.default_device as i64)
+            .max(0) as usize;
 
         if has_sound {
             let sound_str = match &resolved_sound {
@@ -1415,7 +1862,9 @@ impl CagireVM {
             if sound_str.starts_with('/') {
                 let mut osc_args = Vec::with_capacity(params.len() * 2);
                 for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                    if *k == "device" { continue; }
+                    if *k == "device" {
+                        continue;
+                    }
                     let resolved = resolve_cycling(v, poly_idx);
                     osc_args.push(VariableValue::Str(k.to_string()));
                     let param_str = resolved.to_param_string();
@@ -1426,13 +1875,22 @@ impl CagireVM {
                     }
                 }
                 let message = OSCMessage::new(sound_str, osc_args);
-                events.push((ConcreteEvent::Osc { message, device_id: dev }, time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::Osc {
+                        message,
+                        device_id: dev,
+                    },
+                    time,
+                );
             } else {
                 let mut args = HashMap::with_capacity(params.len() + 3);
                 args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
                 for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                    if *k == "device" { continue; }
+                    if *k == "device" {
+                        continue;
+                    }
                     let resolved = resolve_cycling(v, poly_idx);
                     let param_str = resolved.to_param_string();
                     if let Ok(f) = param_str.parse::<f64>() {
@@ -1451,10 +1909,16 @@ impl CagireVM {
                     args.insert("gate".to_string(), VariableValue::Float(ctx.step_duration));
                 }
                 if !args.contains_key("release") && !has_gate {
-                    args.insert("release".to_string(), VariableValue::Float(ctx.step_duration));
+                    args.insert(
+                        "release".to_string(),
+                        VariableValue::Float(ctx.step_duration),
+                    );
                 }
                 if !args.contains_key("delaytime") {
-                    args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
+                    args.insert(
+                        "delaytime".to_string(),
+                        VariableValue::Float(ctx.step_duration),
+                    );
                 }
 
                 let gate_secs = match args.get("gate") {
@@ -1463,29 +1927,46 @@ impl CagireVM {
                     _ => ctx.step_duration,
                 };
                 let dur_micros = (gate_secs * 1_000_000.0) as SyncTime;
-                events.push((ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev),
+                    time,
+                );
             }
         } else {
             let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
 
             if let (Some(cc), Some(val)) = (get_int("ccnum"), get_int("ccout")) {
-                events.push((ConcreteEvent::MidiControl(
-                    cc.clamp(0, 127) as u64,
-                    val.clamp(0, 127) as u64,
-                    chan, dev,
-                ), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::MidiControl(
+                        cc.clamp(0, 127) as u64,
+                        val.clamp(0, 127) as u64,
+                        chan,
+                        dev,
+                    ),
+                    time,
+                );
             } else if let Some(bend) = get_float("bend") {
                 let bend_clamped = bend.clamp(-1.0, 1.0);
                 let bend_14bit = ((bend_clamped + 1.0) * 8191.5) as u16;
-                events.push((ConcreteEvent::MidiPitchBend(bend_14bit, chan, dev), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::MidiPitchBend(bend_14bit, chan, dev),
+                    time,
+                );
             } else if let Some(pressure) = get_int("pressure") {
-                events.push((ConcreteEvent::MidiChannelPressure(
-                    pressure.clamp(0, 127) as u64, chan, dev,
-                ), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::MidiChannelPressure(pressure.clamp(0, 127) as u64, chan, dev),
+                    time,
+                );
             } else if let Some(program) = get_int("program") {
-                events.push((ConcreteEvent::MidiProgram(
-                    program.clamp(0, 127) as u64, chan, dev,
-                ), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::MidiProgram(program.clamp(0, 127) as u64, chan, dev),
+                    time,
+                );
             } else {
                 let note = get_int("note").unwrap_or(60).clamp(0, 127) as u64;
                 let velocity = get_int("velocity")
@@ -1494,7 +1975,11 @@ impl CagireVM {
                     .clamp(0, 127) as u64;
                 let dur_frac = get_float("gate").unwrap_or(1.0);
                 let dur_micros = (dur_frac * ctx.step_duration * 1_000_000.0) as SyncTime;
-                events.push((ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev), time));
+                self.push_event(
+                    events,
+                    ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev),
+                    time,
+                );
             }
         }
 
@@ -1522,7 +2007,8 @@ fn parse_var_scope(name: &str) -> (VarScope, &str) {
 }
 
 fn get_cmd_dev(cmd: &CmdRegister, ctx: &StepContext) -> usize {
-    cmd.params().iter()
+    cmd.params()
+        .iter()
         .find(|(k, _)| *k == "device")
         .and_then(|(_, v)| v.as_int().ok())
         .map(|d| d.max(0) as usize)
@@ -1538,10 +2024,30 @@ fn offset_micros(_ctx: &StepContext, delta_secs: f64) -> SyncTime {
 }
 
 fn is_tempo_scaled_param(name: &str) -> bool {
-    matches!(name, "attack" | "decay" | "release" | "lpa" | "lpd" | "lpr"
-        | "hpa" | "hpd" | "hpr" | "bpa" | "bpd" | "bpr"
-        | "patt" | "pdec" | "prel" | "fma" | "fmd" | "fmr"
-        | "glide" | "chorusdelay" | "duration")
+    matches!(
+        name,
+        "attack"
+            | "decay"
+            | "release"
+            | "lpa"
+            | "lpd"
+            | "lpr"
+            | "hpa"
+            | "hpd"
+            | "hpr"
+            | "bpa"
+            | "bpd"
+            | "bpr"
+            | "patt"
+            | "pdec"
+            | "prel"
+            | "fma"
+            | "fmd"
+            | "fmr"
+            | "glide"
+            | "chorusdelay"
+            | "duration"
+    )
 }
 
 fn compute_poly_count(cmd: &CmdRegister) -> usize {
@@ -1549,9 +2055,16 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
         Some(Value::CycleList(items)) => items.len(),
         _ => 1,
     };
-    let param_max = cmd.global_params().iter().chain(cmd.params().iter())
-        .map(|(_, v)| match v { Value::CycleList(items) => items.len(), _ => 1 })
-        .max().unwrap_or(1);
+    let param_max = cmd
+        .global_params()
+        .iter()
+        .chain(cmd.params().iter())
+        .map(|(_, v)| match v {
+            Value::CycleList(items) => items.len(),
+            _ => 1,
+        })
+        .max()
+        .unwrap_or(1);
     sound_len.max(param_max)
 }
 
@@ -1611,7 +2124,9 @@ fn drain_select_run(
     ctx: &StepContext,
     eval_ctx: &mut EvaluationContext,
 ) -> Result<(), CagireError> {
-    stack.ensure(count).map_err(|msg| CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default()))?;
+    stack
+        .ensure(count)
+        .map_err(|msg| CagireError::new(msg, op_spans.get(pc).copied().unwrap_or_default()))?;
     let start = stack.len() - count;
     let selected = stack.values[start + idx].clone();
     let origin = stack.origin(start + idx);
@@ -1637,17 +2152,23 @@ fn drain_skip_quotations(stack: &mut Stack) -> Vec<Value> {
 }
 
 fn lift_unary<F>(val: Value, f: F) -> Result<Value, String>
-where F: Fn(f64) -> f64 {
+where
+    F: Fn(f64) -> f64,
+{
     Ok(float_to_value(f(val.as_float()?)))
 }
 
 fn lift_unary_int<F>(val: Value, f: F) -> Result<Value, String>
-where F: Fn(i64) -> i64 {
+where
+    F: Fn(i64) -> i64,
+{
     Ok(Value::Int(f(val.as_int()?)))
 }
 
 fn lift_binary<F>(a: Value, b: Value, f: F) -> Result<Value, String>
-where F: Fn(f64, f64) -> f64 {
+where
+    F: Fn(f64, f64) -> f64,
+{
     Ok(float_to_value(f(a.as_float()?, b.as_float()?)))
 }
 
@@ -1669,12 +2190,16 @@ fn sort_paired(values: &mut [Value], origins: &mut [Span], reverse: bool) {
 }
 
 fn euclidean_hit(k: usize, n: usize, pos: usize) -> bool {
-    if k == 0 { return false; }
+    if k == 0 {
+        return false;
+    }
     ((pos + 1) * k) / n != (pos * k) / n
 }
 
 fn euclidean_rhythm(k: usize, n: usize, rotation: usize) -> Vec<f64> {
-    if k == 0 || n == 0 { return Vec::new(); }
+    if k == 0 || n == 0 {
+        return Vec::new();
+    }
     let n_f = n as f64;
     if k >= n {
         let mut r: Vec<f64> = (0..n).map(|i| ((i + rotation) % n) as f64 / n_f).collect();
@@ -1716,13 +2241,13 @@ fn perlin_noise_1d(x: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
-    use std::sync::Arc;
     use rusty_link::SessionState;
     use sova_core::clock::{Clock, ClockServer};
     use sova_core::device_map::DeviceMap;
     use sova_core::error::ErrorQueue;
     use sova_core::vm::variable::VariableStore;
+    use std::collections::VecDeque;
+    use std::sync::Arc;
 
     use super::*;
 
@@ -1788,7 +2313,11 @@ mod tests {
         vm.evaluate(script, &mut ctx).unwrap()
     }
 
-    fn eval_vm(vm: &mut CagireVM, tctx: &mut TestCtx, script: &str) -> Vec<(ConcreteEvent, SyncTime)> {
+    fn eval_vm(
+        vm: &mut CagireVM,
+        tctx: &mut TestCtx,
+        script: &str,
+    ) -> Vec<(ConcreteEvent, SyncTime)> {
         let mut ctx = tctx.eval_ctx();
         vm.evaluate(script, &mut ctx).unwrap()
     }
@@ -1804,7 +2333,16 @@ mod tests {
         let mut stack = Stack::new();
         let mut events = Vec::new();
         let mut cmd = CmdRegister::new();
-        vm.execute_ops(&ops, &spans, &sctx, &mut ctx, &mut stack, &mut events, &mut cmd).unwrap();
+        vm.execute_ops(
+            &ops,
+            &spans,
+            &sctx,
+            &mut ctx,
+            &mut stack,
+            &mut events,
+            &mut cmd,
+        )
+        .unwrap();
         assert_eq!(stack.len(), 1);
         assert_eq!(stack.values[0], Value::Int(70));
     }
@@ -1813,25 +2351,32 @@ mod tests {
     fn test_sound_emits_generic_event() {
         let events = eval("\"sine\" sound 440 freq .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::Generic(VariableValue::Map(args), ..)
-            if args.get("sound") == Some(&VariableValue::Str("sine".into()))
-        ));
+        assert!(
+            matches!(&events[0].0, ConcreteEvent::Generic(VariableValue::Map(args), ..)
+                if args.get("sound") == Some(&VariableValue::Str("sine".into()))
+            )
+        );
     }
 
     #[test]
     fn test_numeric_sound_name() {
         let events = eval("808 snd 440 freq .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::Generic(VariableValue::Map(args), ..)
-            if args.get("sound") == Some(&VariableValue::Str("808".into()))
-        ));
+        assert!(
+            matches!(&events[0].0, ConcreteEvent::Generic(VariableValue::Map(args), ..)
+                if args.get("sound") == Some(&VariableValue::Str("808".into()))
+            )
+        );
     }
 
     #[test]
     fn test_midi_note_emit() {
         let events = eval("60 note 100 velocity .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(60, 100, 1, _, 1)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(60, 100, 1, _, 1)
+        ));
     }
 
     #[test]
@@ -1850,7 +2395,10 @@ mod tests {
         eval_vm(&mut vm, &mut tctx, "42 !x");
         let events = eval_vm(&mut vm, &mut tctx, "@x note .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(42, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(42, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -1860,7 +2408,10 @@ mod tests {
         eval_vm(&mut vm, &mut tctx, ": hi 60 note 100 velocity . ;");
         let events = eval_vm(&mut vm, &mut tctx, "hi");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(60, 100, 1, _, 1)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(60, 100, 1, _, 1)
+        ));
     }
 
     #[test]
@@ -1879,7 +2430,10 @@ mod tests {
     fn test_if_else_then() {
         let events = eval("0 if 60 note . else 72 note . then");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(72, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(72, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -1892,7 +2446,10 @@ mod tests {
     fn test_note_names() {
         let events = eval("c4 note .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(60, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(60, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -1907,7 +2464,10 @@ mod tests {
     fn test_midi_cc() {
         let events = eval("10 ccnum 64 ccout .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiControl(10, 64, 1, 1)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiControl(10, 64, 1, 1)
+        ));
     }
 
     #[test]
@@ -1925,7 +2485,10 @@ mod tests {
         assert_eq!(tctx.global.get("root"), Some(&VariableValue::Integer(42)));
         let events = eval_vm(&mut vm, &mut tctx, "@G.root note .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(42, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(42, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -1936,7 +2499,10 @@ mod tests {
         assert_eq!(tctx.line.get("count"), Some(&VariableValue::Integer(7)));
         let events = eval_vm(&mut vm, &mut tctx, "@L.count note .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(7, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(7, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -1972,7 +2538,10 @@ mod tests {
         let events = eval_vm(&mut vm, &mut tctx, "60 ,G.root note .");
         assert_eq!(tctx.global.get("root"), Some(&VariableValue::Integer(60)));
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(60, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(60, _, _, _, _)
+        ));
     }
 
     #[test]
@@ -2023,7 +2592,10 @@ mod tests {
     fn test_getmidicc_default() {
         let events = eval("10 1 ccval note .");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(0, _, _, _, _)));
+        assert!(matches!(
+            &events[0].0,
+            ConcreteEvent::MidiNote(0, _, _, _, _)
+        ));
     }
 
     // --- at + cycle tests (ported from standalone Cagire) ---
@@ -2037,10 +2609,13 @@ mod tests {
     }
 
     fn get_midi_notes(events: &[(ConcreteEvent, SyncTime)]) -> Vec<u64> {
-        events.iter().filter_map(|(ev, _)| match ev {
-            ConcreteEvent::MidiNote(note, _, _, _, _) => Some(*note),
-            _ => None,
-        }).collect()
+        events
+            .iter()
+            .filter_map(|(ev, _)| match ev {
+                ConcreteEvent::MidiNote(note, _, _, _, _) => Some(*note),
+                _ => None,
+            })
+            .collect()
     }
 
     fn get_event_times(events: &[(ConcreteEvent, SyncTime)]) -> Vec<SyncTime> {
@@ -2064,7 +2639,10 @@ mod tests {
     fn test_at_single_delta() {
         let events = eval("0.5 at sine snd 440 freq .");
         assert_eq!(events.len(), 1);
-        assert!(events[0].1 > 0, "0.5 delta should produce non-zero time offset");
+        assert!(
+            events[0].1 > 0,
+            "0.5 delta should produce non-zero time offset"
+        );
     }
 
     #[test]
@@ -2072,15 +2650,15 @@ mod tests {
         let events = eval("0 0.5 at sine snd 440 freq .");
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].1, 0, "first delta=0 should have time 0");
-        assert!(events[1].1 > 0, "second delta=0.5 should have non-zero time");
+        assert!(
+            events[1].1 > 0,
+            "second delta=0.5 should have non-zero time"
+        );
     }
 
     #[test]
     fn test_at_loop_with_cycle_notes() {
-        let events = eval_with_runs(
-            "0 0.25 0.5 0.75 at [ c4 e4 g4 b4 ] cycle note .",
-            0,
-        );
+        let events = eval_with_runs("0 0.25 0.5 0.75 at [ c4 e4 g4 b4 ] cycle note .", 0);
         assert_eq!(events.len(), 4);
         let notes = get_midi_notes(&events);
         assert_eq!(notes, vec![60, 64, 67, 71]);
@@ -2088,10 +2666,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_cycle_wraps() {
-        let events = eval_with_runs(
-            "0 0.25 0.5 0.75 at [ c4 e4 ] cycle note .",
-            0,
-        );
+        let events = eval_with_runs("0 0.25 0.5 0.75 at [ c4 e4 ] cycle note .", 0);
         assert_eq!(events.len(), 4);
         let notes = get_midi_notes(&events);
         assert_eq!(notes, vec![60, 64, 60, 64]);
@@ -2104,7 +2679,10 @@ mod tests {
         let f0 = get_generic_param(&events[0].0, "freq");
         let f1 = get_generic_param(&events[1].0, "freq");
         assert!(f0.is_some() && f1.is_some());
-        assert_ne!(f0, f1, "rand should produce different values per at subdivision");
+        assert_ne!(
+            f0, f1,
+            "rand should produce different values per at subdivision"
+        );
     }
 
     #[test]
@@ -2112,17 +2690,17 @@ mod tests {
         let events = eval("0 0.5 at sine snd c4 e4 note .");
         assert_eq!(events.len(), 4);
         // Each at iteration emits 2 poly voices (c4=60, e4=64)
-        let notes: Vec<f64> = events.iter().filter_map(|(ev, _)| get_generic_param(ev, "note")).collect();
+        let notes: Vec<f64> = events
+            .iter()
+            .filter_map(|(ev, _)| get_generic_param(ev, "note"))
+            .collect();
         assert_eq!(notes, vec![60.0, 64.0, 60.0, 64.0]);
     }
 
     #[test]
     fn test_at_loop_cycle_advances_across_runs() {
         for base_runs in 0..3 {
-            let events = eval_with_runs(
-                "0 0.5 at [ c4 e4 g4 ] cycle note .",
-                base_runs,
-            );
+            let events = eval_with_runs("0 0.5 at [ c4 e4 g4 ] cycle note .", base_runs);
             assert_eq!(events.len(), 2, "base_runs={base_runs}");
             let notes = get_midi_notes(&events);
             let expected_0 = [60, 64, 67][(base_runs * 2) % 3];
@@ -2142,7 +2720,11 @@ mod tests {
     fn test_at_loop_done_sets_variables() {
         let mut vm = CagireVM::new();
         let mut tctx = TestCtx::new();
-        let events = eval_vm(&mut vm, &mut tctx, "0 0.5 at [ 10 20 ] cycle !x done @x note .");
+        let events = eval_vm(
+            &mut vm,
+            &mut tctx,
+            "0 0.5 at [ 10 20 ] cycle !x done @x note .",
+        );
         assert_eq!(events.len(), 1);
         // Last iteration wins: cycle idx 1 -> 20
         let notes = get_midi_notes(&events);
@@ -2167,5 +2749,23 @@ mod tests {
         for (ev, _) in &events {
             assert!(matches!(ev, ConcreteEvent::MidiNote(60, _, _, _, _)));
         }
+    }
+
+    #[test]
+    fn test_string_pattern_at_records_per_event_highlight_spans() {
+        let script = "\"x--x..[xx.]\" at 60 note .";
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let events = eval_vm(&mut vm, &mut tctx, script);
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            vm.event_annotations,
+            vec![
+                vec![Span { start: 1, end: 4 }],
+                vec![Span { start: 4, end: 5 }],
+                vec![Span { start: 8, end: 9 }],
+                vec![Span { start: 9, end: 10 }],
+            ],
+        );
     }
 }

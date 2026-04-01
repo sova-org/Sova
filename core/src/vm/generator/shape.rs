@@ -3,7 +3,7 @@ use std::f64::consts::PI;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::{vm::{EvaluationContext, variable::VariableValue}};
+use crate::vm::{EvaluationContext, variable::VariableValue};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum GeneratorShape {
@@ -22,21 +22,24 @@ pub enum GeneratorShape {
 impl GeneratorShape {
     pub fn configure(&mut self, value: VariableValue, ctx: &EvaluationContext) {
         match self {
-            GeneratorShape::Sine 
-            | GeneratorShape::Saw 
-            | GeneratorShape::RandFloat 
-            | GeneratorShape::RandInt 
-                => (),
+            GeneratorShape::Sine
+            | GeneratorShape::Saw
+            | GeneratorShape::RandFloat
+            | GeneratorShape::RandInt => (),
             GeneratorShape::RandUInt(x)
-            | GeneratorShape::Triangle(x) 
-            | GeneratorShape::Square(x) 
-            | GeneratorShape::Stairs(x) 
-                => *x = Box::new(value),
-            | GeneratorShape::Table(values) => *values = value.as_vec(ctx)
+            | GeneratorShape::Triangle(x)
+            | GeneratorShape::Square(x)
+            | GeneratorShape::Stairs(x) => *x = Box::new(value),
+            GeneratorShape::Table(values) => *values = value.as_vec(ctx),
         }
     }
 
-    pub fn get_value(&self, ctx: &EvaluationContext, rng: &mut impl Rng, phase: f64) -> VariableValue {
+    pub fn get_value(
+        &self,
+        ctx: &EvaluationContext,
+        rng: &mut impl Rng,
+        phase: f64,
+    ) -> VariableValue {
         match self {
             Self::Sine => (phase * 2.0 * PI).sin().into(),
             Self::Saw => phase.into(),
@@ -61,7 +64,7 @@ impl GeneratorShape {
             }
             Self::RandFloat => rng.random::<f64>().into(),
             Self::RandInt => rng.random::<i64>().into(),
-            Self::RandUInt(n) => { 
+            Self::RandUInt(n) => {
                 let n = n.yield_integer(ctx) as u64;
                 ((rng.random::<u64>() % n) as i64).into()
             }

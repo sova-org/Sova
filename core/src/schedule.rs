@@ -1,5 +1,13 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::{Scene, script::ScriptExecution}, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
+    clock::{Clock, ClockServer, NEVER, SyncTime},
+    device_map::DeviceMap,
+    error::ErrorQueue,
+    log_println,
+    protocol::TimedMessage,
+    scene::{Scene, script::ScriptExecution},
+    schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
+    vm::{LanguageCenter, PartialContext, event::ConcreteEvent, variable::VariableStore},
+    world::ACTIVE_WAITING_SWITCH_MICROS,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -40,7 +48,7 @@ pub struct Scheduler {
 
     scene_structure: Vec<Vec<f64>>,
 
-    scratchpad: Vec<(ScriptExecution, f64)>
+    scratchpad: Vec<(ScriptExecution, f64)>,
 }
 
 impl Scheduler {
@@ -100,7 +108,7 @@ impl Scheduler {
             shutdown_requested: false,
             scene_structure: Vec::new(),
             error_queue: Default::default(),
-            scratchpad: Vec::new()
+            scratchpad: Vec::new(),
         }
     }
 
@@ -113,7 +121,8 @@ impl Scheduler {
         self.languages
             .process_scene(&self.scene, self.feedback.clone());
 
-        let mut prelude = self.scene
+        let mut prelude = self
+            .scene
             .trigger_prelude(&self.languages, self.clock.micros())
             .map(|exec| (exec, 1.0))
             .collect();
@@ -179,7 +188,7 @@ impl Scheduler {
                     &self.languages,
                     &self.feedback,
                     &self.clock,
-                    &mut self.scratchpad
+                    &mut self.scratchpad,
                 );
                 self.scene_structure = self.scene.structure();
             }
@@ -244,11 +253,11 @@ impl Scheduler {
     pub fn execute_event(&mut self, event: ConcreteEvent, date: SyncTime) {
         if event.is_internal() {
             ActionProcessor::process_internal_event(
-                &mut self.scene, 
+                &mut self.scene,
                 event,
                 &self.update_notifier,
                 &self.languages,
-                &self.feedback
+                &self.feedback,
             );
             return;
         }
@@ -266,7 +275,7 @@ impl Scheduler {
         partial.errors = Some(&self.error_queue);
         let (events, wait) = self.scene.update_executions(partial);
         for event in events {
-            self.execute_event(event, date);            
+            self.execute_event(event, date);
         }
         wait
     }
@@ -347,33 +356,31 @@ impl Scheduler {
 
             previous_date = date;
 
-            if let Some(wait_time) = self
-                .playback_manager
-                .update_state(&self.clock)
-            {
+            if let Some(wait_time) = self.playback_manager.update_state(&self.clock) {
                 self.next_wait = min(wait_time, self.next_wait);
             }
             if self.playback_manager.state_has_changed() {
-                let pb_state  = self.playback_manager.state();
+                let pb_state = self.playback_manager.state();
                 let _ = self
                     .update_notifier
-                    .send(SovaNotification::PlaybackStateChanged(
-                        pb_state,
-                    ));
+                    .send(SovaNotification::PlaybackStateChanged(pb_state));
                 match pb_state {
                     playback::PlaybackState::Stopped => {
                         self.scratchpad.clear();
                         self.scene.kill_executions();
                         self.scene.reset();
-                    },
+                    }
                     playback::PlaybackState::Starting(_) => {
-                        self.scratchpad.append(&mut self.scene
-                            .trigger_prelude(&self.languages, date)
-                            .map(|exec| (exec, 1.0))
-                            .collect());
-                    },
+                        self.scratchpad.append(
+                            &mut self
+                                .scene
+                                .trigger_prelude(&self.languages, date)
+                                .map(|exec| (exec, 1.0))
+                                .collect(),
+                        );
+                    }
                     playback::PlaybackState::Playing => (),
-                }                
+                }
             }
 
             self.next_wait = min(self.process_scratchpad_executions(date), self.next_wait);
@@ -429,7 +436,7 @@ impl Scheduler {
             start_beat,
             start_date
         );
-        
+
         self.clock.set_playing(true);
     }
 

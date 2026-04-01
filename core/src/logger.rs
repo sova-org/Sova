@@ -1,12 +1,11 @@
-use std::sync::{Arc, Mutex, OnceLock};
-use std::io::Write;
-use std::fs::{File, OpenOptions, create_dir_all};
-use std::path::PathBuf;
-use crossbeam_channel::{Sender, Receiver, unbounded};
-use tokio::sync::broadcast;
 use crate::protocol::log::{LogMessage, Severity};
 use crate::schedule::SovaNotification;
-
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use std::fs::{File, OpenOptions, create_dir_all};
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::broadcast;
 
 /// Global logger instance
 static GLOBAL_LOGGER: OnceLock<Logger> = OnceLock::new();
@@ -28,14 +27,14 @@ impl LogFileWriter {
     pub fn new() -> Result<Self, std::io::Error> {
         let log_dir = Self::get_log_directory()?;
         create_dir_all(&log_dir)?;
-        
+
         Ok(LogFileWriter {
             log_dir,
             current_file: None,
             current_size: 0,
         })
     }
-    
+
     fn get_log_directory() -> Result<PathBuf, std::io::Error> {
         let mut path = dirs::config_dir()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -43,22 +42,22 @@ impl LogFileWriter {
         path.push("logs");
         Ok(path)
     }
-    
+
     fn get_current_log_path(&self) -> PathBuf {
         self.log_dir.join(LOG_FILE_NAME)
     }
-    
+
     fn rotate_logs(&mut self) -> Result<(), std::io::Error> {
         let current_path = self.get_current_log_path();
-        
+
         // Close current file
         self.current_file = None;
-        
+
         // Rotate existing log files
         for i in (1..LOG_FILE_MAX_COUNT).rev() {
             let old_path = self.log_dir.join(format!("{}.{}", LOG_FILE_NAME, i));
             let new_path = self.log_dir.join(format!("{}.{}", LOG_FILE_NAME, i + 1));
-            
+
             if old_path.exists() {
                 if i == LOG_FILE_MAX_COUNT - 1 {
                     // Delete oldest file
@@ -69,25 +68,22 @@ impl LogFileWriter {
                 }
             }
         }
-        
+
         // Move current log to .1
         if current_path.exists() {
             let archived_path = self.log_dir.join(format!("{}.1", LOG_FILE_NAME));
             std::fs::rename(&current_path, &archived_path)?;
         }
-        
+
         self.current_size = 0;
         Ok(())
     }
-    
+
     fn ensure_file_open(&mut self) -> Result<(), std::io::Error> {
         if self.current_file.is_none() {
             let path = self.get_current_log_path();
-            self.current_file = Some(OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)?);
-            
+            self.current_file = Some(OpenOptions::new().create(true).append(true).open(&path)?);
+
             // Get current file size
             if let Ok(metadata) = std::fs::metadata(&path) {
                 self.current_size = metadata.len();
@@ -95,28 +91,28 @@ impl LogFileWriter {
         }
         Ok(())
     }
-    
+
     pub fn write_log(&mut self, log_msg: &LogMessage) -> Result<(), std::io::Error> {
         self.ensure_file_open()?;
-        
+
         let formatted_log = format!("{}\n", log_msg);
         let log_bytes = formatted_log.as_bytes();
-        
+
         // Check if rotation is needed
         if self.current_size + log_bytes.len() as u64 > LOG_FILE_MAX_SIZE {
             self.rotate_logs()?;
             self.ensure_file_open()?;
         }
-        
+
         if let Some(ref mut file) = self.current_file {
             file.write_all(log_bytes)?;
             file.flush()?;
             self.current_size += log_bytes.len() as u64;
         }
-        
+
         Ok(())
     }
-    
+
     pub fn get_log_file_path(&self) -> PathBuf {
         self.get_current_log_path()
     }
@@ -179,7 +175,7 @@ impl Logger {
                 None
             }
         };
-        
+
         Logger {
             mode: Arc::new(Mutex::new(LoggerMode::File)),
             file_writer: Arc::new(Mutex::new(file_writer)),
@@ -195,7 +191,7 @@ impl Logger {
                 None
             }
         };
-        
+
         Logger {
             mode: Arc::new(Mutex::new(LoggerMode::Full(sender))),
             file_writer: Arc::new(Mutex::new(file_writer)),
@@ -235,7 +231,7 @@ impl Logger {
         if let Ok(mut mode) = self.mode.lock() {
             *mode = LoggerMode::File;
         }
-        
+
         // Initialize file writer if not already present
         if let Ok(mut file_writer) = self.file_writer.lock() {
             if file_writer.is_none() {
@@ -255,7 +251,7 @@ impl Logger {
         if let Ok(mut mode) = self.mode.lock() {
             *mode = LoggerMode::Full(sender);
         }
-        
+
         // Initialize file writer if not already present
         if let Ok(mut file_writer) = self.file_writer.lock() {
             if file_writer.is_none() {
@@ -290,21 +286,19 @@ impl Logger {
                 }
             }
         };
-        
+
         if let Ok(mode) = self.mode.lock() {
             match &*mode {
-                LoggerMode::Standalone => {
-                    match log_msg.level {
-                        Severity::Fatal | Severity::Error => {
-                            eprintln!("{}", log_msg);
-                            let _ = std::io::stderr().flush();
-                        }
-                        _ => {
-                            println!("{}", log_msg);
-                            let _ = std::io::stdout().flush();
-                        }
+                LoggerMode::Standalone => match log_msg.level {
+                    Severity::Fatal | Severity::Error => {
+                        eprintln!("{}", log_msg);
+                        let _ = std::io::stderr().flush();
                     }
-                }
+                    _ => {
+                        println!("{}", log_msg);
+                        let _ = std::io::stdout().flush();
+                    }
+                },
                 LoggerMode::Embedded(sender) => {
                     if let Err(_) = sender.try_send(log_msg.clone()) {
                         // Fallback to terminal if channel is full/closed
@@ -341,7 +335,7 @@ impl Logger {
                 LoggerMode::Full(sender) => {
                     // Write to file first (most important for persistence)
                     write_to_file(&log_msg);
-                    
+
                     // Then log to terminal
                     match log_msg.level {
                         Severity::Fatal | Severity::Error => {

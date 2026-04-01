@@ -7,8 +7,9 @@ use crate::options_panel::OptionsPanel;
 use crate::server_panel::{ServerAction, ServerPanel};
 use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::visuals;
-use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use crate::widgets::EditorSettings;
+use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
+use doux::types::{ModuleGroup, ModuleInfo, Source};
 use eframe::egui;
 use egui::containers::panel::Side;
 use egui::text::{LayoutJob, LayoutSection, TextWrapping};
@@ -16,7 +17,6 @@ use egui::{TextBuffer, TextFormat};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
-use doux::types::{ModuleGroup, ModuleInfo, Source};
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
@@ -33,13 +33,33 @@ pub struct SettingsContext<'a> {
 
 const GENERAL_ARTICLES_EN: &[(&str, &str, &str)] = &[
     ("about", "About Sova", include_str!("../docs/en/about.md")),
-("the-scene", "The Scene", include_str!("../docs/en/the-scene.md")),
+    (
+        "the-scene",
+        "The Scene",
+        include_str!("../docs/en/the-scene.md"),
+    ),
     ("timing", "Timing", include_str!("../docs/en/timing.md")),
-    ("languages", "Languages", include_str!("../docs/en/languages.md")),
+    (
+        "languages",
+        "Languages",
+        include_str!("../docs/en/languages.md"),
+    ),
     ("devices", "Devices", include_str!("../docs/en/devices.md")),
-    ("variables", "Variables", include_str!("../docs/en/variables.md")),
-    ("audio-engine", "Audio Engine", include_str!("../docs/en/audio-engine.md")),
-    ("multiplayer", "Multiplayer", include_str!("../docs/en/multiplayer.md")),
+    (
+        "variables",
+        "Variables",
+        include_str!("../docs/en/variables.md"),
+    ),
+    (
+        "audio-engine",
+        "Audio Engine",
+        include_str!("../docs/en/audio-engine.md"),
+    ),
+    (
+        "multiplayer",
+        "Multiplayer",
+        include_str!("../docs/en/multiplayer.md"),
+    ),
 ];
 fn general_articles() -> &'static [(&'static str, &'static str, &'static str)] {
     // FR articles deferred — serve EN for all locales until FR rewrite is done
@@ -47,18 +67,66 @@ fn general_articles() -> &'static [(&'static str, &'static str, &'static str)] {
 }
 
 const HYDRA_ARTICLES: &[(&str, &str, &str)] = &[
-    ("hydra-intro", "Introduction", include_str!("../docs/en/hydra/intro.md")),
-    ("hydra-chaining", "Chaining", include_str!("../docs/en/hydra/chaining.md")),
-    ("hydra-sources", "Sources", include_str!("../docs/en/hydra/sources.md")),
-    ("hydra-geometry", "Geometry", include_str!("../docs/en/hydra/geometry.md")),
-    ("hydra-color", "Color", include_str!("../docs/en/hydra/color.md")),
-    ("hydra-blending", "Blending", include_str!("../docs/en/hydra/blending.md")),
-    ("hydra-modulation", "Modulation", include_str!("../docs/en/hydra/modulation.md")),
-    ("hydra-buffers", "Buffers", include_str!("../docs/en/hydra/buffers.md")),
-    ("hydra-feedback", "Feedback", include_str!("../docs/en/hydra/feedback.md")),
-    ("hydra-animation", "Animation", include_str!("../docs/en/hydra/animation.md")),
-    ("hydra-text", "Text", include_str!("../docs/en/hydra/text.md")),
-    ("hydra-differences", "Differences", include_str!("../docs/en/hydra/differences.md")),
+    (
+        "hydra-intro",
+        "Introduction",
+        include_str!("../docs/en/hydra/intro.md"),
+    ),
+    (
+        "hydra-chaining",
+        "Chaining",
+        include_str!("../docs/en/hydra/chaining.md"),
+    ),
+    (
+        "hydra-sources",
+        "Sources",
+        include_str!("../docs/en/hydra/sources.md"),
+    ),
+    (
+        "hydra-geometry",
+        "Geometry",
+        include_str!("../docs/en/hydra/geometry.md"),
+    ),
+    (
+        "hydra-color",
+        "Color",
+        include_str!("../docs/en/hydra/color.md"),
+    ),
+    (
+        "hydra-blending",
+        "Blending",
+        include_str!("../docs/en/hydra/blending.md"),
+    ),
+    (
+        "hydra-modulation",
+        "Modulation",
+        include_str!("../docs/en/hydra/modulation.md"),
+    ),
+    (
+        "hydra-buffers",
+        "Buffers",
+        include_str!("../docs/en/hydra/buffers.md"),
+    ),
+    (
+        "hydra-feedback",
+        "Feedback",
+        include_str!("../docs/en/hydra/feedback.md"),
+    ),
+    (
+        "hydra-animation",
+        "Animation",
+        include_str!("../docs/en/hydra/animation.md"),
+    ),
+    (
+        "hydra-text",
+        "Text",
+        include_str!("../docs/en/hydra/text.md"),
+    ),
+    (
+        "hydra-differences",
+        "Differences",
+        include_str!("../docs/en/hydra/differences.md"),
+    ),
 ];
 fn hydra_articles() -> &'static [(&'static str, &'static str, &'static str)] {
     HYDRA_ARTICLES
@@ -78,7 +146,10 @@ fn resolve_article_link(slug: &str) -> Option<DocView> {
 }
 
 fn find_clicked_hook(cache: &CommonMarkCache) -> Option<String> {
-    cache.link_hooks().iter().find_map(|(k, v)| if *v { Some(k.clone()) } else { None })
+    cache
+        .link_hooks()
+        .iter()
+        .find_map(|(k, v)| if *v { Some(k.clone()) } else { None })
 }
 
 #[derive(Clone, PartialEq)]
@@ -133,7 +204,12 @@ impl SettingsTab {
     }
 }
 
-const SETTINGS_TABS: [SettingsTab; 4] = [SettingsTab::Config, SettingsTab::Options, SettingsTab::Devices, SettingsTab::Logs];
+const SETTINGS_TABS: [SettingsTab; 4] = [
+    SettingsTab::Config,
+    SettingsTab::Options,
+    SettingsTab::Devices,
+    SettingsTab::Logs,
+];
 
 pub struct DocPanel {
     pub settings: DocSettings,
@@ -151,7 +227,6 @@ pub struct DocPanel {
 }
 
 impl DocPanel {
-
     pub fn new(settings: DocSettings) -> Self {
         let mut md_cache = CommonMarkCache::default();
         for (slug, _, _) in general_articles().iter().chain(hydra_articles()) {
@@ -307,7 +382,8 @@ impl DocPanel {
             egui::TopBottomPanel::top("sidebar_mode_tabs").show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     let mode = self.mode();
-                    let doc_r = ui.selectable_label(mode == SidebarMode::Docs, t!("doc.title").as_ref());
+                    let doc_r =
+                        ui.selectable_label(mode == SidebarMode::Docs, t!("doc.title").as_ref());
                     if mode == SidebarMode::Docs {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
@@ -319,11 +395,17 @@ impl DocPanel {
                         self.settings.mode = SidebarMode::Docs as u8;
                     }
 
-                    let settings_r = ui.selectable_label(mode == SidebarMode::Settings, t!("config.title").as_ref());
+                    let settings_r = ui.selectable_label(
+                        mode == SidebarMode::Settings,
+                        t!("config.title").as_ref(),
+                    );
                     if mode == SidebarMode::Settings {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
-                            [settings_r.rect.left_bottom(), settings_r.rect.right_bottom()],
+                            [
+                                settings_r.rect.left_bottom(),
+                                settings_r.rect.right_bottom(),
+                            ],
                             egui::Stroke::new(2.0, accent),
                         );
                     }
@@ -394,8 +476,14 @@ impl DocPanel {
         settings: SettingsContext<'_>,
     ) -> (ServerAction, bool) {
         let SettingsContext {
-            server, audio, options, devices, logs,
-            editor_settings, appearance, dismissed_tips,
+            server,
+            audio,
+            options,
+            devices,
+            logs,
+            editor_settings,
+            appearance,
+            dismissed_tips,
         } = settings;
         let mut server_action = ServerAction::None;
         let mut appearance_changed = false;
@@ -578,7 +666,11 @@ impl DocPanel {
 
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(t!("doc.filter").as_ref()).weak().small());
+                ui.label(
+                    egui::RichText::new(t!("doc.filter").as_ref())
+                        .weak()
+                        .small(),
+                );
                 egui::TextEdit::singleline(&mut self.search)
                     .hint_text("…")
                     .desired_width(ui.available_width())
@@ -594,7 +686,11 @@ impl DocPanel {
             .resizable(true)
             .default_width(140.0)
             .width_range(100.0..=220.0)
-            .frame(egui::Frame::NONE.inner_margin(4.0).fill(ui.visuals().panel_fill))
+            .frame(
+                egui::Frame::NONE
+                    .inner_margin(4.0)
+                    .fill(ui.visuals().panel_fill),
+            )
             .show_inside(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if selected == 0 {
@@ -613,27 +709,38 @@ impl DocPanel {
         let mut nav_target: Option<String> = None;
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: 16, top: 8, bottom: 8 }))
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: 8,
+            }))
             .show_inside(ui, |ui| {
-            let mut scroll = egui::ScrollArea::vertical();
-            if self.scroll_to_top {
-                scroll = scroll.vertical_scroll_offset(0.0);
-                self.scroll_to_top = false;
-            }
-            scroll.show(ui, |ui| {
-                nav_target = if selected == 0 {
-                    self.show_general_content(ui)
-                } else if selected == hydra_tab {
-                    self.show_hydra_content(ui, editor_settings)
-                } else if selected == doux_tab {
-                    self.show_doux_content(ui);
-                    None
-                } else {
-                    let lang = &langs[selected - 1];
-                    self.show_lang_content(ui, &lang.name, &lang.documentation, bridge, editor_settings)
-                };
+                let mut scroll = egui::ScrollArea::vertical();
+                if self.scroll_to_top {
+                    scroll = scroll.vertical_scroll_offset(0.0);
+                    self.scroll_to_top = false;
+                }
+                scroll.show(ui, |ui| {
+                    nav_target = if selected == 0 {
+                        self.show_general_content(ui)
+                    } else if selected == hydra_tab {
+                        self.show_hydra_content(ui, editor_settings)
+                    } else if selected == doux_tab {
+                        self.show_doux_content(ui);
+                        None
+                    } else {
+                        let lang = &langs[selected - 1];
+                        self.show_lang_content(
+                            ui,
+                            &lang.name,
+                            &lang.documentation,
+                            bridge,
+                            editor_settings,
+                        )
+                    };
+                });
             });
-        });
 
         if let Some(slug) = nav_target
             && let Some(view) = resolve_article_link(&slug)
@@ -735,7 +842,11 @@ impl DocPanel {
         }
     }
 
-    fn show_hydra_content(&mut self, ui: &mut egui::Ui, editor_settings: &EditorSettings) -> Option<String> {
+    fn show_hydra_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        editor_settings: &EditorSettings,
+    ) -> Option<String> {
         let articles = hydra_articles();
         let idx = match &self.view {
             Some(DocView::HydraArticle(i)) => *i,
@@ -777,8 +888,7 @@ impl DocPanel {
                         || m.name.contains(needle)
                         || m.description.to_lowercase().contains(needle)
                         || m.params.iter().any(|p| {
-                            p.name.contains(needle)
-                                || p.description.to_lowercase().contains(needle)
+                            p.name.contains(needle) || p.description.to_lowercase().contains(needle)
                         })
                 })
                 .collect();
@@ -787,11 +897,10 @@ impl DocPanel {
                 continue;
             }
 
-            let header = egui::CollapsingHeader::new(
-                egui::RichText::new(label).strong().size(12.0),
-            )
-            .default_open(!searching)
-            .open(if searching { Some(true) } else { None });
+            let header =
+                egui::CollapsingHeader::new(egui::RichText::new(label).strong().size(12.0))
+                    .default_open(!searching)
+                    .open(if searching { Some(true) } else { None });
 
             header.show(ui, |ui| {
                 for (idx, module) in &group_modules {
@@ -828,7 +937,9 @@ impl DocPanel {
             }
         };
 
-        let Some(module) = modules.get(idx) else { return };
+        let Some(module) = modules.get(idx) else {
+            return;
+        };
 
         let group_label = match module.group {
             ModuleGroup::Source => "Source",
@@ -850,12 +961,9 @@ impl DocPanel {
                 if info.module.name == module.name {
                     if !info.aliases.is_empty() {
                         ui.label(
-                            egui::RichText::new(format!(
-                                "Aliases: {}",
-                                info.aliases.join(", ")
-                            ))
-                            .italics()
-                            .color(ui.visuals().weak_text_color()),
+                            egui::RichText::new(format!("Aliases: {}", info.aliases.join(", ")))
+                                .italics()
+                                .color(ui.visuals().weak_text_color()),
                         );
                     }
                     ui.label(
@@ -957,7 +1065,6 @@ impl DocPanel {
             }
         });
     }
-
 }
 
 fn show_link_section(ui: &mut egui::Ui, bridge: &ClientBridge) {
@@ -1015,9 +1122,7 @@ fn show_welcome_header(ui: &mut egui::Ui) {
         );
         ui.vertical(|ui| {
             ui.heading(egui::RichText::new("Sova").size(24.0).strong());
-            ui.label(
-                egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak(),
-            );
+            ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak());
         });
     });
     ui.add_space(8.0);
@@ -1118,10 +1223,8 @@ impl DocPanel {
             }
         }
 
-        let has_categories = categories.len() > 1
-            || categories
-                .first()
-                .is_some_and(|(name, _)| name != "Other");
+        let has_categories =
+            categories.len() > 1 || categories.first().is_some_and(|(name, _)| name != "Other");
 
         let show_item = |panel: &mut DocPanel, ui: &mut egui::Ui, item: &TocItem| {
             let selected = panel.view == Some(DocView::LangReference(item.index));
@@ -1156,11 +1259,10 @@ impl DocPanel {
                     continue;
                 }
 
-                let header = egui::CollapsingHeader::new(
-                    egui::RichText::new(cat_name).strong().size(12.0),
-                )
-                .default_open(!searching)
-                .open(if searching { Some(true) } else { None });
+                let header =
+                    egui::CollapsingHeader::new(egui::RichText::new(cat_name).strong().size(12.0))
+                        .default_open(!searching)
+                        .open(if searching { Some(true) } else { None });
 
                 header.show(ui, |ui| {
                     for i in visible {
@@ -1196,13 +1298,8 @@ impl DocPanel {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    clicked_slug = show_highlighted_markdown(
-                        ui,
-                        &mut self.md_cache,
-                        content,
-                        syntax,
-                        &theme,
-                    );
+                    clicked_slug =
+                        show_highlighted_markdown(ui, &mut self.md_cache, content, syntax, &theme);
                 }
             }
             Some(DocView::LangReference(idx)) => {
@@ -1248,13 +1345,10 @@ impl DocPanel {
                     // Aliases
                     if !entry_aliases.is_empty() {
                         ui.label(
-                            egui::RichText::new(format!(
-                                "Aliases: {}",
-                                entry_aliases.join(", ")
-                            ))
-                            .italics()
-                            .small()
-                            .color(ui.visuals().weak_text_color()),
+                            egui::RichText::new(format!("Aliases: {}", entry_aliases.join(", ")))
+                                .italics()
+                                .small()
+                                .color(ui.visuals().weak_text_color()),
                         );
                     }
 
@@ -1294,7 +1388,7 @@ impl DocPanel {
                                 bridge.send(ClientMessage::SchedulerControl(
                                     SchedulerMessage::RunSnippet(
                                         Script::new(self.edited_example.clone(), lang_name.clone()),
-                                        1.0
+                                        1.0,
                                     ),
                                 ));
                                 self.example_output = Some(Ok(t!("doc.sent").into()));
@@ -1336,12 +1430,16 @@ impl DocPanel {
 
                     // Prev / Next navigation
                     let prev_example = if idx > 0 {
-                        ref_entries.get(idx - 1).and_then(|(_, e)| e.example.clone())
+                        ref_entries
+                            .get(idx - 1)
+                            .and_then(|(_, e)| e.example.clone())
                     } else {
                         None
                     };
                     let next_example = if idx + 1 < total {
-                        ref_entries.get(idx + 1).and_then(|(_, e)| e.example.clone())
+                        ref_entries
+                            .get(idx + 1)
+                            .and_then(|(_, e)| e.example.clone())
                     } else {
                         None
                     };
@@ -1362,10 +1460,7 @@ impl DocPanel {
                         ui.label(format!("{} / {}", idx + 1, total));
 
                         if ui
-                            .add_enabled(
-                                idx + 1 < total,
-                                egui::Button::new(icons::CHEVRON_RIGHT),
-                            )
+                            .add_enabled(idx + 1 < total, egui::Button::new(icons::CHEVRON_RIGHT))
                             .clicked()
                         {
                             let new_idx = idx + 1;
@@ -1381,13 +1476,8 @@ impl DocPanel {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    clicked_slug = show_highlighted_markdown(
-                        ui,
-                        &mut self.md_cache,
-                        content,
-                        syntax,
-                        &theme,
-                    );
+                    clicked_slug =
+                        show_highlighted_markdown(ui, &mut self.md_cache, content, syntax, &theme);
                 } else if let Some((elem, entry)) = doc.reference.iter().next() {
                     ui.heading(element_label(elem));
                     ui.add_space(8.0);
@@ -1412,61 +1502,61 @@ impl DocPanel {
         let font_id = egui::FontId::monospace(13.0);
         let font_clone = font_id.clone();
 
-        let mut layouter =
-            move |ui: &egui::Ui, text_buf: &dyn TextBuffer, wrap_width: f32| {
-                let text_s = text_buf.as_str();
-                let mut job = LayoutJob {
-                    text: text_s.to_owned(),
-                    wrap: TextWrapping {
-                        max_width: wrap_width,
-                        ..Default::default()
-                    },
+        let mut layouter = move |ui: &egui::Ui, text_buf: &dyn TextBuffer, wrap_width: f32| {
+            let text_s = text_buf.as_str();
+            let mut job = LayoutJob {
+                text: text_s.to_owned(),
+                wrap: TextWrapping {
+                    max_width: wrap_width,
                     ..Default::default()
-                };
+                },
+                ..Default::default()
+            };
 
-                if let Some(cs) = syntax {
-                    let mut pos = 0;
-                    let default_fmt =
-                        TextFormat::simple(font_clone.clone(), text_color);
-                    for (range, cat) in cs.tokenize(text_s) {
-                        if range.start > pos {
-                            job.sections.push(LayoutSection {
-                                leading_space: 0.0,
-                                byte_range: pos..range.start,
-                                format: default_fmt.clone(),
-                            });
-                        }
+            if let Some(cs) = syntax {
+                let mut pos = 0;
+                let default_fmt = TextFormat::simple(font_clone.clone(), text_color);
+                for (range, cat) in cs.tokenize(text_s) {
+                    if range.start > pos {
                         job.sections.push(LayoutSection {
                             leading_space: 0.0,
-                            byte_range: range.clone(),
-                            format: TextFormat::simple(
-                                font_clone.clone(),
-                                theme.color(cat),
-                            ),
-                        });
-                        pos = range.end;
-                    }
-                    if pos < text_s.len() {
-                        job.sections.push(LayoutSection {
-                            leading_space: 0.0,
-                            byte_range: pos..text_s.len(),
-                            format: default_fmt,
+                            byte_range: pos..range.start,
+                            format: default_fmt.clone(),
                         });
                     }
-                } else {
                     job.sections.push(LayoutSection {
                         leading_space: 0.0,
-                        byte_range: 0..text_s.len(),
-                        format: TextFormat::simple(font_clone.clone(), text_color),
+                        byte_range: range.clone(),
+                        format: TextFormat::simple(font_clone.clone(), theme.color(cat)),
+                    });
+                    pos = range.end;
+                }
+                if pos < text_s.len() {
+                    job.sections.push(LayoutSection {
+                        leading_space: 0.0,
+                        byte_range: pos..text_s.len(),
+                        format: default_fmt,
                     });
                 }
+            } else {
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: 0..text_s.len(),
+                    format: TextFormat::simple(font_clone.clone(), text_color),
+                });
+            }
 
-                ui.fonts_mut(|f| f.layout_job(job))
-            };
+            ui.fonts_mut(|f| f.layout_job(job))
+        };
 
         let frame_response = egui::Frame::NONE
             .fill(bg)
-            .inner_margin(egui::Margin { left: 12, right: 8, top: 8, bottom: 8 })
+            .inner_margin(egui::Margin {
+                left: 12,
+                right: 8,
+                top: 8,
+                bottom: 8,
+            })
             .show(ui, |ui| {
                 egui::TextEdit::multiline(&mut self.edited_example)
                     .font(font_id)
@@ -1553,7 +1643,12 @@ fn show_highlighted_markdown(
         ui.add_space(6.0);
         let frame_response = egui::Frame::NONE
             .fill(bg)
-            .inner_margin(egui::Margin { left: 12, right: 8, top: 8, bottom: 8 })
+            .inner_margin(egui::Margin {
+                left: 12,
+                right: 8,
+                top: 8,
+                bottom: 8,
+            })
             .show(ui, |ui| {
                 let job = build_highlighted_job(code, &font_id, text_color, syntax, theme);
                 ui.add(egui::Label::new(job).selectable(true));

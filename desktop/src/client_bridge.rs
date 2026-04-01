@@ -4,13 +4,15 @@ use std::time::Instant;
 
 use eframe::egui;
 use sova_core::error::SovaError;
-use sova_core::schedule::SovaNotification;
-use sova_core::vm::interpreter::Annotation;
-use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
+use sova_core::schedule::SovaNotification;
 use sova_core::schedule::{SchedulerMessage, playback::PlaybackState};
-use sova_server::{AudioEngineState, AudioRestartConfig, ClientMessage, ServerMessage, Snapshot, SovaClient};
+use sova_core::vm::interpreter::Annotation;
+use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
+use sova_server::{
+    AudioEngineState, AudioRestartConfig, ClientMessage, ServerMessage, Snapshot, SovaClient,
+};
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::feedback_engine::FeedbackEngine;
@@ -34,10 +36,12 @@ fn now_hhmm() -> String {
     unsafe {
         let time = epoch as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();
-        #[cfg(target_os = "windows")] { 
+        #[cfg(target_os = "windows")]
+        {
             libc::localtime_s(&mut tm, &time);
         }
-        #[cfg(not(target_os = "windows"))] {
+        #[cfg(not(target_os = "windows"))]
+        {
             libc::localtime_r(&time, &mut tm);
         }
         format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
@@ -183,7 +187,11 @@ impl ClientBridge {
 
         let ip = ip.to_owned();
         let username = username.to_owned();
-        let password = if password.is_empty() { None } else { Some(password.to_owned()) };
+        let password = if password.is_empty() {
+            None
+        } else {
+            Some(password.to_owned())
+        };
         let (send_tx, mut send_rx) = tokio_mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::channel();
         let ctx = self.ctx.clone();
@@ -196,15 +204,9 @@ impl ClientBridge {
         self.runtime.spawn(async move {
             let mut client = SovaClient::new(ip, port);
 
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                client.connect(),
-            )
-            .await
-            {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), client.connect()).await {
                 Ok(Err(e)) => {
-                    let _ =
-                        event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
+                    let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                     ctx.request_repaint();
                     return;
                 }
@@ -218,7 +220,13 @@ impl ClientBridge {
                 Ok(Ok(())) => {}
             }
 
-            if let Err(e) = client.send(ClientMessage::SetName { name: username, password }).await {
+            if let Err(e) = client
+                .send(ClientMessage::SetName {
+                    name: username,
+                    password,
+                })
+                .await
+            {
                 let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                 ctx.request_repaint();
                 return;
@@ -228,9 +236,7 @@ impl ClientBridge {
                 Ok(Some(msg @ ServerMessage::Hello { .. })) => {
                     let _ = event_tx.send(msg);
                     ctx.request_repaint();
-                    if feedback
-                        && let Err(e) = client.send(ClientMessage::EnableFeedback).await
-                    {
+                    if feedback && let Err(e) = client.send(ClientMessage::EnableFeedback).await {
                         let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                         ctx.request_repaint();
                         return;
@@ -283,9 +289,8 @@ impl ClientBridge {
                         Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                         Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
                         Err(e) => {
-                            let _ = read_event_tx.send(
-                                ServerMessage::ConnectionRefused(e.to_string()),
-                            );
+                            let _ =
+                                read_event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                             read_ctx.request_repaint();
                             break;
                         }
@@ -297,9 +302,7 @@ impl ClientBridge {
                 match send_rx.recv().await {
                     Some(OutgoingMessage::Send(client_msg)) => {
                         if let Err(e) = client.send(*client_msg).await {
-                            let _ = event_tx.send(
-                                ServerMessage::ConnectionRefused(e.to_string()),
-                            );
+                            let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
                             ctx.request_repaint();
                             break;
                         }
@@ -335,8 +338,10 @@ impl ClientBridge {
     pub fn poll(&mut self) {
         let Some(rx) = &self.event_rx else { return };
 
-        self.compilation_flashes.retain(|_, (_, t)| t.elapsed().as_secs_f32() < 1.0);
-        self.mutation_flashes.retain(|_, t| t.elapsed().as_secs_f32() < 1.2);
+        self.compilation_flashes
+            .retain(|_, (_, t)| t.elapsed().as_secs_f32() < 1.0);
+        self.mutation_flashes
+            .retain(|_, t| t.elapsed().as_secs_f32() < 1.2);
 
         while let Ok(msg) = rx.try_recv() {
             match msg {
@@ -446,7 +451,7 @@ impl ClientBridge {
                         }
                     }
                 }
-                ServerMessage::Notification(SovaNotification::UpdatedLines(items)) 
+                ServerMessage::Notification(SovaNotification::UpdatedLines(items))
                 | ServerMessage::Notification(SovaNotification::UpdatedLineConfigurations(items)) => {
                     if let Some(scene) = &mut self.scene {
                         let now = Instant::now();
@@ -536,19 +541,24 @@ impl ClientBridge {
                     }
                     self.peers = new_peers;
                 }
-                ServerMessage::Notification(SovaNotification::CompilationUpdated(li, fi, _id, state)) => {
+                ServerMessage::Notification(SovaNotification::CompilationUpdated(
+                    li,
+                    fi,
+                    _id,
+                    state,
+                )) => {
                     self.errors.remove(&(li, fi));
                     match &state {
                         CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
-                            self.compilation_flashes.insert((li, fi), (true, Instant::now()));
+                            self.compilation_flashes
+                                .insert((li, fi), (true, Instant::now()));
                             self.last_error = None;
                         }
                         CompilationState::Error(e) => {
-                            self.compilation_flashes.insert((li, fi), (false, Instant::now()));
-                            self.last_error = Some((
-                                format!("L{}:F{} — {}", li, fi, e.info),
-                                Instant::now(),
-                            ));
+                            self.compilation_flashes
+                                .insert((li, fi), (false, Instant::now()));
+                            self.last_error =
+                                Some((format!("L{}:F{} — {}", li, fi, e.info), Instant::now()));
                         }
                         _ => {}
                     }
@@ -590,12 +600,20 @@ impl ClientBridge {
                 ServerMessage::Notification(SovaNotification::Error(e)) => {
                     self.errors.insert((e.line, e.frame), e);
                 }
-                ServerMessage::FeedbackEnabled { scene, tempo, quantum, is_playing } => {
+                ServerMessage::FeedbackEnabled {
+                    scene,
+                    tempo,
+                    quantum,
+                    is_playing,
+                } => {
                     if let Some(engine) = &self.feedback_engine {
                         use sova_core::schedule::ActionTiming;
                         engine.send(SchedulerMessage::SetScene(scene, ActionTiming::Immediate));
                         engine.send(SchedulerMessage::SetTempo(tempo, ActionTiming::Immediate));
-                        engine.send(SchedulerMessage::SetQuantum(quantum, ActionTiming::Immediate));
+                        engine.send(SchedulerMessage::SetQuantum(
+                            quantum,
+                            ActionTiming::Immediate,
+                        ));
                         if is_playing {
                             engine.send(SchedulerMessage::TransportStart(ActionTiming::Immediate));
                         }
@@ -611,7 +629,12 @@ impl ClientBridge {
                         self.remote_hydra = Some((sender, code));
                     }
                 }
-                ServerMessage::ScriptEdit { sender, li, fi, ops } => {
+                ServerMessage::ScriptEdit {
+                    sender,
+                    li,
+                    fi,
+                    ops,
+                } => {
                     if self.confirmed_username.as_deref() != Some(&sender) {
                         self.pending_script_edits.push((li, fi, ops));
                     }
@@ -624,7 +647,11 @@ impl ClientBridge {
                     self.positions.clear();
                     self.position_start_beat.clear();
                 }
-                ServerMessage::LinkState { enabled, start_stop_sync, num_peers } => {
+                ServerMessage::LinkState {
+                    enabled,
+                    start_stop_sync,
+                    num_peers,
+                } => {
                     self.clock.link_enabled = enabled;
                     self.clock.start_stop_sync = start_stop_sync;
                     self.clock.num_peers = num_peers;
@@ -790,11 +817,16 @@ impl ClientBridge {
     }
 
     pub fn frame_annotations(&self, li: usize, fi: usize) -> &[Annotation] {
-        self.annotations.get(li).and_then(|l| l.get(fi)).map_or(&[], |v| v.as_slice())
+        self.annotations
+            .get(li)
+            .and_then(|l| l.get(fi))
+            .map_or(&[], |v| v.as_slice())
     }
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
-        self.scene().and_then(|s| s.frame(li, fi)).map(|f| f.script().compilation_state())
+        self.scene()
+            .and_then(|s| s.frame(li, fi))
+            .map(|f| f.script().compilation_state())
     }
 
     pub fn chat_messages(&self) -> &VecDeque<ChatMessage> {
@@ -865,7 +897,11 @@ impl ClientBridge {
         if let Some(engine) = &self.feedback_engine {
             let _ = engine.devices().create_osc_output_device(name, ip, port);
         } else {
-            self.send(ClientMessage::CreateOscDevice(name.to_owned(), ip.to_owned(), port));
+            self.send(ClientMessage::CreateOscDevice(
+                name.to_owned(),
+                ip.to_owned(),
+                port,
+            ));
         }
     }
 

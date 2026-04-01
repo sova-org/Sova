@@ -71,7 +71,14 @@ impl SampleNode {
         }
     }
 
-    fn flatten(&self, depth: u8, parent_folder: &str, file_index: usize, is_default: bool, out: &mut Vec<TreeLine>) {
+    fn flatten(
+        &self,
+        depth: u8,
+        parent_folder: &str,
+        file_index: usize,
+        is_default: bool,
+        out: &mut Vec<TreeLine>,
+    ) {
         let kind = match self {
             SampleNode::Root { expanded, .. } => TreeLineKind::Root {
                 expanded: *expanded,
@@ -136,7 +143,10 @@ impl SampleTree {
             }
         }
 
-        Self { roots, default_root_count }
+        Self {
+            roots,
+            default_root_count,
+        }
     }
 
     fn scan_children(path: &Path) -> Vec<SampleNode> {
@@ -437,7 +447,8 @@ impl SampleBrowserState {
         match &self.filter {
             Some(names) => {
                 let names = names.clone();
-                self.tree.fill_filtered(&names, false, &mut self.cached_entries);
+                self.tree
+                    .fill_filtered(&names, false, &mut self.cached_entries);
             }
             None => self.tree.fill_visible(&mut self.cached_entries),
         }

@@ -1,6 +1,7 @@
 pub mod clock;
 pub mod compiler;
 pub mod device_map;
+pub mod error;
 pub mod init;
 pub mod logger;
 pub mod protocol;
@@ -9,7 +10,6 @@ pub mod schedule;
 pub mod util;
 pub mod vm;
 pub mod world;
-pub mod error;
 
 pub use protocol::TimedMessage;
 pub use scene::Scene;

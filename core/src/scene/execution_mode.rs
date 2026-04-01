@@ -2,7 +2,11 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Scene, clock::{Clock, NEVER, SyncTime}, schedule::ActionTiming};
+use crate::{
+    Scene,
+    clock::{Clock, NEVER, SyncTime},
+    schedule::ActionTiming,
+};
 
 /// The global execution mode of the scene
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -18,12 +22,8 @@ impl ExecutionMode {
     /// when the mode is not [ExecutionMode::Free].
     pub fn remaining(&self, scene: &Scene, date: SyncTime, clock: &Clock) -> SyncTime {
         match self {
-            ExecutionMode::AtQuantum => {
-                ActionTiming::AtNextPhase.remaining(date, clock)
-            }
-            ExecutionMode::Free => {
-                NEVER
-            }
+            ExecutionMode::AtQuantum => ActionTiming::AtNextPhase.remaining(date, clock),
+            ExecutionMode::Free => NEVER,
             ExecutionMode::LongestLine => {
                 let Some(line) = scene.longest_line() else {
                     return NEVER;
@@ -43,7 +43,7 @@ impl Display for ExecutionMode {
         let name = match self {
             Self::Free => "Free",
             Self::AtQuantum => "Quantum",
-            Self::LongestLine => "Longest"
+            Self::LongestLine => "Longest",
         };
         write!(f, "{name}")
     }
@@ -55,7 +55,7 @@ impl From<String> for ExecutionMode {
             "Free" => Self::Free,
             "Quantum" | "AtQuantum" => Self::AtQuantum,
             "Longest" | "LongestLine" => Self::LongestLine,
-            _ => Default::default()
+            _ => Default::default(),
         }
     }
 }

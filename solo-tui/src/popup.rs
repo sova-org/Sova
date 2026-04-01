@@ -1,7 +1,15 @@
 use std::str::FromStr;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Rect}, style::{Color, Style, Stylize}, widgets::{Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap}};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Flex, Layout, Rect},
+    style::{Color, Style, Stylize},
+    widgets::{
+        Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
+        StatefulWidget, Widget, Wrap,
+    },
+};
 use tui_textarea::{CursorMove, TextArea};
 
 use crate::app::AppState;
@@ -17,17 +25,16 @@ pub struct Popup {
     pub value: PopupValue,
     callback: Option<Box<dyn FnOnce(&mut AppState, PopupValue)>>,
     text_area: TextArea<'static>,
-    list_state: ListState
+    list_state: ListState,
 }
 
 impl Popup {
-
     pub fn open(
-        &mut self, 
-        title: String, 
-        content: String, 
-        value: PopupValue, 
-        callback: Box<dyn FnOnce(&mut AppState, PopupValue)>
+        &mut self,
+        title: String,
+        content: String,
+        value: PopupValue,
+        callback: Box<dyn FnOnce(&mut AppState, PopupValue)>,
     ) {
         self.title = title;
         self.content = content;
@@ -35,18 +42,14 @@ impl Popup {
         self.callback = Some(callback);
         self.showing = true;
 
-        if let PopupValue::Choice(i,_) = &self.value {
+        if let PopupValue::Choice(i, _) = &self.value {
             self.list_state.select(Some(*i));
-        } 
+        }
 
         Self::update_textarea(&mut self.text_area, &self.value);
     }
 
-    pub fn info(
-        &mut self, 
-        title: String, 
-        content: String, 
-    ) {
+    pub fn info(&mut self, title: String, content: String) {
         self.title = title;
         self.content = content;
         self.value = Default::default();
@@ -58,17 +61,20 @@ impl Popup {
         self.showing = false;
     }
 
-    fn validate_input<T>(text_area: &mut TextArea, dst: &mut T) 
-        where T: FromStr
+    fn validate_input<T>(text_area: &mut TextArea, dst: &mut T)
+    where
+        T: FromStr,
     {
         let text = text_area.lines().get(0).cloned().unwrap_or_default();
         let mut color = Color::LightGreen;
         match text.parse::<T>() {
             Ok(x) => *dst = x,
-            Err(_) => color = Color::LightRed
+            Err(_) => color = Color::LightRed,
         }
-        text_area.set_block(Block::bordered()
-            .border_style(color).border_type(BorderType::Rounded)
+        text_area.set_block(
+            Block::bordered()
+                .border_style(color)
+                .border_type(BorderType::Rounded),
         );
     }
 
@@ -77,10 +83,12 @@ impl Popup {
             PopupValue::Text(txt) => *text_area = vec![txt.clone()].into(),
             PopupValue::Float(f) => *text_area = vec![f.to_string()].into(),
             PopupValue::Int(i) => *text_area = vec![i.to_string()].into(),
-            _ => ()
+            _ => (),
         }
-        text_area.set_block(Block::bordered()
-            .border_style(Color::LightGreen).border_type(BorderType::Rounded)
+        text_area.set_block(
+            Block::bordered()
+                .border_style(Color::LightGreen)
+                .border_type(BorderType::Rounded),
         );
         text_area.move_cursor(CursorMove::End);
     }
@@ -94,18 +102,20 @@ impl Popup {
                 PopupValue::Bool(b) => match event.code {
                     KeyCode::Left => *b = true,
                     KeyCode::Right => *b = false,
-                    _ => ()
-                }
+                    _ => (),
+                },
                 PopupValue::Choice(i, values) => {
-                    let len = values.len(); 
+                    let len = values.len();
                     match event.code {
-                        KeyCode::Up if self.list_state.selected() != Some(0) => 
-                            self.list_state.select_previous(),
-                        KeyCode::Down if self.list_state.selected() != Some(len - 1) =>
-                            self.list_state.select_next(),
+                        KeyCode::Up if self.list_state.selected() != Some(0) => {
+                            self.list_state.select_previous()
+                        }
+                        KeyCode::Down if self.list_state.selected() != Some(len - 1) => {
+                            self.list_state.select_next()
+                        }
                         KeyCode::Left => self.list_state.select_first(),
                         KeyCode::Right => self.list_state.select_last(),
-                        _ => ()
+                        _ => (),
                     }
                     *i = self.list_state.selected().unwrap_or_default();
                 }
@@ -123,7 +133,7 @@ impl Popup {
                             *f -= 1.0;
                             Self::update_textarea(&mut self.text_area, &(*f).into());
                         }
-                        _ => { 
+                        _ => {
                             let _ = self.text_area.input(event);
                         }
                     }
@@ -139,13 +149,13 @@ impl Popup {
                             *i -= 1;
                             Self::update_textarea(&mut self.text_area, &(*i).into());
                         }
-                        _ => { 
+                        _ => {
                             let _ = self.text_area.input(event);
                         }
                     }
                     Self::validate_input(&mut self.text_area, i);
-                },
-            }
+                }
+            },
         }
     }
 
@@ -167,11 +177,9 @@ impl Popup {
         let [area] = vertical.areas(area);
         area
     }
-
 }
 
 impl Widget for &mut Popup {
-
     fn render(self, area: Rect, buf: &mut Buffer) {
         if !self.showing {
             return;
@@ -180,7 +188,7 @@ impl Widget for &mut Popup {
         let selected_style = Style::default().bg(Color::White).fg(Color::Black).bold();
         let additional_lines = match &self.value {
             PopupValue::Choice(_, v) => std::cmp::min(10, v.len() as u16),
-            _ => 3
+            _ => 3,
         };
         let area = Popup::popup_area(area, 30, self.content.len(), additional_lines);
         Clear.render(area, buf);
@@ -206,7 +214,12 @@ impl Widget for &mut Popup {
                     .render(input_area, buf)
             }
             PopupValue::Bool(b) => {
-                let horizontal = Layout::horizontal([Constraint::Length(10), Constraint::Length(6), Constraint::Length(10)]).flex(Flex::Center);
+                let horizontal = Layout::horizontal([
+                    Constraint::Length(10),
+                    Constraint::Length(6),
+                    Constraint::Length(10),
+                ])
+                .flex(Flex::Center);
                 let [yes_area, _, no_area] = horizontal.areas(input_area);
                 Paragraph::new("Yes")
                     .style(if *b { selected_style } else { Style::default() })
@@ -214,18 +227,20 @@ impl Widget for &mut Popup {
                     .block(button_block.clone())
                     .render(yes_area, buf);
                 Paragraph::new("No")
-                    .style(if !*b { selected_style } else { Style::default() })
+                    .style(if !*b {
+                        selected_style
+                    } else {
+                        Style::default()
+                    })
                     .centered()
                     .block(button_block)
                     .render(no_area, buf)
             }
-            PopupValue::Text(_) 
-                | PopupValue::Float(_)
-                | PopupValue::Int(_) => {
+            PopupValue::Text(_) | PopupValue::Float(_) | PopupValue::Int(_) => {
                 self.text_area.render(input_area, buf);
             }
             PopupValue::Choice(_, v) => {
-                let items : Vec<ListItem> = v.iter().map(|s| ListItem::from(s.as_str())).collect();
+                let items: Vec<ListItem> = v.iter().map(|s| ListItem::from(s.as_str())).collect();
                 let list = List::new(items)
                     .highlight_style(selected_style)
                     .highlight_symbol(">")

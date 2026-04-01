@@ -4,7 +4,7 @@ use crate::cagire::ops::Op;
 use crate::cagire::theory;
 use crate::cagire::types::Span;
 
-use super::{lookup_word, WordCompile::*};
+use super::{WordCompile::*, lookup_word};
 
 pub(super) fn simple_op(name: &str) -> Option<Op> {
     Some(match name {
@@ -224,20 +224,29 @@ fn parse_french_note_name(name: &str) -> Option<i64> {
 fn parse_interval(name: &str) -> Option<i64> {
     Some(match name {
         "P1" | "unison" => 0,
-        "m2" => 1, "M2" => 2,
-        "m3" => 3, "M3" => 4,
+        "m2" => 1,
+        "M2" => 2,
+        "m3" => 3,
+        "M3" => 4,
         "P4" => 5,
         "aug4" | "dim5" | "tritone" => 6,
         "P5" => 7,
-        "m6" => 8, "M6" => 9,
-        "m7" => 10, "M7" => 11,
+        "m6" => 8,
+        "M6" => 9,
+        "m7" => 10,
+        "M7" => 11,
         "P8" => 12,
-        "m9" => 13, "M9" => 14,
-        "m10" => 15, "M10" => 16,
-        "P11" => 17, "aug11" => 18,
+        "m9" => 13,
+        "M9" => 14,
+        "m10" => 15,
+        "M10" => 16,
+        "P11" => 17,
+        "aug11" => 18,
         "P12" => 19,
-        "m13" => 20, "M13" => 21,
-        "m14" => 22, "M14" => 23,
+        "m13" => 20,
+        "M13" => 21,
+        "m14" => 22,
+        "M14" => 23,
         "P15" => 24,
         _ => return None,
     })
@@ -282,11 +291,16 @@ pub(crate) fn compile_word(
         let pattern = *pattern;
         ops.pop();
         spans.pop();
-        push(ops, spans, if name == "triad" {
-            Op::DiatonicTriad(pattern)
-        } else {
-            Op::DiatonicSeventh(pattern)
-        }, span);
+        push(
+            ops,
+            spans,
+            if name == "triad" {
+                Op::DiatonicTriad(pattern)
+            } else {
+                Op::DiatonicSeventh(pattern)
+            },
+            span,
+        );
         return;
     }
 

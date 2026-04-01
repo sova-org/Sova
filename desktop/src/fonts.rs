@@ -18,14 +18,12 @@ pub fn list_system_fonts() -> Vec<String> {
 
 /// Load a system font by family name into egui for the given font family.
 /// Returns `true` if the font was loaded successfully.
-pub fn load_system_font(
-    ctx: &egui::Context,
-    family_name: &str,
-    target: egui::FontFamily,
-) -> bool {
+pub fn load_system_font(ctx: &egui::Context, family_name: &str, target: egui::FontFamily) -> bool {
     let source = SystemSource::new();
     let handle = match source.select_best_match(
-        &[font_kit::family_name::FamilyName::Title(family_name.to_string())],
+        &[font_kit::family_name::FamilyName::Title(
+            family_name.to_string(),
+        )],
         &font_kit::properties::Properties::new(),
     ) {
         Ok(h) => h,

@@ -67,9 +67,8 @@ impl VuMeterPanel {
         let default_width = num_channels as f32 * DEFAULT_BAR_WIDTH
             + (num_channels - 1) as f32 * GAP
             + 2.0 * PADDING;
-        let min_width = num_channels as f32 * MIN_BAR_WIDTH
-            + (num_channels - 1) as f32 * GAP
-            + 2.0 * PADDING;
+        let min_width =
+            num_channels as f32 * MIN_BAR_WIDTH + (num_channels - 1) as f32 * GAP + 2.0 * PADDING;
 
         egui::SidePanel::new(side, "vu_meter")
             .default_width(default_width)
@@ -77,12 +76,17 @@ impl VuMeterPanel {
             .resizable(true)
             .show(ctx, |ui| {
                 // Resize channel state to match incoming data
-                self.channels.resize_with(peak_data.len(), ChannelMeter::new);
+                self.channels
+                    .resize_with(peak_data.len(), ChannelMeter::new);
                 self.channels.truncate(peak_data.len());
 
                 for (ch, &peak) in self.channels.iter_mut().zip(peak_data.iter()) {
                     let raw_db = peak_to_db(peak);
-                    let coeff = if raw_db > ch.rms_db { ATTACK_COEFF } else { RELEASE_COEFF };
+                    let coeff = if raw_db > ch.rms_db {
+                        ATTACK_COEFF
+                    } else {
+                        RELEASE_COEFF
+                    };
                     ch.rms_db += coeff * (raw_db - ch.rms_db);
 
                     if raw_db >= ch.peak_db {

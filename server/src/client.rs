@@ -6,8 +6,8 @@ use sova_core::protocol::DeviceInfo;
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 pub const PROTOCOL_VERSION: u8 = 0x02;
 pub const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024;
@@ -57,9 +57,7 @@ pub async fn read_server_message<R: AsyncReadExt + Unpin>(
 }
 
 /// Reads one wire frame, returning CRC-verified payload bytes.
-pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
-    reader: &mut R,
-) -> io::Result<Vec<u8>> {
+pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(reader: &mut R) -> io::Result<Vec<u8>> {
     let mut first = [0u8; 1];
     reader.read_exact(&mut first).await?;
 
@@ -81,9 +79,7 @@ pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(
     if actual_crc != expected_crc {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "CRC mismatch (expected 0x{expected_crc:08x}, got 0x{actual_crc:08x})"
-            ),
+            format!("CRC mismatch (expected 0x{expected_crc:08x}, got 0x{actual_crc:08x})"),
         ));
     }
     Ok(buf)
@@ -206,9 +202,10 @@ impl SovaClient {
             )
         })?;
 
-        let writer = self.writer.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
-        })?;
+        let writer = self
+            .writer
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Client not connected"))?;
 
         let frame = build_frame_raw(&payload);
 
@@ -245,9 +242,10 @@ impl SovaClient {
                 "Client not connected",
             ));
         }
-        let reader = self.reader.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
-        })?;
+        let reader = self
+            .reader
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Client not connected"))?;
 
         let payload = match read_wire_frame(reader).await {
             Ok(buf) => buf,
@@ -272,8 +270,6 @@ mod tests {
     use super::*;
     use crate::message::ServerMessage;
     use crate::server::BroadcastItem;
-    use std::collections::HashMap;
-    use std::sync::Arc;
     use sova_core::{
         clock::TimeSpan,
         protocol::DeviceInfo,
@@ -287,19 +283,24 @@ mod tests {
             variable::{VariableStore, VariableValue},
         },
     };
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn roundtrip(msg: &ClientMessage) {
-        let bytes = rmp_serde::to_vec_named(msg)
-            .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        rmp_serde::from_slice::<ClientMessage>(&bytes)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
-                    std::mem::discriminant(msg),
-                    bytes.len(),
-                    &bytes[..bytes.len().min(32)],
-                )
-            });
+        let bytes = rmp_serde::to_vec_named(msg).unwrap_or_else(|e| {
+            panic!(
+                "serialize failed for {:?}: {e}",
+                std::mem::discriminant(msg)
+            )
+        });
+        rmp_serde::from_slice::<ClientMessage>(&bytes).unwrap_or_else(|e| {
+            panic!(
+                "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
+                std::mem::discriminant(msg),
+                bytes.len(),
+                &bytes[..bytes.len().min(32)],
+            )
+        });
     }
 
     fn frame_with_vars() -> Frame {
@@ -308,13 +309,17 @@ mod tests {
             ("i".into(), VariableValue::Integer(10)),
             ("f".into(), VariableValue::Float(0.5)),
             ("d".into(), VariableValue::Dur(TimeSpan::Beats(2.0))),
-            ("m".into(), VariableValue::Map(HashMap::from([
-                ("k".into(), VariableValue::Str("v".into())),
-            ]))),
-            ("v".into(), VariableValue::Vec(vec![
-                VariableValue::Bool(true),
-                VariableValue::Integer(99),
-            ])),
+            (
+                "m".into(),
+                VariableValue::Map(HashMap::from([(
+                    "k".into(),
+                    VariableValue::Str("v".into()),
+                )])),
+            ),
+            (
+                "v".into(),
+                VariableValue::Vec(vec![VariableValue::Bool(true), VariableValue::Integer(99)]),
+            ),
         ]));
         f.set_script(Script::new("note 60".into(), "bob".into()));
         f
@@ -328,12 +333,20 @@ mod tests {
         scene.lines[0].frames.push(frame.clone());
 
         let variants: Vec<ClientMessage> = vec![
-            ClientMessage::SchedulerControl(SchedulerMessage::SetScene(scene, ActionTiming::Immediate)),
+            ClientMessage::SchedulerControl(SchedulerMessage::SetScene(
+                scene,
+                ActionTiming::Immediate,
+            )),
             ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(
                 vec![(0, 0, frame.clone())],
                 ActionTiming::AtNextBeat,
             )),
-            ClientMessage::SchedulerControl(SchedulerMessage::AddFrame(0, 1, frame, ActionTiming::Immediate)),
+            ClientMessage::SchedulerControl(SchedulerMessage::AddFrame(
+                0,
+                1,
+                frame,
+                ActionTiming::Immediate,
+            )),
         ];
 
         for msg in &variants {
@@ -441,7 +454,13 @@ mod tests {
 
         let mut cursor = &buf[..];
         // First frame: corrupted → Err
-        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        assert!(
+            read_wire_frame(&mut cursor)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("CRC mismatch")
+        );
         // Second frame: valid → Ok
         read_wire_frame(&mut cursor).await.unwrap();
     }
@@ -452,7 +471,10 @@ mod tests {
     async fn unsupported_version_byte() {
         let bytes = [0xFFu8, 0, 0, 1, 0, 0, 0, 0, 0x42];
         let err = read_wire_frame(&mut &bytes[..]).await.unwrap_err();
-        assert!(err.to_string().contains("Unsupported protocol version: 0xff"));
+        assert!(
+            err.to_string()
+                .contains("Unsupported protocol version: 0xff")
+        );
     }
 
     #[tokio::test]
@@ -524,7 +546,11 @@ mod tests {
         let forth_code = ": melody 60 note 64 note 67 note ;";
 
         let mut scene = Scene::default();
-        for (code, lang) in [(bob_code, "bob"), (bali_code, "bali"), (forth_code, "forth")] {
+        for (code, lang) in [
+            (bob_code, "bob"),
+            (bali_code, "bali"),
+            (forth_code, "forth"),
+        ] {
             let mut line = Line::default();
             line.frames.clear();
             line.looping = true;
@@ -563,24 +589,36 @@ mod tests {
             name: name.into(),
             documentation: LanguageDocumentation {
                 articles: vec![
-                    ("Getting Started".into(), format!("How to use {name} for live coding.")),
-                    ("Reference".into(), format!("{name} built-in functions and operators.")),
+                    (
+                        "Getting Started".into(),
+                        format!("How to use {name} for live coding."),
+                    ),
+                    (
+                        "Reference".into(),
+                        format!("{name} built-in functions and operators."),
+                    ),
                 ],
                 reference: BTreeMap::from([
-                    (LanguageElement::Word("note".into()), ReferenceEntry {
-                        description: "Play a MIDI note".into(),
-                        signature: None,
-                        example: Some("note 60 0.5".into()),
-                        category: Some("MIDI".into()),
-                        aliases: vec!["n".into()],
-                    }),
-                    (LanguageElement::Brackets("{".into(), "}".into()), ReferenceEntry {
-                        description: "Block delimiter".into(),
-                        signature: None,
-                        example: None,
-                        category: Some("Syntax".into()),
-                        aliases: vec![],
-                    }),
+                    (
+                        LanguageElement::Word("note".into()),
+                        ReferenceEntry {
+                            description: "Play a MIDI note".into(),
+                            signature: None,
+                            example: Some("note 60 0.5".into()),
+                            category: Some("MIDI".into()),
+                            aliases: vec!["n".into()],
+                        },
+                    ),
+                    (
+                        LanguageElement::Brackets("{".into(), "}".into()),
+                        ReferenceEntry {
+                            description: "Block delimiter".into(),
+                            signature: None,
+                            example: None,
+                            category: Some("Syntax".into()),
+                            aliases: vec![],
+                        },
+                    ),
                 ]),
                 escape: vec![("\\n".into(), "newline".into())],
             },
@@ -601,7 +639,10 @@ mod tests {
             channels: 2,
             buffer_size: Some(512),
             active_voices: 8,
-            sample_paths: vec![PathBuf::from("/samples/drums"), PathBuf::from("/samples/synth")],
+            sample_paths: vec![
+                PathBuf::from("/samples/drums"),
+                PathBuf::from("/samples/synth"),
+            ],
             error: None,
             cpu_load: 12.5,
             peak_voices: 16,
@@ -618,7 +659,12 @@ mod tests {
             peers,
             link_state: (120.0, 3.75, 4.0, 4, true),
             is_playing: true,
-            languages: vec![lang_def("bob"), lang_def("bali"), lang_def("forth"), lang_def("boinx")],
+            languages: vec![
+                lang_def("bob"),
+                lang_def("bali"),
+                lang_def("forth"),
+                lang_def("boinx"),
+            ],
             audio_engine_state: audio,
             link_enabled: true,
         }
@@ -659,7 +705,11 @@ mod tests {
     async fn wire_roundtrip_hello() {
         let msg = make_hello();
         let frame = serialize_to_wire_frame(&msg).unwrap();
-        assert!(frame.len() > 500, "Hello should be a large payload, got {} bytes", frame.len());
+        assert!(
+            frame.len() > 500,
+            "Hello should be a large payload, got {} bytes",
+            frame.len()
+        );
 
         let decoded = server_msg_wire_roundtrip(&msg).await;
         assert!(matches!(decoded, ServerMessage::Hello { .. }));
@@ -671,7 +721,10 @@ mod tests {
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
             ServerMessage::ScopeData(ref samples) => assert_eq!(samples.len(), 1024),
-            other => panic!("expected ScopeData, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected ScopeData, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -680,8 +733,13 @@ mod tests {
         let msg = make_frame_position(16);
         let decoded = server_msg_wire_roundtrip(&msg).await;
         match decoded {
-            ServerMessage::Notification(SovaNotification::FramePositionChanged(ref positions)) => assert_eq!(positions.len(), 16),
-            other => panic!("expected FramePosition, got {:?}", std::mem::discriminant(&other)),
+            ServerMessage::Notification(SovaNotification::FramePositionChanged(ref positions)) => {
+                assert_eq!(positions.len(), 16)
+            }
+            other => panic!(
+                "expected FramePosition, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -694,7 +752,10 @@ mod tests {
                 assert_eq!(scene.lines.len(), 3);
                 assert_eq!(scene.lines[0].frames.len(), 4);
             }
-            other => panic!("expected SceneValue, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "expected SceneValue, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -813,7 +874,12 @@ mod tests {
             ])),
             ServerMessage::CompilationUpdate(0, 0, 1, CompilationState::NotCompiled),
             ServerMessage::CompilationUpdate(0, 0, 2, CompilationState::Compiling),
-            ServerMessage::CompilationUpdate(0, 0, 3, CompilationState::Compiled(Default::default())),
+            ServerMessage::CompilationUpdate(
+                0,
+                0,
+                3,
+                CompilationState::Compiled(Default::default()),
+            ),
             ServerMessage::CompilationUpdate(0, 0, 4, CompilationState::Parsed(None)),
             ServerMessage::CompilationUpdate(
                 0,
@@ -880,7 +946,10 @@ mod tests {
                 ActionTiming::Immediate,
             )),
             ClientMessage::SetTempo(140.0, ActionTiming::AtNextBeat),
-            ClientMessage::SetName { name: "alice".into(), password: None },
+            ClientMessage::SetName {
+                name: "alice".into(),
+                password: None,
+            },
             ClientMessage::GetScene,
             ClientMessage::SetScene(scene.clone(), ActionTiming::Immediate),
             ClientMessage::GetLine(0),
@@ -926,7 +995,7 @@ mod tests {
                 channels: 2,
                 buffer_size: Some(512),
                 sample_paths: vec!["/samples/drums".into(), "/samples/synth".into()],
-                max_voices: 32
+                max_voices: 32,
             }),
             ClientMessage::PreviewSample {
                 folder: "/samples/drums".into(),
@@ -979,7 +1048,13 @@ mod tests {
 
         let mut cursor = &buf[..];
         // Corrupted ScopeData → CRC error
-        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        assert!(
+            read_wire_frame(&mut cursor)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("CRC mismatch")
+        );
         // Valid FramePosition → Ok
         let payload = read_wire_frame(&mut cursor).await.unwrap();
         let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
@@ -1023,7 +1098,10 @@ mod tests {
         frame.extend_from_slice(&[0, 0, 5]); // length
         frame.extend_from_slice(&[0u8; 5]); // payload
         let err = read_wire_frame(&mut &frame[..]).await.unwrap_err();
-        assert!(err.to_string().contains("Unsupported protocol version: 0x01"));
+        assert!(
+            err.to_string()
+                .contains("Unsupported protocol version: 0x01")
+        );
     }
 
     #[tokio::test]
@@ -1044,7 +1122,13 @@ mod tests {
 
         let mut cursor = &buf[..];
         for _ in 0..3 {
-            assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+            assert!(
+                read_wire_frame(&mut cursor)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("CRC mismatch")
+            );
         }
         let payload = read_wire_frame(&mut cursor).await.unwrap();
         let decoded: ServerMessage = rmp_serde::from_slice(&payload).unwrap();
@@ -1161,9 +1245,7 @@ mod tests {
 
     #[tokio::test]
     async fn slow_reader_multiple_frames_byte_at_a_time() {
-        let payloads: Vec<Vec<u8>> = (0..5u8)
-            .map(|i| vec![i; 20 + i as usize * 10])
-            .collect();
+        let payloads: Vec<Vec<u8>> = (0..5u8).map(|i| vec![i; 20 + i as usize * 10]).collect();
         let mut buf = Vec::new();
         for p in &payloads {
             buf.extend_from_slice(&build_frame_raw(p));
@@ -1226,7 +1308,10 @@ mod tests {
         let zeros = vec![0u8; 1024];
         let err = read_wire_frame(&mut &zeros[..]).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(err.to_string().contains("Unsupported protocol version: 0x00"));
+        assert!(
+            err.to_string()
+                .contains("Unsupported protocol version: 0x00")
+        );
     }
 
     #[tokio::test]
@@ -1280,7 +1365,10 @@ mod tests {
         }
         let mut frame = Frame::default();
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
-        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate));
+        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(
+            vec![(0, 0, frame)],
+            ActionTiming::Immediate,
+        ));
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
         let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
@@ -1296,7 +1384,10 @@ mod tests {
         }
         let mut frame = Frame::default();
         frame.vars = VariableStore::from(HashMap::from([("deep".into(), val)]));
-        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(vec![(0, 0, frame)], ActionTiming::Immediate));
+        let msg = ClientMessage::SchedulerControl(SchedulerMessage::SetFrames(
+            vec![(0, 0, frame)],
+            ActionTiming::Immediate,
+        ));
         let payload = rmp_serde::to_vec_named(&msg).unwrap();
         let wire = build_frame_raw(&payload);
         let read_back = read_wire_frame(&mut &wire[..]).await.unwrap();
@@ -1306,7 +1397,8 @@ mod tests {
     #[tokio::test]
     async fn unknown_enum_variant_msgpack() {
         // Hand-craft msgpack map with a bogus variant name
-        let bogus = rmp_serde::to_vec_named(&HashMap::from([("BogusVariant", Vec::<u8>::new())])).unwrap();
+        let bogus =
+            rmp_serde::to_vec_named(&HashMap::from([("BogusVariant", Vec::<u8>::new())])).unwrap();
         let frame = build_frame_raw(&bogus);
         let payload = read_wire_frame(&mut &frame[..]).await.unwrap();
         assert!(ClientMessage::deserialize(&payload).is_err());
@@ -1503,7 +1595,13 @@ mod tests {
         let r1 = read_wire_frame(&mut cursor).await.unwrap();
         assert_eq!(r1, payload1);
         // Fake frame: bad CRC → error
-        assert!(read_wire_frame(&mut cursor).await.unwrap_err().to_string().contains("CRC mismatch"));
+        assert!(
+            read_wire_frame(&mut cursor)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("CRC mismatch")
+        );
         // Frame 3: should recover since fake frame was well-structured
         let r3 = read_wire_frame(&mut cursor).await.unwrap();
         assert_eq!(r3, payload3);

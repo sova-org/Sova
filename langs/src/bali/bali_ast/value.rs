@@ -1,9 +1,12 @@
 use crate::bali::bali_ast::{concrete_fraction::ConcreteFraction, constants::NOTE_MAP};
-use sova_core::{util::decimal_operations::Decimal, vm::{
-    EnvironmentFunc, Instruction,
-    control_asm::ControlASM,
-    variable::{Variable, VariableValue},
-}};
+use sova_core::{
+    util::decimal_operations::Decimal,
+    vm::{
+        EnvironmentFunc, Instruction,
+        control_asm::ControlASM,
+        variable::{Variable, VariableValue},
+    },
+};
 
 #[derive(Debug, Clone)]
 pub enum Value {

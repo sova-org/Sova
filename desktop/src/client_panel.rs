@@ -126,7 +126,9 @@ impl ClientPanel {
                                 ui.end_row();
 
                                 let label = ui.label(t!("client.password"));
-                                let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                                let field = ui.add(
+                                    egui::TextEdit::singleline(&mut self.password).password(true),
+                                );
                                 if label.hovered() || field.hovered() {
                                     crate::widgets::hint::set(ui.ctx(), t!("client.hint.password"));
                                 }
@@ -136,9 +138,13 @@ impl ClientPanel {
                                     self.feedback = false;
                                 } else {
                                     ui.label("");
-                                    let r = ui.checkbox(&mut self.feedback, t!("client.audio_feedback"));
+                                    let r = ui
+                                        .checkbox(&mut self.feedback, t!("client.audio_feedback"));
                                     if r.hovered() {
-                                        crate::widgets::hint::set(ui.ctx(), t!("client.hint.audio_feedback"));
+                                        crate::widgets::hint::set(
+                                            ui.ctx(),
+                                            t!("client.hint.audio_feedback"),
+                                        );
                                     }
                                     ui.end_row();
                                 }
@@ -208,7 +214,13 @@ impl ClientPanel {
                         if r.clicked()
                             && let Ok(port) = self.port.parse::<u16>()
                         {
-                            bridge.connect(&self.ip, port, &self.username, &self.password, self.feedback);
+                            bridge.connect(
+                                &self.ip,
+                                port,
+                                &self.username,
+                                &self.password,
+                                self.feedback,
+                            );
                         }
                     }
                     ConnectionStatus::Connecting => {

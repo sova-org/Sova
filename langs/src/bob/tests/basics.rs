@@ -58,9 +58,16 @@ fn toss() {
 fn rand() {
     let result = compile_and_run("SET G.X RAND 5 10");
     if let Some(VariableValue::Integer(x)) = result.global_vars.get("X") {
-        assert!(*x >= 5 && *x <= 10, "RAND 5 10 produced {}, expected 5-10", x);
+        assert!(
+            *x >= 5 && *x <= 10,
+            "RAND 5 10 produced {}, expected 5-10",
+            x
+        );
     } else {
-        panic!("X should be an integer, got: {:?}", result.global_vars.get("X"));
+        panic!(
+            "X should be an integer, got: {:?}",
+            result.global_vars.get("X")
+        );
     }
 }
 
@@ -68,9 +75,16 @@ fn rand() {
 fn rrand() {
     let result = compile_and_run("SET G.X RRAND 5 10");
     if let Some(VariableValue::Float(x)) = result.global_vars.get("X") {
-        assert!(*x >= 5.0 && *x <= 10.0, "RRAND 5 10 produced {}, expected 5.0-10.0", x);
+        assert!(
+            *x >= 5.0 && *x <= 10.0,
+            "RRAND 5 10 produced {}, expected 5.0-10.0",
+            x
+        );
     } else {
-        panic!("X should be a float, got: {:?}", result.global_vars.get("X"));
+        panic!(
+            "X should be a float, got: {:?}",
+            result.global_vars.get("X")
+        );
     }
 }
 

@@ -10,18 +10,16 @@ pub enum BoinxPosition {
 }
 
 impl BoinxPosition {
-
     pub fn diff(self, other: &BoinxPosition) -> BoinxPosition {
         if self == *other {
             return BoinxPosition::Undefined;
         }
         if mem::discriminant(&self) != mem::discriminant(other) {
             return other.clone();
-        } 
+        }
         match (self, other) {
-            (BoinxPosition::This, BoinxPosition::This) |
-            (BoinxPosition::Undefined, BoinxPosition::Undefined) 
-                => BoinxPosition::Undefined,
+            (BoinxPosition::This, BoinxPosition::This)
+            | (BoinxPosition::Undefined, BoinxPosition::Undefined) => BoinxPosition::Undefined,
             (BoinxPosition::At(i, p1), BoinxPosition::At(j, p2)) => {
                 if i != *j {
                     return other.clone();
@@ -50,9 +48,8 @@ impl BoinxPosition {
                 } else {
                     BoinxPosition::Parallel(pos)
                 }
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     }
-
 }

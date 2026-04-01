@@ -1,8 +1,22 @@
-use std::{collections::BTreeMap, net::{SocketAddr, UdpSocket}, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}}, thread::{self, JoinHandle}, time::Duration};
+use std::{
+    collections::BTreeMap,
+    net::{SocketAddr, UdpSocket},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use rosc::{OscPacket, OscTime};
 
-use crate::{clock::{Clock, SyncTime}, log_eprintln, protocol::{ProtocolError, osc::variable_from_osc}, vm::variable::VariableValue};
+use crate::{
+    clock::{Clock, SyncTime},
+    log_eprintln,
+    protocol::{ProtocolError, osc::variable_from_osc},
+    vm::variable::VariableValue,
+};
 
 #[derive(Debug)]
 pub struct OSCDictionary {
@@ -21,11 +35,19 @@ pub struct OSCIn {
     memory: Arc<Mutex<BTreeMap<String, OSCDictionary>>>,
 }
 
-fn process_packet(packet: OscPacket, memory: &mut BTreeMap<String, OSCDictionary>, timetag: Option<OscTime>) {
+fn process_packet(
+    packet: OscPacket,
+    memory: &mut BTreeMap<String, OSCDictionary>,
+    timetag: Option<OscTime>,
+) {
     match packet {
         OscPacket::Message(osc_message) => {
             let route = osc_message.addr;
-            let args = osc_message.args.into_iter().filter_map(variable_from_osc).collect();
+            let args = osc_message
+                .args
+                .into_iter()
+                .filter_map(variable_from_osc)
+                .collect();
             let dic = OSCDictionary { timetag, args };
             memory.insert(route, dic);
         }
@@ -39,7 +61,6 @@ fn process_packet(packet: OscPacket, memory: &mut BTreeMap<String, OSCDictionary
 }
 
 impl OSCIn {
-
     pub fn address(&self) -> String {
         format!("0.0.0.0:{}", self.port)
     }
@@ -57,14 +78,15 @@ impl OSCIn {
     pub fn is_connected(&self) -> bool {
         match &self.socket_handle {
             Some(s) => !s.is_finished(),
-            None => false
+            None => false,
         }
     }
 
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
         crate::log_println!(
             "[~] connect() called for OSCInDevice '{}' @ port {}",
-            self.name, self.port
+            self.name,
+            self.port
         );
         if self.socket_handle.is_some() {
             crate::log_println!("    Already connected.");
@@ -74,7 +96,7 @@ impl OSCIn {
         if addr.is_err() {
             return Err(format!("Unable to bind socket on port {}", self.port).into());
         }
-        let addr : SocketAddr = addr.unwrap();
+        let addr: SocketAddr = addr.unwrap();
         match UdpSocket::bind(addr) {
             Ok(socket) => {
                 match socket.set_read_timeout(Some(Duration::from_millis(500))) {
@@ -82,10 +104,10 @@ impl OSCIn {
                         log_eprintln!("[!] Unable to set read timeout for UDP socket !");
                         return Err(e.into());
                     }
-                    _ => ()
+                    _ => (),
                 }
                 let shutdown_signal = self.shutdown.clone();
-                let mut buff = [0 ; 4096];
+                let mut buff = [0; 4096];
                 let memory = self.memory.clone();
                 let handle = thread::spawn(move || {
                     loop {
@@ -93,17 +115,15 @@ impl OSCIn {
                             break;
                         }
                         match socket.recv(&mut buff) {
-                            Ok(bytes) => {
-                                match rosc::decoder::decode_udp(&buff[..bytes]) {
-                                    Ok((_, packet)) => {
-                                        let mut mem_access = memory.lock().unwrap();
-                                        process_packet(packet, &mut mem_access, None);
-                                    }
-                                    Err(e) => {
-                                        log_eprintln!("[!] OSC input error : {e}");
-                                    }
+                            Ok(bytes) => match rosc::decoder::decode_udp(&buff[..bytes]) {
+                                Ok((_, packet)) => {
+                                    let mut mem_access = memory.lock().unwrap();
+                                    process_packet(packet, &mut mem_access, None);
                                 }
-                            }
+                                Err(e) => {
+                                    log_eprintln!("[!] OSC input error : {e}");
+                                }
+                            },
                             Err(e) => {
                                 log_eprintln!("[!] UDP socket error : {e} !");
                             }
@@ -115,16 +135,22 @@ impl OSCIn {
             Err(e) => {
                 crate::log_eprintln!(
                     "[!] Failed to bind UDP socket for OSCInDevice '{}': {}",
-                    self.name, e
+                    self.name,
+                    e
                 );
                 return Err(ProtocolError::from(e));
             }
         }
-        todo!() 
+        todo!()
     }
 
     pub fn values(&self, route: &str) -> Vec<VariableValue> {
-        self.memory.lock().unwrap().get(route).map(|dic| dic.args.clone()).unwrap_or_default()
+        self.memory
+            .lock()
+            .unwrap()
+            .get(route)
+            .map(|dic| dic.args.clone())
+            .unwrap_or_default()
     }
 
     pub fn timetag(&self, route: &str, clock: &Clock) -> Option<SyncTime> {
@@ -133,9 +159,7 @@ impl OSCIn {
             .unwrap()
             .get(route)
             .and_then(|dic| dic.timetag)
-            .map(|timetag| {
-                clock.from_system_time(timetag.into())
-            })
+            .map(|timetag| clock.from_system_time(timetag.into()))
     }
 
     pub fn get(&self, route: &str, clock: &Clock) -> (Vec<VariableValue>, Option<SyncTime>) {
@@ -158,10 +182,9 @@ impl OSCIn {
             Some(h) => {
                 let _ = h.join();
             }
-            None => ()
+            None => (),
         }
     }
-
 }
 
 impl Drop for OSCIn {

@@ -1,6 +1,11 @@
-use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, scene::script::{ReturnInfo, Script}, vm::{EvaluationContext, Instruction, Program, event::ConcreteEvent, interpreter::Interpreter}};
+use crate::{
+    clock::{NEVER, SyncTime},
+    compiler::CompilationState,
+    scene::script::{ReturnInfo, Script},
+    vm::{EvaluationContext, Instruction, Program, event::ConcreteEvent, interpreter::Interpreter},
+};
 
-pub const DEFAULT_INSTRUCTION_BATCH_SIZE : usize = 16;
+pub const DEFAULT_INSTRUCTION_BATCH_SIZE: usize = 16;
 
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {
@@ -8,17 +13,16 @@ pub struct ASMInterpreter {
     instruction_index: usize,
     return_stack: Vec<ReturnInfo>,
     /// Optimization: allows to execute in the same iteration at most `instruction_block_size` control instructions
-    pub instruction_batch_size: usize
+    pub instruction_batch_size: usize,
 }
 
 impl ASMInterpreter {
-
-    pub fn new(prog : Program) -> Self {
+    pub fn new(prog: Program) -> Self {
         Self {
-            prog, 
-            instruction_index: 0, 
-            return_stack: Vec::new(), 
-            instruction_batch_size: DEFAULT_INSTRUCTION_BATCH_SIZE
+            prog,
+            instruction_index: 0,
+            return_stack: Vec::new(),
+            instruction_batch_size: DEFAULT_INSTRUCTION_BATCH_SIZE,
         }
     }
 
@@ -27,7 +31,7 @@ impl ASMInterpreter {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_control(&mut self, ctx : &mut EvaluationContext) {
+    pub fn execute_control(&mut self, ctx: &mut EvaluationContext) {
         let Instruction::Control(control) = &self.prog[self.instruction_index] else {
             return;
         };
@@ -53,21 +57,16 @@ impl ASMInterpreter {
             }
         };
     }
-
 }
 
-impl From<Program> for ASMInterpreter  {
+impl From<Program> for ASMInterpreter {
     fn from(value: Program) -> Self {
         ASMInterpreter::new(value)
     }
 }
 
 impl Interpreter for ASMInterpreter {
-
-    fn execute_next(
-        &mut self,
-        ctx : &mut EvaluationContext
-    ) -> (Option<ConcreteEvent>, SyncTime) {
+    fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime) {
         for _ in 0..self.instruction_batch_size {
             if self.has_terminated() {
                 return (None, NEVER);
@@ -84,7 +83,7 @@ impl Interpreter for ASMInterpreter {
                     let c_event = event.make_concrete(ctx);
                     // let res = (c_event, self.scheduled_time);
                     // self.scheduled_time += wait;
-                    return (Some(c_event), wait)
+                    return (Some(c_event), wait);
                 }
             }
         }
@@ -100,7 +99,6 @@ impl Interpreter for ASMInterpreter {
     fn has_terminated(&self) -> bool {
         self.instruction_index >= self.prog.len()
     }
-
 }
 
 #[derive(Debug, Default)]
@@ -108,12 +106,10 @@ pub struct ASMInterpreterFactory;
 
 /// Does not behave the same as the factory trait, as it needs to pass forward the language name to the transcoder
 impl ASMInterpreterFactory {
-
-    pub fn make_instance(&self, script : &Script) -> Option<Box<dyn Interpreter>> {
+    pub fn make_instance(&self, script: &Script) -> Option<Box<dyn Interpreter>> {
         match &script.compiled {
             CompilationState::Compiled(prog) => Some(Box::new(ASMInterpreter::new(prog.clone()))),
-            _ => None
+            _ => None,
         }
     }
-
 }

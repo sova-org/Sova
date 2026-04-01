@@ -3,10 +3,16 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{NEVER, SyncTime}, compiler::CompilationState, log_eprintln, scene::script::{Script, ScriptExecution}, vm::{
-        PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory},
+    clock::{NEVER, SyncTime},
+    compiler::CompilationState,
+    log_eprintln,
+    scene::script::{Script, ScriptExecution},
+    vm::{
+        PartialContext,
+        event::ConcreteEvent,
+        interpreter::{Annotation, InterpreterDirectory},
         variable::VariableStore,
-    }
+    },
 };
 
 #[derive(Serialize, Deserialize)]

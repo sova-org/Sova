@@ -1,12 +1,12 @@
 use crate::clock::{Clock, SyncTime};
-use crate::vm::event::ConcreteEvent;
 use crate::protocol::audio_engine_proxy::{AudioEnginePayload, AudioEngineProxy};
 use crate::protocol::error::ProtocolError;
 use crate::protocol::log;
 use crate::protocol::midi::{MIDIMessage, MidiIn};
 use crate::protocol::osc::{OSCIn, OSCMessage, OSCOut};
 use crate::protocol::{midi::MidiOut, payload::ProtocolPayload};
-use crate::{log_eprintln, LogMessage};
+use crate::vm::event::ConcreteEvent;
+use crate::{LogMessage, log_eprintln};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display};
 
@@ -20,7 +20,7 @@ pub struct DeviceInfo {
     pub direction: DeviceDirection,
     pub is_connected: bool,
     pub address: Option<String>,
-    pub latency: f64
+    pub latency: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
@@ -53,7 +53,7 @@ impl Display for DeviceKind {
 pub enum DeviceDirection {
     #[default]
     Output,
-    Input
+    Input,
 }
 
 impl Display for DeviceDirection {
@@ -112,18 +112,12 @@ impl ProtocolDevice {
     /// or if the Mutex protecting the internal state is poisoned.
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
         match self {
-            ProtocolDevice::OSCInDevice(osc_in) => {
-                osc_in.connect()
-            }
-            ProtocolDevice::MIDIInDevice(midi_in) | ProtocolDevice::VirtualMIDIInDevice(midi_in) => {
-                midi_in.connect()
-            }
-            ProtocolDevice::MIDIOutDevice(midi_out) | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
-                midi_out.connect()
-            }
-            ProtocolDevice::OSCOutDevice(osc_out) => {
-                osc_out.connect()
-            }
+            ProtocolDevice::OSCInDevice(osc_in) => osc_in.connect(),
+            ProtocolDevice::MIDIInDevice(midi_in)
+            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => midi_in.connect(),
+            ProtocolDevice::MIDIOutDevice(midi_out)
+            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => midi_out.connect(),
+            ProtocolDevice::OSCOutDevice(osc_out) => osc_out.connect(),
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
             ProtocolDevice::AudioEngine { .. } => Ok(()), // AudioEngine doesn't need external connection
         }
@@ -154,13 +148,10 @@ impl ProtocolDevice {
     /// - An OSC encoding error occurs.
     /// - The Mutex protecting the internal state is poisoned.
     /// - The system time cannot be read.
-    pub fn send(
-        &self,
-        message: ProtocolPayload,
-    ) -> Result<(), ProtocolError> {
+    pub fn send(&self, message: ProtocolPayload) -> Result<(), ProtocolError> {
         // target_time used for precise OSC timestamping and protocol timing
         match self {
-            ProtocolDevice::MIDIOutDevice(midi_out) 
+            ProtocolDevice::MIDIOutDevice(midi_out)
             | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
                 let ProtocolPayload::MIDI(midi_msg) = message else {
                     return Err(ProtocolError(
@@ -201,7 +192,7 @@ impl ProtocolDevice {
                 proxy.send(msg)
             }
             ProtocolDevice::MIDIInDevice(_)
-            | ProtocolDevice::VirtualMIDIInDevice(_) 
+            | ProtocolDevice::VirtualMIDIInDevice(_)
             | ProtocolDevice::OSCInDevice(_) => {
                 // Cannot send to input devices
                 Err(ProtocolError(format!(
@@ -221,7 +212,7 @@ impl ProtocolDevice {
     ///   or not applicable (Log, inputs).
     pub fn flush(&self) {
         match self {
-            ProtocolDevice::MIDIOutDevice(midi_out) 
+            ProtocolDevice::MIDIOutDevice(midi_out)
             | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
                 midi_out.flush();
             }
@@ -229,7 +220,8 @@ impl ProtocolDevice {
                 // UDP sends are typically fire-and-forget, no explicit flush needed at socket level.
                 crate::log_println!(
                     "[~] Flush called on OSCOutDevice '{}' @ {} (no-op for UDP)",
-                    osc_out.name, osc_out.address
+                    osc_out.name,
+                    osc_out.address
                 );
             }
             ProtocolDevice::Log
@@ -255,12 +247,10 @@ impl ProtocolDevice {
         match self {
             ProtocolDevice::Log => log::LOG_NAME.to_string(), // Use constant if available
             ProtocolDevice::OSCInDevice(osc_in) => osc_in.address(), // Placeholder
-            ProtocolDevice::MIDIInDevice(midi_in) 
-            | ProtocolDevice::VirtualMIDIInDevice(midi_in) 
-                => midi_in.name.clone(),
-            ProtocolDevice::MIDIOutDevice(midi_out) 
-            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) 
-                => midi_out.name.clone(),
+            ProtocolDevice::MIDIInDevice(midi_in)
+            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => midi_in.name.clone(),
+            ProtocolDevice::MIDIOutDevice(midi_out)
+            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => midi_out.name.clone(),
             ProtocolDevice::OSCOutDevice(osc_out) => osc_out.address.to_string(),
             ProtocolDevice::AudioEngine { .. } => "Internal".to_string(),
         }
@@ -269,24 +259,25 @@ impl ProtocolDevice {
     pub fn kind(&self) -> DeviceKind {
         match self {
             ProtocolDevice::Log => DeviceKind::Log,
-            ProtocolDevice::MIDIInDevice(_) 
-            | ProtocolDevice::MIDIOutDevice(_) => DeviceKind::Midi,
-            ProtocolDevice::VirtualMIDIInDevice(_) 
-            | ProtocolDevice::VirtualMIDIOutDevice(_) => DeviceKind::VirtualMidi,
-            ProtocolDevice::OSCOutDevice(_) 
-            | ProtocolDevice::OSCInDevice(_) => DeviceKind::Osc,
+            ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::MIDIOutDevice(_) => DeviceKind::Midi,
+            ProtocolDevice::VirtualMIDIInDevice(_) | ProtocolDevice::VirtualMIDIOutDevice(_) => {
+                DeviceKind::VirtualMidi
+            }
+            ProtocolDevice::OSCOutDevice(_) | ProtocolDevice::OSCInDevice(_) => DeviceKind::Osc,
             ProtocolDevice::AudioEngine { .. } => DeviceKind::AudioEngine,
         }
     }
 
-    pub fn translate_event(&self, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
-        -> Vec<(ProtocolPayload, SyncTime)> 
-    {
+    pub fn translate_event(
+        &self,
+        event: ConcreteEvent,
+        date: SyncTime,
+        clock: &Clock,
+    ) -> Vec<(ProtocolPayload, SyncTime)> {
         match self {
-            ProtocolDevice::OSCOutDevice(_) => {
-                OSCMessage::generate_messages(event, date, clock)
-            }
-            ProtocolDevice::MIDIOutDevice(midi_out) | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
+            ProtocolDevice::OSCOutDevice(_) => OSCMessage::generate_messages(event, date, clock),
+            ProtocolDevice::MIDIOutDevice(midi_out)
+            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
                 MIDIMessage::generate_messages(event, date, midi_out.epsilon)
             }
             ProtocolDevice::Log => {
@@ -305,7 +296,6 @@ impl ProtocolDevice {
             }
         }
     }
-
 }
 
 impl From<MidiOut> for ProtocolDevice {
@@ -334,21 +324,13 @@ impl Debug for ProtocolDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ProtocolDevice::Log => write!(f, "Log"),
-            ProtocolDevice::OSCInDevice(osc_in) => {
-                Debug::fmt(osc_in, f)
-            }
-            ProtocolDevice::MIDIInDevice(midi_in) 
-            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => {
-                Debug::fmt(midi_in, f)
-            }
+            ProtocolDevice::OSCInDevice(osc_in) => Debug::fmt(osc_in, f),
+            ProtocolDevice::MIDIInDevice(midi_in)
+            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => Debug::fmt(midi_in, f),
             ProtocolDevice::MIDIOutDevice(midi_out)
-            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
-                Debug::fmt(midi_out, f)
-            }
-            ProtocolDevice::OSCOutDevice(osc_out) => {
-                Debug::fmt(osc_out, f)
-            }
-            ProtocolDevice::AudioEngine { ..}=> write!(f, "AudioEngine"),
+            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => Debug::fmt(midi_out, f),
+            ProtocolDevice::OSCOutDevice(osc_out) => Debug::fmt(osc_out, f),
+            ProtocolDevice::AudioEngine { .. } => write!(f, "AudioEngine"),
         }
     }
 }
@@ -359,16 +341,11 @@ impl Display for ProtocolDevice {
         match self {
             ProtocolDevice::Log => write!(f, "Log"),
             ProtocolDevice::OSCInDevice(osc_in) => write!(f, "OSCInDevice({})", osc_in.name),
-            ProtocolDevice::MIDIInDevice(midi_in) 
-            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => {
-                Display::fmt(midi_in, f)
-            }
+            ProtocolDevice::MIDIInDevice(midi_in)
+            | ProtocolDevice::VirtualMIDIInDevice(midi_in) => Display::fmt(midi_in, f),
             ProtocolDevice::MIDIOutDevice(midi_out)
-            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
-                Display::fmt(midi_out, f)
-            }
-            ProtocolDevice::OSCOutDevice(osc_out) 
-                => write!(f, "OSCOutDevice({})", osc_out.name),
+            | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => Display::fmt(midi_out, f),
+            ProtocolDevice::OSCOutDevice(osc_out) => write!(f, "OSCOutDevice({})", osc_out.name),
             ProtocolDevice::AudioEngine { .. } => write!(f, "AudioEngine"),
         }
     }

@@ -84,7 +84,7 @@ pub struct Runner {
     pub frame_triggers: usize,
     /// Scene structure: frame lengths for each line. `structure[line][frame] = length in beats`.
     pub structure: Vec<Vec<f64>>,
-    pub error_queue: ErrorQueue
+    pub error_queue: ErrorQueue,
 }
 
 impl Default for Runner {
@@ -101,7 +101,7 @@ impl Default for Runner {
             frame_index: 0,
             frame_triggers: 0,
             structure: vec![vec![1.0]],
-            error_queue: Default::default()
+            error_queue: Default::default(),
         }
     }
 }
@@ -149,7 +149,7 @@ impl Runner {
                 structure: &self.structure,
                 clock: &clock,
                 device_map: &device_map,
-                errors: &self.error_queue
+                errors: &self.error_queue,
             };
 
             let (event_opt, wait_time) = interp.execute_next(&mut ctx);

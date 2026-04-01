@@ -1,7 +1,7 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::{vm::{EvaluationContext, variable::VariableValue}};
+use crate::vm::{EvaluationContext, variable::VariableValue};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum GeneratorModifier {
@@ -11,7 +11,7 @@ pub enum GeneratorModifier {
     EndAt(VariableValue),
     Repeat(VariableValue),
     RandomPhase,
-    Reverse
+    Reverse,
 }
 
 // Sine | TimeSpan 4' | Loop
@@ -21,32 +21,33 @@ impl GeneratorModifier {
         match self {
             GeneratorModifier::Loop
             | GeneratorModifier::RandomPhase
-            | GeneratorModifier::Reverse 
-                => (),
-            GeneratorModifier::EndAt(value) 
-            | GeneratorModifier::StartAt(value) 
-            | GeneratorModifier::Repeat(value) 
-                => *value = config,
+            | GeneratorModifier::Reverse => (),
+            GeneratorModifier::EndAt(value)
+            | GeneratorModifier::StartAt(value)
+            | GeneratorModifier::Repeat(value) => *value = config,
         }
     }
 
     pub fn reset(&self, _state: &mut VariableValue) {
         match self {
-            GeneratorModifier::Loop |
-            GeneratorModifier::StartAt(_) |
-            GeneratorModifier::EndAt(_) |
-            GeneratorModifier::RandomPhase |
-            GeneratorModifier::Reverse 
-                => (),
-            GeneratorModifier::Repeat(_) => () // *state = 0.into()
+            GeneratorModifier::Loop
+            | GeneratorModifier::StartAt(_)
+            | GeneratorModifier::EndAt(_)
+            | GeneratorModifier::RandomPhase
+            | GeneratorModifier::Reverse => (),
+            GeneratorModifier::Repeat(_) => (), // *state = 0.into()
         }
     }
 
-    pub fn get_phase(&self, ctx: &EvaluationContext, rng: &mut impl Rng, incoming_phase: f64, span: f64) -> f64 {
+    pub fn get_phase(
+        &self,
+        ctx: &EvaluationContext,
+        rng: &mut impl Rng,
+        incoming_phase: f64,
+        span: f64,
+    ) -> f64 {
         match self {
-            GeneratorModifier::Loop => {
-                incoming_phase % 1.0
-            }
+            GeneratorModifier::Loop => incoming_phase % 1.0,
             GeneratorModifier::EndAt(d) => {
                 let d = d.clone().as_dur(ctx).as_beats(ctx.clock, ctx.frame_len) / span;
                 if incoming_phase > d {

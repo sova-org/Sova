@@ -69,22 +69,102 @@ fn commands() -> Vec<Command> {
 
     vec![
         // Panels
-        panel(CommandId::Options, "cmd.options", "cmd.options.desc", format!("{m}+,")),
-        panel(CommandId::Server, "cmd.server", "cmd.server.desc", format!("{m}+Shift+S")),
-        panel(CommandId::Audio, "cmd.audio", "cmd.audio.desc", format!("{m}+Shift+A")),
-        panel(CommandId::Devices, "cmd.devices", "cmd.devices.desc", format!("{m}+Shift+I")),
-        panel(CommandId::Scope, "cmd.scope", "cmd.scope.desc", format!("{m}+Shift+O")),
-        panel(CommandId::Spectrum, "cmd.spectrum", "cmd.spectrum.desc", format!("{m}+Shift+P")),
-        panel(CommandId::VuMeter, "cmd.vu_meter", "cmd.vu_meter.desc", format!("{m}+Shift+U")),
-        panel(CommandId::ScopeBar, "cmd.scope_bar", "cmd.scope_bar.desc", format!("{m}+Shift+W")),
-        panel(CommandId::Chat, "cmd.chat", "cmd.chat.desc", format!("{m}+Shift+C")),
-        panel(CommandId::Logs, "cmd.logs", "cmd.logs.desc", format!("{m}+Shift+L")),
-        panel(CommandId::SampleBrowser, "cmd.sample_browser", "cmd.sample_browser.desc", format!("{m}+Shift+E")),
-        panel(CommandId::Documentation, "cmd.documentation", "cmd.documentation.desc", format!("{m}+Shift+H")),
-        panel(CommandId::Visuals, "cmd.visuals", "cmd.visuals.desc", format!("{m}+Shift+V")),
-        panel(CommandId::Debug, "cmd.debug", "cmd.debug.desc", format!("{m}+Shift+B")),
-        panel(CommandId::Keybindings, "cmd.keybindings", "cmd.keybindings.desc", "F1".into()),
-        panel(CommandId::About, "cmd.about", "cmd.about.desc", String::new()),
+        panel(
+            CommandId::Options,
+            "cmd.options",
+            "cmd.options.desc",
+            format!("{m}+,"),
+        ),
+        panel(
+            CommandId::Server,
+            "cmd.server",
+            "cmd.server.desc",
+            format!("{m}+Shift+S"),
+        ),
+        panel(
+            CommandId::Audio,
+            "cmd.audio",
+            "cmd.audio.desc",
+            format!("{m}+Shift+A"),
+        ),
+        panel(
+            CommandId::Devices,
+            "cmd.devices",
+            "cmd.devices.desc",
+            format!("{m}+Shift+I"),
+        ),
+        panel(
+            CommandId::Scope,
+            "cmd.scope",
+            "cmd.scope.desc",
+            format!("{m}+Shift+O"),
+        ),
+        panel(
+            CommandId::Spectrum,
+            "cmd.spectrum",
+            "cmd.spectrum.desc",
+            format!("{m}+Shift+P"),
+        ),
+        panel(
+            CommandId::VuMeter,
+            "cmd.vu_meter",
+            "cmd.vu_meter.desc",
+            format!("{m}+Shift+U"),
+        ),
+        panel(
+            CommandId::ScopeBar,
+            "cmd.scope_bar",
+            "cmd.scope_bar.desc",
+            format!("{m}+Shift+W"),
+        ),
+        panel(
+            CommandId::Chat,
+            "cmd.chat",
+            "cmd.chat.desc",
+            format!("{m}+Shift+C"),
+        ),
+        panel(
+            CommandId::Logs,
+            "cmd.logs",
+            "cmd.logs.desc",
+            format!("{m}+Shift+L"),
+        ),
+        panel(
+            CommandId::SampleBrowser,
+            "cmd.sample_browser",
+            "cmd.sample_browser.desc",
+            format!("{m}+Shift+E"),
+        ),
+        panel(
+            CommandId::Documentation,
+            "cmd.documentation",
+            "cmd.documentation.desc",
+            format!("{m}+Shift+H"),
+        ),
+        panel(
+            CommandId::Visuals,
+            "cmd.visuals",
+            "cmd.visuals.desc",
+            format!("{m}+Shift+V"),
+        ),
+        panel(
+            CommandId::Debug,
+            "cmd.debug",
+            "cmd.debug.desc",
+            format!("{m}+Shift+B"),
+        ),
+        panel(
+            CommandId::Keybindings,
+            "cmd.keybindings",
+            "cmd.keybindings.desc",
+            "F1".into(),
+        ),
+        panel(
+            CommandId::About,
+            "cmd.about",
+            "cmd.about.desc",
+            String::new(),
+        ),
         // Engine
         Command {
             id: CommandId::RestartCore,
@@ -462,4 +542,3 @@ impl CommandPalette {
             .collect();
     }
 }
-

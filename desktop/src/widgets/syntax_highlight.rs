@@ -41,10 +41,17 @@ impl CompiledSyntax {
         }
         let combined = parts.join("|");
         let regex = Regex::new(&combined).ok()?;
-        Some(Self { regex, group_names: names, group_categories: categories })
+        Some(Self {
+            regex,
+            group_names: names,
+            group_categories: categories,
+        })
     }
 
-    pub fn tokenize<'a>(&'a self, text: &'a str) -> impl Iterator<Item = (Range<usize>, TokenCategory)> + 'a {
+    pub fn tokenize<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> impl Iterator<Item = (Range<usize>, TokenCategory)> + 'a {
         self.regex.captures_iter(text).filter_map(|caps| {
             for (i, cat) in self.group_categories.iter().enumerate() {
                 if let Some(m) = caps.name(&self.group_names[i]) {
@@ -96,15 +103,15 @@ impl SyntaxTheme {
         Self {
             colors: [
                 Color32::from_rgb(181, 137, 0),   // Keyword — yellow
-                Color32::from_rgb(38, 139, 210),   // Builtin — blue
-                Color32::from_rgb(133, 153, 0),    // Operator — green
-                Color32::from_rgb(211, 54, 130),   // Number — magenta
-                Color32::from_rgb(42, 161, 152),   // String — cyan
-                Color32::from_rgb(88, 110, 117),   // Comment — base01 (dim)
-                Color32::from_rgb(203, 75, 22),    // Variable — orange
-                Color32::from_rgb(108, 113, 196),  // Symbol — violet
-                Color32::from_rgb(220, 50, 47),    // Special — red
-                Color32::from_rgb(101, 123, 131),  // Punctuation — base00
+                Color32::from_rgb(38, 139, 210),  // Builtin — blue
+                Color32::from_rgb(133, 153, 0),   // Operator — green
+                Color32::from_rgb(211, 54, 130),  // Number — magenta
+                Color32::from_rgb(42, 161, 152),  // String — cyan
+                Color32::from_rgb(88, 110, 117),  // Comment — base01 (dim)
+                Color32::from_rgb(203, 75, 22),   // Variable — orange
+                Color32::from_rgb(108, 113, 196), // Symbol — violet
+                Color32::from_rgb(220, 50, 47),   // Special — red
+                Color32::from_rgb(101, 123, 131), // Punctuation — base00
             ],
         }
     }
@@ -112,16 +119,16 @@ impl SyntaxTheme {
     fn phosphor() -> Self {
         Self {
             colors: [
-                Color32::from_rgb(80, 255, 80),    // Keyword — bright green
-                Color32::from_rgb(57, 210, 57),    // Builtin — green
-                Color32::from_rgb(40, 150, 40),    // Operator — dim green
-                Color32::from_rgb(80, 255, 80),    // Number — bright green
-                Color32::from_rgb(140, 230, 80),   // String — green-yellow
-                Color32::from_rgb(30, 100, 30),    // Comment — dark green
-                Color32::from_rgb(80, 255, 80),    // Variable — bright green
-                Color32::from_rgb(120, 220, 60),   // Symbol — yellow-green
-                Color32::from_rgb(220, 255, 220),  // Special — white
-                Color32::from_rgb(30, 100, 30),    // Punctuation — dark green
+                Color32::from_rgb(80, 255, 80),   // Keyword — bright green
+                Color32::from_rgb(57, 210, 57),   // Builtin — green
+                Color32::from_rgb(40, 150, 40),   // Operator — dim green
+                Color32::from_rgb(80, 255, 80),   // Number — bright green
+                Color32::from_rgb(140, 230, 80),  // String — green-yellow
+                Color32::from_rgb(30, 100, 30),   // Comment — dark green
+                Color32::from_rgb(80, 255, 80),   // Variable — bright green
+                Color32::from_rgb(120, 220, 60),  // Symbol — yellow-green
+                Color32::from_rgb(220, 255, 220), // Special — white
+                Color32::from_rgb(30, 100, 30),   // Punctuation — dark green
             ],
         }
     }

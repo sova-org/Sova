@@ -88,8 +88,7 @@ impl ChatPanel {
                         crate::widgets::hint::set(ui.ctx(), t!("chat.hint.send"));
                     }
 
-                    let enter =
-                        resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     if (enter || send_btn.clicked()) && !self.input.trim().is_empty() {
                         let text = self.input.trim().to_owned();
                         bridge.send_chat(&text);
@@ -117,17 +116,14 @@ impl ChatPanel {
                         if messages.is_empty() {
                             ui.centered_and_justified(|ui| {
                                 ui.label(
-                                    egui::RichText::new(t!("chat.no_messages"))
-                                        .color(COLOR_MUTED),
+                                    egui::RichText::new(t!("chat.no_messages")).color(COLOR_MUTED),
                                 );
                             });
                         } else {
                             for msg in messages {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new(&msg.time)
-                                            .small()
-                                            .color(COLOR_MUTED),
+                                        egui::RichText::new(&msg.time).small().color(COLOR_MUTED),
                                     );
                                     if msg.system {
                                         ui.label(

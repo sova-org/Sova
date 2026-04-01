@@ -7,7 +7,14 @@ use ratatui::{
 };
 use sova_core::compiler::CompilationState;
 
-use crate::{app::AppState, page::Page, widgets::{configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget, scene_widget::SceneWidget, time_widget::TimeWidget}};
+use crate::{
+    app::AppState,
+    page::Page,
+    widgets::{
+        configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget,
+        scene_widget::SceneWidget, time_widget::TimeWidget,
+    },
+};
 
 #[derive(Default)]
 pub struct Footer;
@@ -68,14 +75,15 @@ impl StatefulWidget for Footer {
         let map = Paragraph::new(Text::from(lines));
 
         let pos = Paragraph::new(format!(
-            "{}:{}\n{}\n{}", 
-            state.selected.0, 
+            "{}:{}\n{}\n{}",
+            state.selected.0,
             state.selected.1,
             state.selected_frame().map_or("", |f| f.script().lang()),
-            state.selected_frame().map_or("", |f| 
-                format_compilation_state(&f.script().compilation_state())
-            )
-
+            state
+                .selected_frame()
+                .map_or("", |f| format_compilation_state(
+                    &f.script().compilation_state()
+                ))
         ));
 
         let [left, middle, right] = Layout::horizontal([Length(5), Min(0), Length(5)]).areas(inner);
@@ -89,10 +97,14 @@ impl StatefulWidget for Footer {
             Page::Devices => DevicesWidget::get_help(),
             Page::Time => TimeWidget::get_help(),
             Page::Configure => ConfigureWidget::get_help(),
-            _ => ""
+            _ => "",
         };
-        Paragraph::new(help).render(middle.inner(Margin {
-            horizontal: 4, vertical: 0
-        }), buf);
+        Paragraph::new(help).render(
+            middle.inner(Margin {
+                horizontal: 4,
+                vertical: 0,
+            }),
+            buf,
+        );
     }
 }

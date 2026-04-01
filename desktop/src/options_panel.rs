@@ -10,9 +10,7 @@ pub struct OptionsPanel {
 
 impl OptionsPanel {
     pub fn new() -> Self {
-        Self {
-            system_fonts: None,
-        }
+        Self { system_fonts: None }
     }
 
     /// Returns `true` if appearance settings were changed.
@@ -26,7 +24,9 @@ impl OptionsPanel {
         languages: &[LanguageDefinition],
     ) -> bool {
         let mut changed = false;
-        let system_fonts = self.system_fonts.get_or_insert_with(crate::fonts::list_system_fonts);
+        let system_fonts = self
+            .system_fonts
+            .get_or_insert_with(crate::fonts::list_system_fonts);
 
         use crate::widgets::hint;
 
@@ -68,11 +68,17 @@ impl OptionsPanel {
                 egui::ComboBox::from_id_salt("ui_font_selector")
                     .selected_text(&ui_display)
                     .show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut appearance.ui_font, String::new(), "Default").changed() {
+                        if ui
+                            .selectable_value(&mut appearance.ui_font, String::new(), "Default")
+                            .changed()
+                        {
                             changed = true;
                         }
                         for font in system_fonts.iter() {
-                            if ui.selectable_value(&mut appearance.ui_font, font.clone(), font).changed() {
+                            if ui
+                                .selectable_value(&mut appearance.ui_font, font.clone(), font)
+                                .changed()
+                            {
                                 changed = true;
                             }
                         }
@@ -126,8 +132,7 @@ impl OptionsPanel {
 
                 ui.add_space(4.0);
 
-                let r = ui
-                    .checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
+                let r = ui.checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
                 changed |= r.changed();
 
@@ -136,10 +141,7 @@ impl OptionsPanel {
                 let r = ui.label(t!("options.bg_brightness"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.bg_brightness"));
                 let mut brightness = appearance.bg_brightness as f32;
-                let r = ui.add(
-                    egui::Slider::new(&mut brightness, 10.0..=50.0)
-                        .step_by(1.0),
-                );
+                let r = ui.add(egui::Slider::new(&mut brightness, 10.0..=50.0).step_by(1.0));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.bg_brightness"));
                 if r.changed() {
                     appearance.bg_brightness = brightness as u8;
@@ -156,13 +158,10 @@ impl OptionsPanel {
                 if appearance.visuals_enabled {
                     ui.horizontal(|ui| {
                         ui.label(t!("options.scene_opacity"));
-                        let r = ui.add(
-                            egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0)
-                        );
+                        let r = ui.add(egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0));
                         changed |= r.changed();
                     });
                 }
-
             });
 
         egui::CollapsingHeader::new(t!("options.sidebar"))
@@ -171,8 +170,16 @@ impl OptionsPanel {
                 let r = ui.label(t!("options.sidebar_side"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.sidebar_side"));
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut doc_settings.side, DocSide::Left, t!("options.sidebar_side.left"));
-                    ui.radio_value(&mut doc_settings.side, DocSide::Right, t!("options.sidebar_side.right"));
+                    ui.radio_value(
+                        &mut doc_settings.side,
+                        DocSide::Left,
+                        t!("options.sidebar_side.left"),
+                    );
+                    ui.radio_value(
+                        &mut doc_settings.side,
+                        DocSide::Right,
+                        t!("options.sidebar_side.right"),
+                    );
                 });
 
                 ui.add_space(4.0);
@@ -180,8 +187,16 @@ impl OptionsPanel {
                 let r = ui.label(t!("options.sidebar_trigger"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.sidebar_trigger"));
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut doc_settings.trigger, DocTrigger::Click, t!("doc.trigger_click"));
-                    ui.radio_value(&mut doc_settings.trigger, DocTrigger::Hover, t!("doc.trigger_hover"));
+                    ui.radio_value(
+                        &mut doc_settings.trigger,
+                        DocTrigger::Click,
+                        t!("doc.trigger_click"),
+                    );
+                    ui.radio_value(
+                        &mut doc_settings.trigger,
+                        DocTrigger::Hover,
+                        t!("doc.trigger_hover"),
+                    );
                 });
             });
 
@@ -210,11 +225,17 @@ impl OptionsPanel {
                 egui::ComboBox::from_id_salt("editor_font_selector")
                     .selected_text(&editor_display)
                     .show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut appearance.editor_font, String::new(), "Default").changed() {
+                        if ui
+                            .selectable_value(&mut appearance.editor_font, String::new(), "Default")
+                            .changed()
+                        {
                             changed = true;
                         }
                         for font in system_fonts.iter() {
-                            if ui.selectable_value(&mut appearance.editor_font, font.clone(), font).changed() {
+                            if ui
+                                .selectable_value(&mut appearance.editor_font, font.clone(), font)
+                                .changed()
+                            {
                                 changed = true;
                             }
                         }
@@ -227,8 +248,7 @@ impl OptionsPanel {
                     t!("options.line_numbers"),
                 );
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.line_numbers"));
-                let r =
-                    ui.checkbox(&mut editor_settings.word_wrap, t!("options.word_wrap"));
+                let r = ui.checkbox(&mut editor_settings.word_wrap, t!("options.word_wrap"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.word_wrap"));
                 let r = ui.checkbox(
                     &mut editor_settings.show_whitespace,
@@ -251,17 +271,33 @@ impl OptionsPanel {
                 let r = ui.label(t!("options.syntax_theme"));
                 hint::on_hover(ui.ctx(), &r, t!("options.hint.syntax_theme"));
                 let themes = [
-                    (SyntaxThemePref::OneDark, t!("options.syntax_theme.one_dark")),
-                    (SyntaxThemePref::Solarized, t!("options.syntax_theme.solarized")),
-                    (SyntaxThemePref::Phosphor, t!("options.syntax_theme.phosphor")),
+                    (
+                        SyntaxThemePref::OneDark,
+                        t!("options.syntax_theme.one_dark"),
+                    ),
+                    (
+                        SyntaxThemePref::Solarized,
+                        t!("options.syntax_theme.solarized"),
+                    ),
+                    (
+                        SyntaxThemePref::Phosphor,
+                        t!("options.syntax_theme.phosphor"),
+                    ),
                     (SyntaxThemePref::Dracula, t!("options.syntax_theme.dracula")),
                     (SyntaxThemePref::Monokai, t!("options.syntax_theme.monokai")),
                     (SyntaxThemePref::Gruvbox, t!("options.syntax_theme.gruvbox")),
                     (SyntaxThemePref::Nord, t!("options.syntax_theme.nord")),
-                    (SyntaxThemePref::Catppuccin, t!("options.syntax_theme.catppuccin")),
-                    (SyntaxThemePref::TokyoNight, t!("options.syntax_theme.tokyo_night")),
+                    (
+                        SyntaxThemePref::Catppuccin,
+                        t!("options.syntax_theme.catppuccin"),
+                    ),
+                    (
+                        SyntaxThemePref::TokyoNight,
+                        t!("options.syntax_theme.tokyo_night"),
+                    ),
                 ];
-                let current_label = themes.iter()
+                let current_label = themes
+                    .iter()
                     .find(|(v, _)| *v == editor_settings.syntax_theme)
                     .map(|(_, l)| l.as_ref())
                     .unwrap_or("");

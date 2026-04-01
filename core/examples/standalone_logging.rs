@@ -1,4 +1,4 @@
-use sova_core::{init_standalone, get_logger};
+use sova_core::{get_logger, init_standalone};
 
 fn main() {
     println!("=== Standalone Logging Test ===");

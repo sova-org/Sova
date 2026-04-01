@@ -1,12 +1,12 @@
 use std::time::Instant;
 
+use crate::scene_panel::new_frame;
 use eframe::egui;
 use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
-use sova_core::schedule::SchedulerMessage;
-use crate::scene_panel::new_frame;
 use sova_core::schedule::ActionTiming;
+use sova_core::schedule::SchedulerMessage;
 use sova_server::{ClientMessage, TextOp};
 
 use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext, cycled_accent};
@@ -106,7 +106,9 @@ pub fn show_lang_picker(
 
     // Arrow navigation
     let available = ui.available_size();
-    let cols = ((available.x / 140.0) as usize).max(1).min(filtered.len().max(1));
+    let cols = ((available.x / 140.0) as usize)
+        .max(1)
+        .min(filtered.len().max(1));
 
     if !filtered.is_empty() {
         if arrow_left {
@@ -131,7 +133,11 @@ pub fn show_lang_picker(
     }
 
     // Fill the entire body with a dark background so the frame's bg doesn't bleed through
-    ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, ui.visuals().extreme_bg_color);
+    ui.painter().rect_filled(
+        ui.available_rect_before_wrap(),
+        0.0,
+        ui.visuals().extreme_bg_color,
+    );
 
     // Render filter hint
     if !picker_filter.is_empty() {
@@ -153,8 +159,7 @@ pub fn show_lang_picker(
     let rows = filtered.len().div_ceil(cols);
     let spacing = 2.0;
     let tile_w = (available.x - spacing * (cols as f32 - 1.0)) / cols as f32;
-    let tile_h = ((available.y - spacing * (rows as f32 - 1.0)) / rows as f32)
-        .clamp(32.0, 64.0);
+    let tile_h = ((available.y - spacing * (rows as f32 - 1.0)) / rows as f32).clamp(32.0, 64.0);
 
     let mut result = None;
 
@@ -182,12 +187,10 @@ pub fn show_lang_picker(
                 };
 
                 let label = format!("{}{}", shortcut, lang.name);
-                let btn = egui::Button::new(
-                    egui::RichText::new(label).color(text_color),
-                )
-                .fill(fill)
-                .corner_radius(0.0)
-                .min_size(egui::vec2(tile_w, tile_h));
+                let btn = egui::Button::new(egui::RichText::new(label).color(text_color))
+                    .fill(fill)
+                    .corner_radius(0.0)
+                    .min_size(egui::vec2(tile_w, tile_h));
 
                 if ui.add(btn).clicked() {
                     result = Some(lang.name.clone());
@@ -270,7 +273,11 @@ impl InlineFrameState {
         let old: Vec<char> = self.prev_content.chars().collect();
         let new: Vec<char> = self.content.chars().collect();
 
-        let prefix = old.iter().zip(new.iter()).take_while(|(a, b)| a == b).count();
+        let prefix = old
+            .iter()
+            .zip(new.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
         let old_rem = old.len() - prefix;
         let new_rem = new.len() - prefix;
         let suffix = old[prefix..]
@@ -288,12 +295,21 @@ impl InlineFrameState {
         let byte_prefix: usize = old.iter().take(prefix).map(|c| c.len_utf8()).sum();
 
         if del_len > 0 {
-            let byte_del: usize = old[prefix..prefix + del_len].iter().map(|c| c.len_utf8()).sum();
-            self.pending_ops.push(TextOp::Delete { pos: byte_prefix, len: byte_del });
+            let byte_del: usize = old[prefix..prefix + del_len]
+                .iter()
+                .map(|c| c.len_utf8())
+                .sum();
+            self.pending_ops.push(TextOp::Delete {
+                pos: byte_prefix,
+                len: byte_del,
+            });
         }
         if ins_len > 0 {
             let ins_text: String = new[prefix..prefix + ins_len].iter().collect();
-            self.pending_ops.push(TextOp::Insert { pos: byte_prefix, text: ins_text });
+            self.pending_ops.push(TextOp::Insert {
+                pos: byte_prefix,
+                text: ins_text,
+            });
         }
 
         self.prev_content = self.content.clone();
@@ -500,10 +516,8 @@ impl InlineFrameState {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Menu button
             let menu_btn = ui.add(
-                egui::Button::new(
-                    egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
-                )
-                .fill(egui::Color32::TRANSPARENT),
+                egui::Button::new(egui::RichText::new(crate::icons::CHEVRON_DOWN).small())
+                    .fill(egui::Color32::TRANSPARENT),
             );
             if menu_btn.clicked() {
                 self.menu_open = !self.menu_open;
@@ -530,7 +544,12 @@ impl InlineFrameState {
                 let (badge_bg, badge_fg) = match current_playing_fi {
                     Some(pfi) if fi == pfi => (accent, egui::Color32::WHITE),
                     Some(pfi) if fi < pfi => (
-                        egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 50),
+                        egui::Color32::from_rgba_unmultiplied(
+                            accent.r(),
+                            accent.g(),
+                            accent.b(),
+                            50,
+                        ),
                         COLOR_MUTED,
                     ),
                     _ => (ui.visuals().extreme_bg_color, COLOR_MUTED),
@@ -543,7 +562,10 @@ impl InlineFrameState {
                 ui.painter().rect_filled(rect, 0.0, badge_bg);
                 let center = rect.center();
                 ui.painter().galley(
-                    egui::pos2(center.x - galley.size().x / 2.0, center.y - galley.size().y / 2.0),
+                    egui::pos2(
+                        center.x - galley.size().x / 2.0,
+                        center.y - galley.size().y / 2.0,
+                    ),
                     galley,
                     badge_fg,
                 );
@@ -563,7 +585,10 @@ impl InlineFrameState {
         let mut picker_target = None;
         if ui.button(t!("scene.insert_frame_before")).clicked() {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
             picker_target = Some((li, fi));
             self.menu_open = false;
@@ -571,7 +596,10 @@ impl InlineFrameState {
         }
         if ui.button(t!("scene.insert_frame_after")).clicked() {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi + 1,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
             picker_target = Some((li, fi + 1));
             self.menu_open = false;
@@ -584,7 +612,10 @@ impl InlineFrameState {
                 .and_then(|l| l.frames.get(fi))
             {
                 bridge.send(SchedulerMessage::AddFrame(
-                    li, fi + 1, frame.clone(), ActionTiming::Immediate,
+                    li,
+                    fi + 1,
+                    frame.clone(),
+                    ActionTiming::Immediate,
                 ));
             }
             self.menu_open = false;
@@ -594,14 +625,16 @@ impl InlineFrameState {
         ui.separator();
 
         if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR),
-                ),
-            )
+            .add(egui::Button::new(
+                egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR),
+            ))
             .clicked()
         {
-            bridge.send(SchedulerMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveFrame(
+                li,
+                fi,
+                ActionTiming::Immediate,
+            ));
             self.menu_open = false;
             ui.close();
         }
@@ -629,12 +662,7 @@ impl InlineFrameState {
             .id_salt(("editor_scroll", li, fi))
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(
-                    ui,
-                    editor_id,
-                    &mut self.content,
-                    ctx,
-                );
+                let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
                     self.compute_diff_ops();
@@ -680,9 +708,7 @@ impl InlineFrameState {
         // Send text cursor position to peers (throttled)
         if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
             let pos = (line, col);
-            if self.sent_cursor != Some(pos)
-                && self.last_cursor_send.elapsed().as_millis() >= 50
-            {
+            if self.sent_cursor != Some(pos) && self.last_cursor_send.elapsed().as_millis() >= 50 {
                 self.sent_cursor = Some(pos);
                 self.last_cursor_send = Instant::now();
                 bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
@@ -777,7 +803,11 @@ impl InlineScriptState {
             let is_mac = ui.ctx().os().is_mac();
             let shortcut_pressed = ui.input(|i| {
                 i.key_pressed(egui::Key::L)
-                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+                    && if is_mac {
+                        i.modifiers.mac_cmd
+                    } else {
+                        i.modifiers.ctrl
+                    }
             });
             if shortcut_pressed {
                 self.lang_picker_open = !self.lang_picker_open;
@@ -807,7 +837,9 @@ impl InlineScriptState {
             if prelude_len > 0 {
                 let del_btn = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(crate::icons::CLOSE).small().color(COLOR_MUTED),
+                        egui::RichText::new(crate::icons::CLOSE)
+                            .small()
+                            .color(COLOR_MUTED),
                     )
                     .fill(egui::Color32::TRANSPARENT),
                 );
@@ -836,10 +868,7 @@ impl InlineScriptState {
                     .on_hover_text(t!("step.discard"))
                     .clicked()
                 {
-                    if let Some(script) = bridge
-                        .scene()
-                        .and_then(|s| s.prelude.get(idx))
-                    {
+                    if let Some(script) = bridge.scene().and_then(|s| s.prelude.get(idx)) {
                         self.content = script.content().to_owned();
                         self.lang = script.lang().to_owned();
                         self.dirty = false;
@@ -848,8 +877,6 @@ impl InlineScriptState {
             }
         });
     }
-
-
 
     pub fn show_body(
         &mut self,
@@ -870,12 +897,7 @@ impl InlineScriptState {
             .id_salt(("prelude_editor_scroll", idx))
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(
-                    ui,
-                    editor_id,
-                    &mut self.content,
-                    ctx,
-                );
+                let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -893,7 +915,11 @@ impl InlineScriptState {
             let is_mac = ui.ctx().os().is_mac();
             let eval = ui.input(|i| {
                 i.key_pressed(egui::Key::Enter)
-                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+                    && if is_mac {
+                        i.modifiers.mac_cmd
+                    } else {
+                        i.modifiers.ctrl
+                    }
             });
             if eval {
                 self.evaluate(idx, bridge);

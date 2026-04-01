@@ -37,10 +37,7 @@ pub fn show(ctx: &egui::Context, id: &str, dismissed: &mut Vec<String>) -> bool 
 
     if let Some(resp) = r {
         let rect = resp.response.rect;
-        let bar = egui::Rect::from_min_size(
-            rect.left_top(),
-            egui::vec2(3.0, rect.height()),
-        );
+        let bar = egui::Rect::from_min_size(rect.left_top(), egui::vec2(3.0, rect.height()));
         ctx.layer_painter(resp.response.layer_id)
             .rect_filled(bar, 0.0, accent);
     }

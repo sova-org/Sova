@@ -36,7 +36,10 @@ pub(crate) struct CagireError {
 
 impl CagireError {
     pub fn new(message: impl Into<String>, span: Span) -> Self {
-        Self { message: message.into(), span }
+        Self {
+            message: message.into(),
+            span,
+        }
     }
 
     pub fn into_compilation_error(self) -> CompilationError {
@@ -141,7 +144,9 @@ impl Stack {
 
     pub(super) fn pop(&mut self) -> Result<Value, String> {
         self.origins.pop();
-        self.values.pop().ok_or_else(|| "stack underflow".to_string())
+        self.values
+            .pop()
+            .ok_or_else(|| "stack underflow".to_string())
     }
 
     pub(super) fn pop_int(&mut self) -> Result<i64, String> {
@@ -156,14 +161,17 @@ impl Stack {
         Ok(self.pop()?.is_truthy())
     }
 
-
     pub(super) fn ensure(&self, n: usize) -> Result<(), String> {
-        if self.values.len() < n { return Err("stack underflow".into()); }
+        if self.values.len() < n {
+            return Err("stack underflow".into());
+        }
         Ok(())
     }
 
     pub(super) fn binary_op<F>(&mut self, f: F) -> Result<(), String>
-    where F: Fn(f64, f64) -> f64 {
+    where
+        F: Fn(f64, f64) -> f64,
+    {
         let b = self.pop()?;
         let a = self.pop()?;
         let result = float_to_value(f(a.as_float()?, b.as_float()?));
@@ -173,20 +181,30 @@ impl Stack {
     }
 
     pub(super) fn cmp_op<F>(&mut self, f: F) -> Result<(), String>
-    where F: Fn(f64, f64) -> bool {
+    where
+        F: Fn(f64, f64) -> bool,
+    {
         let b = self.pop()?;
         let a = self.pop()?;
-        let result = Value::Int(if f(a.as_float()?, b.as_float()?) { 1 } else { 0 });
+        let result = Value::Int(if f(a.as_float()?, b.as_float()?) {
+            1
+        } else {
+            0
+        });
         self.values.push(result);
         self.origins.push(Span::default());
         Ok(())
     }
 
     #[inline]
-    pub(super) fn len(&self) -> usize { self.values.len() }
+    pub(super) fn len(&self) -> usize {
+        self.values.len()
+    }
 
     #[inline]
-    pub(super) fn last(&self) -> Option<&Value> { self.values.last() }
+    pub(super) fn last(&self) -> Option<&Value> {
+        self.values.last()
+    }
 
     pub(super) fn swap(&mut self, a: usize, b: usize) {
         self.values.swap(a, b);
@@ -214,7 +232,10 @@ impl Stack {
 
     pub(super) fn pop_with_origin(&mut self) -> Result<(Value, Span), String> {
         let origin = self.origins.pop().unwrap_or_default();
-        let val = self.values.pop().ok_or_else(|| "stack underflow".to_string())?;
+        let val = self
+            .values
+            .pop()
+            .ok_or_else(|| "stack underflow".to_string())?;
         Ok((val, origin))
     }
 }
@@ -252,7 +273,12 @@ impl CmdRegister {
     }
 
     pub(super) fn get_param_float(&self, key: &str) -> Option<f64> {
-        self.params.iter().find(|(k, _)| *k == key)?.1.as_float().ok()
+        self.params
+            .iter()
+            .find(|(k, _)| *k == key)?
+            .1
+            .as_float()
+            .ok()
     }
 
     pub(super) fn set_param(&mut self, key: &'static str, val: Value) {

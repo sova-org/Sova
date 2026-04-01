@@ -1,7 +1,7 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
+use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 use tokio_util::sync::CancellationToken;
-use std::{sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc}};
 
 use sova_core::{
     clock::ClockServer,
@@ -9,10 +9,8 @@ use sova_core::{
     scene::{Line, Scene},
     schedule::SovaNotification,
 };
-use sova_server::{audio::{AudioThread, spawn_audio_thread}};
-use sova_server::{
-    AudioEngineState, ClientRegistry, SovaCoreServer,
-};
+use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{AudioEngineState, ClientRegistry, SovaCoreServer};
 use tokio::sync::Mutex;
 
 use crate::log_panel::{LogEntry, LogSource};
@@ -179,7 +177,11 @@ impl ServerPanel {
         let audio_cmd_tx = Some(audio_thread.cmd_tx.clone());
         let master_gain = Arc::clone(&audio_thread.master_gain);
 
-        let password = if self.password.is_empty() { None } else { Some(self.password.clone()) };
+        let password = if self.password.is_empty() {
+            None
+        } else {
+            Some(self.password.clone())
+        };
 
         let mut server = SovaCoreServer::new(
             self.ip.clone(),
@@ -196,7 +198,7 @@ impl ServerPanel {
             password,
             master_gain,
         );
-        
+
         let cancel_token = CancellationToken::new();
 
         let server_token = cancel_token.clone();
@@ -228,7 +230,7 @@ impl ServerPanel {
 
             embedded.cancel_token.cancel();
             //embedded.server_task.abort();
-            
+
             embedded.log_forwarder.abort();
             // Orchestrator thread will handle scheduler/world shutdown
             // when the core_restart_tx channel drops
@@ -309,7 +311,8 @@ impl ServerPanel {
                     ui.end_row();
 
                     let label = ui.label(t!("server.password"));
-                    let field = ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                    let field =
+                        ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
                     if label.hovered() || field.hovered() {
                         crate::widgets::hint::set(&ctx, t!("server.hint.password"));
                     }

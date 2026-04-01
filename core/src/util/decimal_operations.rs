@@ -2,9 +2,9 @@
 // sign is a signe (should be -1 or 1), num is the numerator of a fraction, den is the
 // denominator of a fraction. Fractions as results of operations are always simplified.
 
+mod decimal;
 #[cfg(test)]
 mod tests;
-mod decimal;
 
 pub use decimal::Decimal;
 
