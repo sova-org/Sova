@@ -10,7 +10,7 @@ use crate::{
 };
 use crate::{get_logger, log_eprintln};
 
-pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
+pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 10;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
@@ -42,7 +42,7 @@ impl World {
                     Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
                 }
                 let mut world = World {
-                    queue: Default::default(),
+                    queue: BinaryHeap::with_capacity(4096),
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
