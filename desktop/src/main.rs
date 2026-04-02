@@ -144,7 +144,7 @@ fn main() -> eframe::Result {
             let scope_panel = scope_panel::ScopePanel::new(s.scope);
             let spectrum_panel = spectrum_panel::SpectrumPanel::new(s.spectrum);
             let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
-            let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar_height);
+            let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar_height, s.windows.scope_bar_mode);
             let chat_panel = chat_panel::ChatPanel::new();
             let mut scene_panel = scene_panel::ScenePanel::new();
             scene_panel.prelude_collapsed = s.scene.prelude_collapsed;
@@ -418,6 +418,7 @@ impl SovaApp {
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
                 scope_bar_height: self.scope_bar_panel.height(),
+                scope_bar_mode: self.scope_bar_panel.mode,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -977,6 +978,7 @@ impl eframe::App for SovaApp {
                 ctx,
                 self.bridge.scope_data(),
                 &self.scope_panel.settings,
+                &self.spectrum_panel.settings,
             );
         }
 

@@ -136,12 +136,31 @@ pub struct VisualsSettings {
     pub shared: bool,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScopeBarMode {
+    #[default]
+    Scope,
+    Spectrogram,
+    Both,
+}
+
+impl ScopeBarMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Scope => Self::Spectrogram,
+            Self::Spectrogram => Self::Both,
+            Self::Both => Self::Scope,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
     pub scope_bar_height: f32,
+    pub scope_bar_mode: ScopeBarMode,
 }
 
 impl Default for WindowSettings {
@@ -150,6 +169,7 @@ impl Default for WindowSettings {
             chat_detached: false,
             sample_browser_detached: false,
             scope_bar_height: 64.0,
+            scope_bar_mode: ScopeBarMode::default(),
         }
     }
 }
