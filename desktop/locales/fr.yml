@@ -50,7 +50,8 @@ hint.mute: "Couper le son"
 hint.unmute: "Rétablir le son"
 
 # Server panel
-config.title: "Configuration"
+config.title: "Serveur"
+settings.title: "Paramètres"
 config.server: "Serveur"
 config.audio: "Audio"
 config.audio_status: "État audio"
@@ -93,7 +94,7 @@ client.hint.server_config: "Configuration du serveur"
 client.hint.connect: "Se connecter au serveur"
 
 # Options panel
-options.title: "Options"
+options.title: "Apparence"
 options.appearance: "Apparence"
 options.theme: "Thème"
 options.theme.system: "Système"
