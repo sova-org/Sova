@@ -1,4 +1,4 @@
-0 0.75 at
+0 0.75 (
 kick ( rim ) 50 prob snd
 ( 4 crush ) almostNever
-.
+. ) at

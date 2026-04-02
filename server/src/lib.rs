@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod client;
+pub mod demos;
 mod message;
 mod server;
 

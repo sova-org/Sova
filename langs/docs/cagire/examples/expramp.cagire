@@ -1,6 +1,6 @@
-0 0.5 at
+0 0.5 (
 0.125 expramp 50 8000 range lpf
 tri snd
 .5 decay
 c3 g3 c4 note
-.
+. ) at

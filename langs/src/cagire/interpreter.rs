@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn string_pattern_annotations_follow_event_progress() {
-        let script = "\"x.x.\" at 60 note .";
+        let script = "\"x.x.\" ( 60 note . ) at";
         let mut interpreter = CagireInterpreter::new(
             script,
             Dictionary::new(),

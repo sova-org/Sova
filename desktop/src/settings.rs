@@ -165,8 +165,6 @@ impl Default for WindowSettings {
 pub struct ServerSettings {
     pub ip: String,
     pub port: String,
-    pub tempo: String,
-    pub quantum: String,
 }
 
 impl Default for ServerSettings {
@@ -174,8 +172,6 @@ impl Default for ServerSettings {
         Self {
             ip: "127.0.0.1".into(),
             port: "8080".into(),
-            tempo: "120".into(),
-            quantum: "4".into(),
         }
     }
 }

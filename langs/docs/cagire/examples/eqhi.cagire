@@ -1,5 +1,5 @@
-0 1 0.25 ., at
+0 1 0.25 ., (
 hat snd
 0.4 gain
 6 12 18 3 choose eqhi
-.
+. ) at

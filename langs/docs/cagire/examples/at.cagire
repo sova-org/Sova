@@ -1,9 +1,9 @@
-0 ( 0.5 ) 25 prob at
+0 ( 0.5 ) 25 prob (
 kick snd
-.
+. ) at
 
 clear
 
-0.25 0.75 at
+0.25 0.75 (
 rim snd
-.
+. ) at

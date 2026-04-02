@@ -95,7 +95,7 @@ pub struct ClientBridge {
     // State from server
     scene: Option<Scene>,
     positions: Vec<Vec<(usize, usize)>>,
-    position_start_beat: Vec<f64>,
+    position_start_beat: Vec<Vec<f64>>,
     devices: Vec<DeviceInfo>,
     clock: ClockState,
     audio_state: AudioEngineState,
@@ -477,10 +477,17 @@ impl ClientBridge {
                 }
                 ServerMessage::Notification(SovaNotification::FramePositionChanged(p)) => {
                     let beat = self.clock.beat;
-                    self.position_start_beat.resize(p.len(), beat);
-                    for (li, new_pos) in p.iter().enumerate() {
-                        if self.positions.get(li) != Some(new_pos) {
-                            self.position_start_beat[li] = beat;
+                    self.position_start_beat.resize_with(p.len(), Vec::new);
+                    self.position_start_beat.truncate(p.len());
+                    for (li, new_heads) in p.iter().enumerate() {
+                        let old_heads = self.positions.get(li);
+                        let starts = &mut self.position_start_beat[li];
+                        starts.resize(new_heads.len(), beat);
+                        starts.truncate(new_heads.len());
+                        for (hi, new_pos) in new_heads.iter().enumerate() {
+                            if old_heads.and_then(|old| old.get(hi)) != Some(new_pos) {
+                                starts[hi] = beat;
+                            }
                         }
                     }
                     self.positions = p;
@@ -728,7 +735,7 @@ impl ClientBridge {
         &self.positions
     }
 
-    pub fn position_start_beat(&self) -> &[f64] {
+    pub fn position_start_beat(&self) -> &[Vec<f64>] {
         &self.position_start_beat
     }
 

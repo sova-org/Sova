@@ -127,6 +127,7 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "mcont" => Op::MidiContinue,
         "forget" => Op::Forget,
         "print" => Op::Print,
+        "exe" => Op::ExecuteFrame,
         "prot" => Op::PatRot,
         "prev" => Op::PatRev,
         "pinv" => Op::PatInv,

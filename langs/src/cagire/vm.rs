@@ -8,6 +8,8 @@ use sova_core::clock::SyncTime;
 use sova_core::protocol::osc::OSCMessage;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
+use sova_core::device_map::DeviceMap;
+use sova_core::protocol::DeviceKind;
 use sova_core::vm::EvaluationContext;
 
 use super::compiler::{compile_script, Dictionary};
@@ -470,7 +472,7 @@ impl CagireVM {
                 }
 
                 Op::Emit => {
-                    at!(self.emit_events(cmd, ctx, events))?;
+                    at!(self.emit_events(cmd, ctx, events, eval_ctx.device_map))?;
                 }
 
                 Op::Get => {
@@ -1109,14 +1111,17 @@ impl CagireVM {
                 }
 
                 Op::At => {
-                    at!(stack.ensure(1))?;
-                    let deltas = std::mem::take(&mut stack.values);
-                    stack.origins.clear();
-                    cmd.set_deltas(deltas);
-                }
-
-                Op::AtLoop(body_ops, body_spans) => {
-                    at!(stack.ensure(1))?;
+                    at!(stack.ensure(2))?;
+                    let quot = at!(stack.pop())?;
+                    let (body_ops, body_spans) = match &quot {
+                        Value::Quotation(ops, spans) => (ops.clone(), spans.clone()),
+                        _ => {
+                            return Err(CagireError::new(
+                                "at expects a quotation on top of stack",
+                                span!(),
+                            ));
+                        }
+                    };
                     let values = std::mem::take(&mut stack.values);
                     let origins = std::mem::take(&mut stack.origins);
 
@@ -1157,7 +1162,7 @@ impl CagireVM {
                                     self.active_emit_annotations.push(span);
                                 }
                                 self.execute_ops(
-                                    body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                                    &body_ops, &body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
                                 )?;
                                 if highlight_span.is_some() {
                                     self.active_emit_annotations.pop();
@@ -1171,7 +1176,7 @@ impl CagireVM {
                         }
                     }
 
-                    // Float mode (existing behavior)
+                    // Float mode
                     let n = values.len();
                     for (i, delta_val) in values.iter().enumerate() {
                         let frac = at!(delta_val.as_float())?;
@@ -1194,7 +1199,7 @@ impl CagireVM {
 
                         cmd.set_delta_secs(delta_secs);
                         self.execute_ops(
-                            body_ops, body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                            &body_ops, &body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
                         )?;
                         cmd.clear_params();
                         cmd.clear_sound();
@@ -1700,6 +1705,16 @@ impl CagireVM {
                     let val = at!(stack.pop())?;
                     self.push_event(events, ConcreteEvent::Print(val.to_param_string()), 0);
                 }
+
+                Op::ExecuteFrame => {
+                    let f_i = at!(at!(stack.pop())?.as_int())? as usize;
+                    let l_i = at!(at!(stack.pop())?.as_int())? as usize;
+                    self.push_event(
+                        events,
+                        ConcreteEvent::ExecuteFrame(l_i, f_i),
+                        offset_micros(ctx, 0.0),
+                    );
+                }
             }
             pc += 1;
         }
@@ -1773,31 +1788,12 @@ impl CagireVM {
         cmd: &mut CmdRegister,
         ctx: &StepContext,
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
+        device_map: &DeviceMap,
     ) -> Result<(), String> {
-        if let Some(dsecs) = cmd.take_delta_secs() {
-            // AtLoop path: single delta, vary poly_idx
-            let poly_count = compute_poly_count(cmd);
-            for poly_idx in 0..poly_count {
-                self.emit_single(cmd, ctx, events, poly_idx, dsecs)?;
-            }
-        } else {
-            // Normal path: iterate deltas x poly
-            let poly_count = compute_poly_count(cmd);
-            let deltas: Vec<f64> = if cmd.deltas().is_empty() {
-                vec![0.0]
-            } else {
-                cmd.deltas()
-                    .iter()
-                    .filter_map(|v| v.as_float().ok())
-                    .collect()
-            };
-
-            for poly_idx in 0..poly_count {
-                for &delta_frac in &deltas {
-                    let delta_secs = ctx.nudge_secs + delta_frac * ctx.step_duration;
-                    self.emit_single(cmd, ctx, events, poly_idx, delta_secs)?;
-                }
-            }
+        let delta_secs = cmd.take_delta_secs().unwrap_or(ctx.nudge_secs);
+        let poly_count = compute_poly_count(cmd);
+        for poly_idx in 0..poly_count {
+            self.emit_single(cmd, ctx, events, poly_idx, delta_secs, device_map)?;
         }
 
         Ok(())
@@ -1810,6 +1806,7 @@ impl CagireVM {
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
         poly_idx: usize,
         delta_secs: f64,
+        device_map: &DeviceMap,
     ) -> Result<(), String> {
         let time = offset_micros(ctx, delta_secs);
 
@@ -1934,6 +1931,40 @@ impl CagireVM {
                 );
             }
         } else {
+            if let Some(addr_val) = find_param("address") {
+                let addr_str = resolve_cycling(addr_val, poly_idx).to_param_string();
+                if !addr_str.is_empty() {
+                    if let Some(dev_ref) = device_map.get_out_device_at_slot(dev) {
+                        if dev_ref.kind() == DeviceKind::Osc {
+                            let mut osc_args = Vec::with_capacity(params.len() * 2);
+                            for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                                if *k == "device" || *k == "address" {
+                                    continue;
+                                }
+                                let resolved = resolve_cycling(v, poly_idx);
+                                osc_args.push(VariableValue::Str(k.to_string()));
+                                let param_str = resolved.to_param_string();
+                                if let Ok(f) = param_str.parse::<f64>() {
+                                    osc_args.push(VariableValue::Float(f));
+                                } else {
+                                    osc_args.push(VariableValue::Str(param_str));
+                                }
+                            }
+                            let message = OSCMessage::new(addr_str, osc_args);
+                            self.push_event(
+                                events,
+                                ConcreteEvent::Osc {
+                                    message,
+                                    device_id: dev,
+                                },
+                                time,
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
             let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
 
             if let (Some(cc), Some(val)) = (get_int("ccnum"), get_int("ccout")) {
@@ -2637,7 +2668,7 @@ mod tests {
 
     #[test]
     fn test_at_single_delta() {
-        let events = eval("0.5 at sine snd 440 freq .");
+        let events = eval("0.5 ( sine snd 440 freq . ) at");
         assert_eq!(events.len(), 1);
         assert!(
             events[0].1 > 0,
@@ -2647,7 +2678,7 @@ mod tests {
 
     #[test]
     fn test_at_list_deltas() {
-        let events = eval("0 0.5 at sine snd 440 freq .");
+        let events = eval("0 0.5 ( sine snd 440 freq . ) at");
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].1, 0, "first delta=0 should have time 0");
         assert!(
@@ -2658,7 +2689,8 @@ mod tests {
 
     #[test]
     fn test_at_loop_with_cycle_notes() {
-        let events = eval_with_runs("0 0.25 0.5 0.75 at [ c4 e4 g4 b4 ] cycle note .", 0);
+        let events =
+            eval_with_runs("0 0.25 0.5 0.75 ( [ c4 e4 g4 b4 ] cycle note . ) at", 0);
         assert_eq!(events.len(), 4);
         let notes = get_midi_notes(&events);
         assert_eq!(notes, vec![60, 64, 67, 71]);
@@ -2666,7 +2698,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_cycle_wraps() {
-        let events = eval_with_runs("0 0.25 0.5 0.75 at [ c4 e4 ] cycle note .", 0);
+        let events = eval_with_runs("0 0.25 0.5 0.75 ( [ c4 e4 ] cycle note . ) at", 0);
         assert_eq!(events.len(), 4);
         let notes = get_midi_notes(&events);
         assert_eq!(notes, vec![60, 64, 60, 64]);
@@ -2674,7 +2706,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_rand_different_per_subdivision() {
-        let events = eval("0 0.5 at sine snd 1 1000 rand freq .");
+        let events = eval("0 0.5 ( sine snd 1 1000 rand freq . ) at");
         assert_eq!(events.len(), 2);
         let f0 = get_generic_param(&events[0].0, "freq");
         let f1 = get_generic_param(&events[1].0, "freq");
@@ -2687,7 +2719,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_poly_cycling() {
-        let events = eval("0 0.5 at sine snd c4 e4 note .");
+        let events = eval("0 0.5 ( sine snd c4 e4 note . ) at");
         assert_eq!(events.len(), 4);
         // Each at iteration emits 2 poly voices (c4=60, e4=64)
         let notes: Vec<f64> = events
@@ -2700,7 +2732,8 @@ mod tests {
     #[test]
     fn test_at_loop_cycle_advances_across_runs() {
         for base_runs in 0..3 {
-            let events = eval_with_runs("0 0.5 at [ c4 e4 g4 ] cycle note .", base_runs);
+            let events =
+                eval_with_runs("0 0.5 ( [ c4 e4 g4 ] cycle note . ) at", base_runs);
             assert_eq!(events.len(), 2, "base_runs={base_runs}");
             let notes = get_midi_notes(&events);
             let expected_0 = [60, 64, 67][(base_runs * 2) % 3];
@@ -2711,19 +2744,19 @@ mod tests {
     }
 
     #[test]
-    fn test_at_loop_done_no_emit() {
-        let events = eval("0 0.5 at [ 1 2 ] cycle drop done");
+    fn test_at_no_emit() {
+        let events = eval("0 0.5 ( [ 1 2 ] cycle drop ) at");
         assert!(events.is_empty());
     }
 
     #[test]
-    fn test_at_loop_done_sets_variables() {
+    fn test_at_sets_variables() {
         let mut vm = CagireVM::new();
         let mut tctx = TestCtx::new();
         let events = eval_vm(
             &mut vm,
             &mut tctx,
-            "0 0.5 at [ 10 20 ] cycle !x done @x note .",
+            "0 0.5 ( [ 10 20 ] cycle !x ) at @x note .",
         );
         assert_eq!(events.len(), 1);
         // Last iteration wins: cycle idx 1 -> 20
@@ -2733,7 +2766,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_timing_increases() {
-        let events = eval("0 0.25 0.5 0.75 at sine snd 440 freq .");
+        let events = eval("0 0.25 0.5 0.75 ( sine snd 440 freq . ) at");
         assert_eq!(events.len(), 4);
         let times = get_event_times(&events);
         assert_eq!(times[0], 0);
@@ -2744,7 +2777,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_midi_note_emit() {
-        let events = eval("0 0.25 0.5 at 60 note .");
+        let events = eval("0 0.25 0.5 ( 60 note . ) at");
         assert_eq!(events.len(), 3);
         for (ev, _) in &events {
             assert!(matches!(ev, ConcreteEvent::MidiNote(60, _, _, _, _)));
@@ -2753,7 +2786,7 @@ mod tests {
 
     #[test]
     fn test_string_pattern_at_records_per_event_highlight_spans() {
-        let script = "\"x--x..[xx.]\" at 60 note .";
+        let script = "\"x--x..[xx.]\" ( 60 note . ) at";
         let mut vm = CagireVM::new();
         let mut tctx = TestCtx::new();
         let events = eval_vm(&mut vm, &mut tctx, script);

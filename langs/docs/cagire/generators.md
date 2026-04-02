@@ -73,7 +73,7 @@ The distinction: `gen` is for building data. `times` is for doing things.
 These are designed for use with `at` to place events within a frame:
 
 ```forth
-3 8 euclid at kick snd .    ;; euclidean kick pattern
+3 8 euclid ( kick snd . ) at    ;; euclidean kick pattern
 ```
 
 This is different from `bjork` and `pbjork` (covered in the Randomness article), which execute a quotation on matching triggers. `euclid` gives you normalized positions; `bjork` triggers actions.

@@ -252,7 +252,6 @@ pub(super) fn float_to_value(result: f64) -> Value {
 pub(super) struct CmdRegister {
     sound: Option<Value>,
     params: Vec<(&'static str, Value)>,
-    deltas: Vec<Value>,
     global_params: Vec<(&'static str, Value)>,
     delta_secs: Option<f64>,
 }
@@ -262,7 +261,6 @@ impl CmdRegister {
         Self {
             sound: None,
             params: Vec::with_capacity(16),
-            deltas: Vec::with_capacity(4),
             global_params: Vec::new(),
             delta_secs: None,
         }
@@ -283,14 +281,6 @@ impl CmdRegister {
 
     pub(super) fn set_param(&mut self, key: &'static str, val: Value) {
         self.params.push((key, val));
-    }
-
-    pub(super) fn set_deltas(&mut self, deltas: Vec<Value>) {
-        self.deltas = deltas;
-    }
-
-    pub(super) fn deltas(&self) -> &[Value] {
-        &self.deltas
     }
 
     pub(super) fn sound(&self) -> Option<&Value> {
@@ -317,7 +307,6 @@ impl CmdRegister {
     pub(super) fn commit_global(&mut self) {
         self.global_params.append(&mut self.params);
         self.sound = None;
-        self.deltas.clear();
     }
 
     pub(super) fn clear_global(&mut self) {
@@ -351,7 +340,6 @@ impl CmdRegister {
     pub(super) fn clear(&mut self) {
         self.sound = None;
         self.params.clear();
-        self.deltas.clear();
         self.delta_secs = None;
     }
 }

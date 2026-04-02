@@ -1,1 +1,1 @@
-"x..x." prev at kick snd .
+"x..x." prev ( kick snd . ) at

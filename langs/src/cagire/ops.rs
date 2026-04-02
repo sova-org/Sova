@@ -103,7 +103,6 @@ pub enum Op {
     ClearCmd,
     SetSpeed,
     At,
-    AtLoop(Arc<[Op]>, Arc<[Span]>),
     PatPush,
     PatRot,
     PatRev,
@@ -152,6 +151,7 @@ pub enum Op {
     Orec,
     Odub,
     Print,
+    ExecuteFrame,
 }
 
 impl Op {

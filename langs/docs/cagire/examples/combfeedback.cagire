@@ -1,4 +1,4 @@
-0 0.75 at
+0 0.75 (
 sine snd
 200 freq
 99 combfreq
@@ -6,4 +6,4 @@ sine snd
 0.3 gain
 1 comb
 0.0 0.99 rand combfeedback
-.
+. ) at

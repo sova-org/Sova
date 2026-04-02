@@ -2,11 +2,11 @@ kick snd
 2 orbit
 .
 
-0 1 0.25 ., at
+0 1 0.25 ., (
 1 orbit
 rim snd .8 gain
 0.0 1.0 rand pan
 .02 .25 rand decay
 0.1 comprelease
 1 comp 2 comporbit
-.
+. ) at

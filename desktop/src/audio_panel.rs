@@ -148,7 +148,8 @@ impl AudioPanel {
         }
     }
 
-    pub fn show_config(&mut self, ui: &mut egui::Ui) {
+    pub fn show_config(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut pick_folder_requested = false;
         egui::Grid::new("audio_config")
             .num_columns(2)
             .spacing([8.0, 4.0])
@@ -330,11 +331,14 @@ impl AudioPanel {
         if r.hovered() {
             crate::widgets::hint::set(ui.ctx(), t!("audio.hint.add_folder"));
         }
-        if r.clicked()
-            && let Some(folder) = rfd::FileDialog::new().pick_folder()
-        {
-            self.sample_paths.push(folder);
+        if r.clicked() {
+            pick_folder_requested = true;
         }
+        pick_folder_requested
+    }
+
+    pub fn add_sample_path(&mut self, path: PathBuf) {
+        self.sample_paths.push(path);
     }
 
     fn show_status(&self, ui: &mut egui::Ui, state: &sova_server::AudioEngineState) {

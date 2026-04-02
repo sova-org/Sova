@@ -3,6 +3,7 @@ mod core;
 mod effects;
 mod midi;
 mod music;
+mod osc;
 mod sequencing;
 mod sound;
 
@@ -40,6 +41,7 @@ pub static WORDS: LazyLock<Vec<Word>> = LazyLock::new(|| {
     words.extend_from_slice(sequencing::WORDS);
     words.extend_from_slice(music::WORDS);
     words.extend_from_slice(midi::WORDS);
+    words.extend_from_slice(osc::WORDS);
     words
 });
 

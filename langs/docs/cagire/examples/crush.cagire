@@ -1,7 +1,7 @@
-0 0.5 at
+0 0.5 (
 saw sound
 100 freq
 .9 decay
 8000 200 0.5 slide llpf
 [ 16 2 .. ] cycle crush
-.
+. ) at

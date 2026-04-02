@@ -3,12 +3,7 @@ use eframe::egui;
 use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use sova_core::{
-    clock::ClockServer,
-    device_map::DeviceMap,
-    scene::{Line, Scene},
-    schedule::SovaNotification,
-};
+use sova_core::{clock::ClockServer, device_map::DeviceMap, schedule::SovaNotification};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, ClientRegistry, SovaCoreServer};
 use tokio::sync::Mutex;
@@ -44,8 +39,6 @@ struct EmbeddedServer {
 pub struct ServerPanel {
     ip: String,
     port: String,
-    tempo: String,
-    quantum: String,
     password: String,
     status: ServerStatus,
     runtime: tokio::runtime::Handle,
@@ -64,8 +57,6 @@ impl ServerPanel {
         Self {
             ip: settings.ip,
             port: settings.port,
-            tempo: settings.tempo,
-            quantum: settings.quantum,
             password: String::new(),
             status: ServerStatus::Stopped,
             runtime,
@@ -79,8 +70,6 @@ impl ServerPanel {
         ServerSettings {
             ip: self.ip.clone(),
             port: self.port.clone(),
-            tempo: self.tempo.clone(),
-            quantum: self.quantum.clone(),
         }
     }
 
@@ -114,21 +103,6 @@ impl ServerPanel {
                 return;
             }
         };
-        let tempo: f64 = match self.tempo.parse() {
-            Ok(t) => t,
-            Err(_) => {
-                self.status = ServerStatus::Error(t!("server.error.invalid_tempo").into());
-                return;
-            }
-        };
-        let quantum: f64 = match self.quantum.parse() {
-            Ok(q) => q,
-            Err(_) => {
-                self.status = ServerStatus::Error(t!("server.error.invalid_quantum").into());
-                return;
-            }
-        };
-
         sova_core::logger::init_standalone();
 
         let (log_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
@@ -150,7 +124,8 @@ impl ServerPanel {
             }
         });
 
-        let clock_server = Arc::new(ClockServer::new(tempo, quantum));
+        let demo = sova_server::demos::random_demo();
+        let clock_server = Arc::new(ClockServer::new(demo.tempo, demo.quantum));
         clock_server.link.enable(true);
 
         let devices = Arc::new(DeviceMap::new());
@@ -162,8 +137,7 @@ impl ServerPanel {
 
         let languages = Arc::new(langs::create_language_center());
 
-        let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
-        let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
+        let scene_image = Arc::new(Mutex::new(demo.scene));
 
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
         let audio_thread = spawn_audio_thread(
@@ -293,20 +267,6 @@ impl ServerPanel {
                     let field = ui.text_edit_singleline(&mut self.port);
                     if label.hovered() || field.hovered() {
                         crate::widgets::hint::set(&ctx, t!("server.hint.port"));
-                    }
-                    ui.end_row();
-
-                    let label = ui.label(t!("server.tempo"));
-                    let field = ui.text_edit_singleline(&mut self.tempo);
-                    if label.hovered() || field.hovered() {
-                        crate::widgets::hint::set(&ctx, t!("server.hint.tempo"));
-                    }
-                    ui.end_row();
-
-                    let label = ui.label(t!("server.quantum"));
-                    let field = ui.text_edit_singleline(&mut self.quantum);
-                    if label.hovered() || field.hovered() {
-                        crate::widgets::hint::set(&ctx, t!("server.hint.quantum"));
                     }
                     ui.end_row();
 

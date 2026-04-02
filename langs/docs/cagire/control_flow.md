@@ -120,7 +120,7 @@ sine snd 0.4 gain 0.5 verb .      ;; c4, e4, g#4 — a chord
 Subdivide with `at`:
 
 ```forth
-4 ( @i 4 / at sine snd c4 note 0.3 gain . ) times
+4 ( @i 4 / ( sine snd c4 note 0.3 gain . ) at ) times
 ```
 
 Four evenly spaced notes within the frame.
@@ -129,9 +129,10 @@ Vary intensity per iteration:
 
 ```forth
 8 (
-  @i 8 / at
-  @i 4 mod 0 = if 0.7 else 0.2 then gain
-  tri snd c5 note 0.1 decay .
+  @i 8 / (
+    @i 4 mod 0 = if 0.7 else 0.2 then gain
+    tri snd c5 note 0.1 decay .
+  ) at
 ) times
 ```
 

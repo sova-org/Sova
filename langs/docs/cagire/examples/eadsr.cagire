@@ -1,12 +1,12 @@
-0 0.5 at
+0 0.5 (
 pulse snd
 [ c2 c3 ] cycle note
 50 200 rand 8000 ;; min & max
 0.1 ;; attack
 0 ;; decay
-0.1 0.5 rand ;; sustain 
-2.8 ;; release 
+0.1 0.5 rand ;; sustain
+2.8 ;; release
 eadsr llpf
-0.2 0.7 rand llpq 
+0.2 0.7 rand llpq
 1 decay
-.
+. ) at

@@ -1,8 +1,8 @@
-0 0.5 at
+0 0.5 (
 pulse snd
 [ c2 c3 ] cycle note
 200 8000 4000 rand
 0.1 .1 .3 rand ead lpf
-0.2 1.0 rand lpq 
+0.2 1.0 rand lpq
 1 decay
-.
+. ) at

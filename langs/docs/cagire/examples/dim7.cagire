@@ -1,6 +1,6 @@
-0 ( 0.5 ) 3 every at
+0 ( 0.5 ) 3 every (
 [ c4 g4 ] bounce dim7 note
 tri snd .8 decay
 8000 2000 .1 slide lpf
 0.2 verb
-.
+. ) at

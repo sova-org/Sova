@@ -146,6 +146,12 @@ impl ScenePanel {
         Default::default()
     }
 
+    pub fn clear_frame_states(&mut self) {
+        self.frame_states.clear();
+        self.last_line_count = 0;
+        self.last_frame_counts.clear();
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -168,27 +174,35 @@ impl ScenePanel {
         let accent = ui.visuals().selection.bg_fill;
         let opacity = SceneOpacity::new(visuals_enabled, scene_opacity);
 
-        // Compute per-line progress for playing indicators (beat-based, same source as phase bar)
-        let progress: Vec<f32> = {
+        // Compute per-head progress: Vec<Vec<(frame_idx, progress)>> per line
+        let head_progress: Vec<Vec<(usize, f32)>> = {
             let beat = bridge.clock().beat;
             let positions = bridge.positions();
             let starts = bridge.position_start_beat();
             (0..scene.lines.len())
                 .map(|li| {
-                    let Some(&(fi, _rep)) = positions.get(li).and_then(|p| p.first()) else {
-                        return 0.0;
+                    let Some(heads) = positions.get(li) else {
+                        return Vec::new();
                     };
                     let line = &scene.lines[li];
-                    let Some(frame) = line.frames.get(fi) else {
-                        return 0.0;
-                    };
-                    let start_beat = starts.get(li).copied().unwrap_or(beat);
-                    let elapsed_beats = (beat - start_beat).max(0.0);
-                    let dur = frame.duration / line.speed_factor;
-                    if dur <= 0.0 {
-                        return 0.0;
-                    }
-                    ((elapsed_beats % dur) / dur) as f32
+                    let head_starts = starts.get(li);
+                    heads
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(hi, &(fi, _rep))| {
+                            let frame = line.frames.get(fi)?;
+                            let start_beat = head_starts
+                                .and_then(|s| s.get(hi))
+                                .copied()
+                                .unwrap_or(beat);
+                            let elapsed = (beat - start_beat).max(0.0);
+                            let dur = frame.duration / line.speed_factor;
+                            if dur <= 0.0 {
+                                return None;
+                            }
+                            Some((fi, ((elapsed % dur) / dur) as f32))
+                        })
+                        .collect()
                 })
                 .collect()
         };
@@ -264,20 +278,22 @@ impl ScenePanel {
                                             .id_salt(("line_scroll", li))
                                             .auto_shrink(false)
                                             .show(ui, |ui| {
-                                                let current_playing_fi = bridge
-                                                    .positions()
-                                                    .get(li)
-                                                    .and_then(|p| p.first())
-                                                    .map(|&(fi, _)| fi);
+                                                let line_heads = head_progress.get(li);
+                                                let playing_fis: Vec<usize> = line_heads
+                                                    .map(|h| h.iter().map(|&(fi, _)| fi).collect())
+                                                    .unwrap_or_default();
 
                                                 for fi in 0..line.frames.len() {
                                                     let frame = &line.frames[fi];
-                                                    let is_playing = current_playing_fi == Some(fi);
-                                                    let line_progress = if is_playing {
-                                                        progress.get(li).copied().unwrap_or(0.0)
-                                                    } else {
-                                                        0.0
-                                                    };
+                                                    let is_playing = playing_fis.contains(&fi);
+                                                    let line_progress = line_heads
+                                                        .map(|h| {
+                                                            h.iter()
+                                                                .filter(|&&(hfi, _)| hfi == fi)
+                                                                .map(|&(_, p)| p)
+                                                                .fold(0.0_f32, f32::max)
+                                                        })
+                                                        .unwrap_or(0.0);
                                                     let is_selected =
                                                         self.selection.contains(&(li, fi));
                                                     let is_cursor = self.cursor == Some((li, fi));
@@ -306,7 +322,7 @@ impl ScenePanel {
                                                         line_progress,
                                                         is_selected,
                                                         is_cursor,
-                                                        current_playing_fi,
+                                                        &playing_fis,
                                                         crate::widgets::cycled_accent(accent, li),
                                                         &opacity,
                                                         editor_settings,
@@ -587,7 +603,12 @@ impl ScenePanel {
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new(crate::icons::LOOPING).color(loop_color),
+                                egui::RichText::new(format!(
+                                    "{} Loop",
+                                    crate::icons::LOOPING
+                                ))
+                                .color(loop_color)
+                                .small(),
                             )
                             .fill(egui::Color32::TRANSPARENT),
                         )
@@ -601,7 +622,12 @@ impl ScenePanel {
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new(crate::icons::TRAILING).color(trail_color),
+                                egui::RichText::new(format!(
+                                    "{} Trail",
+                                    crate::icons::TRAILING
+                                ))
+                                .color(trail_color)
+                                .small(),
                             )
                             .fill(egui::Color32::TRANSPARENT),
                         )
@@ -609,6 +635,25 @@ impl ScenePanel {
                         .clicked()
                     {
                         self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
+                    }
+
+                    let manual_color = if line.manual { accent } else { COLOR_MUTED };
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!(
+                                    "{} Manual",
+                                    crate::icons::MANUAL
+                                ))
+                                .color(manual_color)
+                                .small(),
+                            )
+                            .fill(egui::Color32::TRANSPARENT),
+                        )
+                        .on_hover_text(t!("scene.toggle_manual"))
+                        .clicked()
+                    {
+                        self.toggle_line_field(li, bridge, |l| l.manual = !l.manual);
                     }
 
                     // Right side: speed, frame range, peer dots
@@ -679,7 +724,7 @@ impl ScenePanel {
         progress: f32,
         is_selected: bool,
         is_cursor: bool,
-        current_playing_fi: Option<usize>,
+        playing_fis: &[usize],
         accent: egui::Color32,
         opacity: &SceneOpacity,
         editor_settings: &EditorSettings,
@@ -764,7 +809,7 @@ impl ScenePanel {
                             li,
                             fi,
                             n_frames,
-                            current_playing_fi,
+                            playing_fis,
                             accent,
                             frame,
                             bridge,

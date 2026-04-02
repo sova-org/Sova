@@ -1,5 +1,5 @@
-"x..x..x." 2 prot at kick snd .
+"x..x..x." 2 prot ( kick snd . ) at
 
 clear
 
-"x..x..x." step 8 mod prot at kick snd .
+"x..x..x." step 8 mod prot ( kick snd . ) at

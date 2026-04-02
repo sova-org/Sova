@@ -1,8 +1,8 @@
-0 0.5 at
+0 0.5 (
 saw snd
 c3 note
 .2 d
 0.7 verb
 0.8 verbdecay
 0.0 2.0 rand verblowgain
-.
+. ) at

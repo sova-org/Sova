@@ -1,1 +1,1 @@
-2.0 speed! 0 0.5 at hat snd 0.5 gain .
+2.0 speed! 0 0.5 ( hat snd 0.5 gain . ) at
