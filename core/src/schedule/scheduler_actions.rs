@@ -279,6 +279,13 @@ impl ActionProcessor {
                     frame.clone(),
                 )]));
             }
+            ConcreteEvent::KillExecutions(l_i, f_i) => {
+                if !scene.has_frame(l_i, f_i) {
+                    return;
+                }
+                let frame = scene.frame_mut(l_i, f_i);
+                frame.kill_executions();
+            }
             _ => (),
         }
     }
