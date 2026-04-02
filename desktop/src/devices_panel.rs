@@ -199,7 +199,7 @@ impl DevicesPanel {
         match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => {
                 if dev.is_connected {
-                    let r = ui.button(t!("common.disconnect"));
+                    let r = ui.button(crate::icons::button_text(ui, crate::icons::DISCONNECT, t!("common.disconnect")));
                     if r.hovered() {
                         crate::widgets::hint::set(ui.ctx(), t!("devices.hint.disconnect_midi"));
                     }
@@ -207,7 +207,7 @@ impl DevicesPanel {
                         bridge.disconnect_midi(&dev.name);
                     }
                 } else {
-                    let r = ui.button(t!("common.connect"));
+                    let r = ui.button(crate::icons::button_text(ui, crate::icons::CONNECT, t!("common.connect")));
                     if r.hovered() {
                         crate::widgets::hint::set(ui.ctx(), t!("devices.hint.connect_midi"));
                     }
@@ -217,7 +217,7 @@ impl DevicesPanel {
                 }
             }
             DeviceKind::Osc => {
-                let r = ui.button(t!("common.remove"));
+                let r = ui.button(crate::icons::button_text(ui, crate::icons::TRASH, t!("common.remove")));
                 if r.hovered() {
                     crate::widgets::hint::set(ui.ctx(), t!("devices.hint.remove_osc"));
                 }
@@ -271,7 +271,7 @@ impl DevicesPanel {
             self.show_osc_creation(ui, bridge);
         } else {
             ui.horizontal(|ui| {
-                let r = ui.button(t!("devices.add_virtual_midi"));
+                let r = ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("devices.add_virtual_midi")));
                 if r.hovered() {
                     crate::widgets::hint::set(ui.ctx(), t!("devices.hint.new_midi"));
                 }
@@ -279,7 +279,7 @@ impl DevicesPanel {
                     self.creating_midi = true;
                     self.new_midi_name.clear();
                 }
-                let r = ui.button(t!("devices.add_osc"));
+                let r = ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("devices.add_osc")));
                 if r.hovered() {
                     crate::widgets::hint::set(ui.ctx(), t!("devices.hint.new_osc"));
                 }

@@ -55,7 +55,7 @@ impl ChatPanel {
                 ui.horizontal(|ui| {
                     if show_popout {
                         let r = ui
-                            .button(crate::icons::POPOUT)
+                            .button(crate::icons::rich(crate::icons::POPOUT))
                             .on_hover_text(t!("common.pop_out"));
                         if r.hovered() {
                             crate::widgets::hint::set(ui.ctx(), t!("chat.hint.detach"));
@@ -71,7 +71,8 @@ impl ChatPanel {
                     let input_id = ui.id().with("chat_input");
                     let (resp, send_btn) = ui
                         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let send_btn = ui.button(t!("common.send"));
+                            let send_btn =
+                                ui.button(crate::icons::button_text(ui, crate::icons::SEND, t!("common.send")));
                             let resp = ui.add(
                                 egui::TextEdit::singleline(&mut self.input)
                                     .id(input_id)

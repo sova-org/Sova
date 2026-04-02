@@ -202,6 +202,15 @@ impl SettingsTab {
             Self::Logs => t!("log.title").into(),
         }
     }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Server => icons::CPU,
+            Self::Appearance => icons::PALETTE,
+            Self::Devices => icons::PLUGS_CONNECTED,
+            Self::Logs => icons::FILE_TEXT,
+        }
+    }
 }
 
 const SETTINGS_TABS: [SettingsTab; 4] = [
@@ -322,7 +331,7 @@ impl DocPanel {
             let rect = ui.max_rect();
             let icon_size = egui::vec2(COLLAPSED_WIDTH, 24.0);
             let weak = ui.visuals().weak_text_color();
-            let icon = egui::RichText::new(icons::BOOK).color(weak).size(16.0);
+            let icon = icons::rich(icons::BOOK).color(weak).size(16.0);
             ui.put(
                 egui::Rect::from_center_size(rect.center(), icon_size),
                 egui::Label::new(icon),
@@ -383,8 +392,10 @@ impl DocPanel {
             egui::TopBottomPanel::top("sidebar_mode_tabs").show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     let mode = self.mode();
-                    let doc_r =
-                        ui.selectable_label(mode == SidebarMode::Docs, t!("doc.title").as_ref());
+                    let doc_r = ui.selectable_label(
+                        mode == SidebarMode::Docs,
+                        icons::button_text(ui, icons::BOOK, t!("doc.title")),
+                    );
                     if mode == SidebarMode::Docs {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
@@ -398,7 +409,7 @@ impl DocPanel {
 
                     let settings_r = ui.selectable_label(
                         mode == SidebarMode::Settings,
-                        t!("settings.title").as_ref(),
+                        icons::button_text(ui, icons::GEAR, t!("settings.title")),
                     );
                     if mode == SidebarMode::Settings {
                         let accent = ui.visuals().selection.bg_fill;
@@ -420,7 +431,7 @@ impl DocPanel {
                             DocSide::Right => icons::CHEVRON_RIGHT,
                         };
                         if ui
-                            .button(collapse_icon)
+                            .button(icons::rich(collapse_icon))
                             .on_hover_text(t!("doc.collapse"))
                             .clicked()
                         {
@@ -431,7 +442,7 @@ impl DocPanel {
                             }
                         }
                         if ui
-                            .button(icons::SWAP)
+                            .button(icons::rich(icons::SWAP))
                             .on_hover_text(t!("doc.swap_side"))
                             .clicked()
                         {
@@ -495,7 +506,10 @@ impl DocPanel {
             ui.horizontal(|ui| {
                 let selected = SettingsTab::from_u8(self.settings.settings_tab);
                 for &tab in &SETTINGS_TABS {
-                    let r = ui.selectable_label(selected == tab, tab.label());
+                    let r = ui.selectable_label(
+                        selected == tab,
+                        icons::button_text(ui, tab.icon(), tab.label()),
+                    );
                     if selected == tab {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
@@ -589,7 +603,10 @@ impl DocPanel {
 
         egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                let r = ui.selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref());
+                let r = ui.selectable_label(
+                    self.selected_tab == 0,
+                    icons::button_text(ui, icons::BOOK, t!("doc.sova")),
+                );
                 if self.selected_tab == 0 {
                     let accent = ui.visuals().selection.bg_fill;
                     ui.painter().line_segment(
@@ -614,7 +631,10 @@ impl DocPanel {
                             Some(f) => f.to_uppercase().to_string() + c.as_str(),
                         }
                     };
-                    let r = ui.selectable_label(self.selected_tab == tab_idx, &display_name);
+                    let r = ui.selectable_label(
+                        self.selected_tab == tab_idx,
+                        icons::button_text(ui, icons::CODE, &display_name),
+                    );
                     if self.selected_tab == tab_idx {
                         let accent = ui.visuals().selection.bg_fill;
                         ui.painter().line_segment(
@@ -632,7 +652,10 @@ impl DocPanel {
                     }
                 }
 
-                let r = ui.selectable_label(self.selected_tab == hydra_tab, "Hydra");
+                let r = ui.selectable_label(
+                    self.selected_tab == hydra_tab,
+                    icons::button_text(ui, icons::WAVE_SINE, "Hydra"),
+                );
                 if self.selected_tab == hydra_tab {
                     let accent = ui.visuals().selection.bg_fill;
                     ui.painter().line_segment(
@@ -649,7 +672,10 @@ impl DocPanel {
                     self.scroll_to_top = true;
                 }
 
-                let r = ui.selectable_label(self.selected_tab == doux_tab, "Doux");
+                let r = ui.selectable_label(
+                    self.selected_tab == doux_tab,
+                    icons::button_text(ui, icons::MUSIC_NOTE, "Doux"),
+                );
                 if self.selected_tab == doux_tab {
                     let accent = ui.visuals().selection.bg_fill;
                     ui.painter().line_segment(
@@ -1054,14 +1080,14 @@ impl DocPanel {
         ui.separator();
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(idx > 0, egui::Button::new(icons::CHEVRON_LEFT))
+                .add_enabled(idx > 0, egui::Button::new(icons::rich(icons::CHEVRON_LEFT)))
                 .clicked()
             {
                 self.set_view(DocView::DouxModule(idx - 1));
             }
             ui.label(format!("{} / {}", idx + 1, total));
             if ui
-                .add_enabled(idx + 1 < total, egui::Button::new(icons::CHEVRON_RIGHT))
+                .add_enabled(idx + 1 < total, egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)))
                 .clicked()
             {
                 self.set_view(DocView::DouxModule(idx + 1));
@@ -1396,7 +1422,7 @@ impl DocPanel {
                                 ));
                                 self.example_output = Some(Ok(t!("doc.sent").into()));
                             }
-                            if ui.button(t!("doc.reset").as_ref()).clicked() {
+                            if ui.button(crate::icons::button_text(ui, crate::icons::REFRESH, t!("doc.reset"))).clicked() {
                                 self.edited_example = example.clone();
                                 self.example_output = None;
                             }
@@ -1451,7 +1477,7 @@ impl DocPanel {
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(idx > 0, egui::Button::new(icons::CHEVRON_LEFT))
+                            .add_enabled(idx > 0, egui::Button::new(icons::rich(icons::CHEVRON_LEFT)))
                             .clicked()
                         {
                             let new_idx = idx - 1;
@@ -1463,7 +1489,7 @@ impl DocPanel {
                         ui.label(format!("{} / {}", idx + 1, total));
 
                         if ui
-                            .add_enabled(idx + 1 < total, egui::Button::new(icons::CHEVRON_RIGHT))
+                            .add_enabled(idx + 1 < total, egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)))
                             .clicked()
                         {
                             let new_idx = idx + 1;

@@ -33,6 +33,7 @@ rust-i18n = "3"
 regex = "1"
 hydra-rust = { git = "https://github.com/sova-org/hydra-rust" }
 font-kit = "0.14.3"
+egui-phosphor = { version = "0.11", default-features = false, features = ["fill"] }
 tokio-util = "0.7.18"
 
 [build-dependencies]

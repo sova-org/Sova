@@ -97,7 +97,7 @@ impl LogPanel {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(crate::icons::TRASH)
+                    .button(crate::icons::rich(crate::icons::TRASH))
                     .on_hover_text(t!("log.clear"))
                     .clicked()
                 {

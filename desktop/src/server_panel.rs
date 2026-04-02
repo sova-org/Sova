@@ -218,7 +218,7 @@ impl ServerPanel {
         let running = matches!(self.status, ServerStatus::Running);
 
         if running {
-            let r = ui.button(t!("common.stop"));
+            let r = ui.button(crate::icons::button_text(ui, crate::icons::STOP, t!("common.stop")));
             if r.hovered() {
                 crate::widgets::hint::set(&ctx, t!("server.hint.stop"));
             }
@@ -226,7 +226,7 @@ impl ServerPanel {
                 action = ServerAction::Stop;
             }
         } else {
-            let r = ui.button(t!("common.start"));
+            let r = ui.button(crate::icons::button_text(ui, crate::icons::PLAY, t!("common.start")));
             if r.hovered() {
                 crate::widgets::hint::set(&ctx, t!("server.hint.start"));
             }

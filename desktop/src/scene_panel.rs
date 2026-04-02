@@ -504,7 +504,7 @@ impl ScenePanel {
                             ui.visuals().widgets.inactive.bg_fill.linear_multiply(0.5);
                         if ui
                             .add(
-                                egui::Button::new(egui::RichText::new(crate::icons::ADD))
+                                egui::Button::new(crate::icons::rich(crate::icons::ADD))
                                     .fill(add_line_fill)
                                     .min_size(egui::vec2(28.0, 28.0)),
                             )
@@ -602,14 +602,13 @@ impl ScenePanel {
                     let loop_color = if line.looping { accent } else { COLOR_MUTED };
                     if ui
                         .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Loop",
-                                    crate::icons::LOOPING
-                                ))
-                                .color(loop_color)
-                                .small(),
-                            )
+                            egui::Button::new(crate::icons::text_colored(
+                                ui,
+                                egui::TextStyle::Small,
+                                crate::icons::LOOPING,
+                                "Loop",
+                                loop_color,
+                            ))
                             .fill(egui::Color32::TRANSPARENT),
                         )
                         .on_hover_text(t!("scene.toggle_looping"))
@@ -621,14 +620,13 @@ impl ScenePanel {
                     let trail_color = if line.trailing { accent } else { COLOR_MUTED };
                     if ui
                         .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Trail",
-                                    crate::icons::TRAILING
-                                ))
-                                .color(trail_color)
-                                .small(),
-                            )
+                            egui::Button::new(crate::icons::text_colored(
+                                ui,
+                                egui::TextStyle::Small,
+                                crate::icons::TRAILING,
+                                "Trail",
+                                trail_color,
+                            ))
                             .fill(egui::Color32::TRANSPARENT),
                         )
                         .on_hover_text(t!("scene.toggle_trailing"))
@@ -640,14 +638,13 @@ impl ScenePanel {
                     let manual_color = if line.manual { accent } else { COLOR_MUTED };
                     if ui
                         .add(
-                            egui::Button::new(
-                                egui::RichText::new(format!(
-                                    "{} Manual",
-                                    crate::icons::MANUAL
-                                ))
-                                .color(manual_color)
-                                .small(),
-                            )
+                            egui::Button::new(crate::icons::text_colored(
+                                ui,
+                                egui::TextStyle::Small,
+                                crate::icons::MANUAL,
+                                "Manual",
+                                manual_color,
+                            ))
                             .fill(egui::Color32::TRANSPARENT),
                         )
                         .on_hover_text(t!("scene.toggle_manual"))
@@ -671,7 +668,7 @@ impl ScenePanel {
                             .count();
                         if peer_count > 0 {
                             ui.label(
-                                egui::RichText::new(crate::icons::CIRCLE_FILLED)
+                                crate::icons::rich(crate::icons::CIRCLE_FILLED)
                                     .small()
                                     .color(COLOR_OK),
                             );
@@ -1147,7 +1144,7 @@ impl ScenePanel {
                 ui.separator();
 
                 if !multi {
-                    if ui.button(t!("scene.insert_frame_before")).clicked() {
+                    if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_frame_before"))).clicked() {
                         bridge.send(SchedulerMessage::AddFrame(
                             li,
                             fi,
@@ -1157,7 +1154,7 @@ impl ScenePanel {
                         self.picker_open_pending.insert((li, fi));
                         ui.close();
                     }
-                    if ui.button(t!("scene.insert_frame_after")).clicked() {
+                    if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_frame_after"))).clicked() {
                         bridge.send(SchedulerMessage::AddFrame(
                             li,
                             fi + 1,
@@ -1259,7 +1256,7 @@ impl ScenePanel {
             Some(ContextTarget::Header(li)) => {
                 let num_lines = bridge.scene().map(|s| s.lines.len()).unwrap_or(0);
 
-                if ui.button(t!("scene.insert_line_before")).clicked() {
+                if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_line_before"))).clicked() {
                     bridge.send(SchedulerMessage::AddLine(
                         li,
                         Line::new(vec![1.0]),
@@ -1268,7 +1265,7 @@ impl ScenePanel {
                     self.picker_open_pending.insert((li, 0));
                     ui.close();
                 }
-                if ui.button(t!("scene.insert_line_after")).clicked() {
+                if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_line_after"))).clicked() {
                     bridge.send(SchedulerMessage::AddLine(
                         li + 1,
                         Line::new(vec![1.0]),
@@ -1336,7 +1333,7 @@ impl ScenePanel {
 
                 ui.separator();
 
-                if ui.button(t!("scene.clear_frame_range")).clicked() {
+                if ui.button(crate::icons::button_text(ui, crate::icons::BROOM, t!("scene.clear_frame_range"))).clicked() {
                     self.toggle_line_field(li, bridge, |l| {
                         l.start_frame = None;
                         l.end_frame = None;
@@ -1936,7 +1933,7 @@ impl ScenePanel {
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
+                                        crate::icons::small(crate::icons::CHEVRON_DOWN),
                                     )
                                     .fill(egui::Color32::TRANSPARENT),
                                 )
@@ -1951,7 +1948,7 @@ impl ScenePanel {
                                     if ui
                                         .add(
                                             egui::Button::new(
-                                                egui::RichText::new(crate::icons::ADD).small(),
+                                                crate::icons::small(crate::icons::ADD),
                                             )
                                             .fill(egui::Color32::TRANSPARENT),
                                         )

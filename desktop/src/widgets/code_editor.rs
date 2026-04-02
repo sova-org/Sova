@@ -1033,7 +1033,12 @@ fn show_hover_tooltip(
         .show(|ui| {
             ui.set_min_width(350.0);
             if let Some(cat) = &entry.category {
-                ui.label(egui::RichText::new(cat).small().weak());
+                ui.horizontal(|ui| {
+                    if let Some(icon) = category_icon(Some(cat.as_str())) {
+                        ui.label(crate::icons::rich(icon).small().weak());
+                    }
+                    ui.label(egui::RichText::new(cat).small().weak());
+                });
             }
             if let Some(sig) = &entry.signature {
                 ui.label(egui::RichText::new(sig).monospace().small().weak());
@@ -1058,7 +1063,10 @@ fn show_hover_tooltip(
         )
         .at_pointer()
         .show(|ui| {
-            ui.label(egui::RichText::new("Sample").small().weak());
+            ui.horizontal(|ui| {
+                ui.label(crate::icons::rich(crate::icons::MUSIC_NOTE).small().weak());
+                ui.label(egui::RichText::new("Sample").small().weak());
+            });
             ui.label(word);
         });
     }
@@ -1157,6 +1165,37 @@ fn compute_completions(
     entries
 }
 
+fn category_icon(category: Option<&str>) -> Option<&'static str> {
+    let Some(category) = category else {
+        return None;
+    };
+
+    if category == "Sample" || category == "Sound: GM" {
+        return Some(crate::icons::MUSIC_NOTE);
+    }
+
+    if category.starts_with("Sound:")
+        || matches!(
+            category,
+            "Sound"
+                | "Oscillator"
+                | "Wavetable"
+                | "FM"
+                | "LFO"
+                | "Audio Modulation"
+                | "Modulation"
+        )
+    {
+        return Some(crate::icons::WAVE_SINE);
+    }
+
+    None
+}
+
+fn completion_icon(entry: &CompletionEntry) -> Option<&'static str> {
+    category_icon(entry.category.as_deref())
+}
+
 fn paint_completion_popup(
     ui: &egui::Ui,
     output: &egui::text_edit::TextEditOutput,
@@ -1228,7 +1267,23 @@ fn paint_completion_popup(
                             }
 
                             // Label with fuzzy highlights
-                            let label_pos = rect.min + egui::vec2(4.0, 2.0);
+                            let icon = completion_icon(entry);
+                            let icon_x = rect.min.x + 4.0;
+                            if let Some(icon) = icon {
+                                ui.painter().text(
+                                    egui::pos2(icon_x, rect.min.y + 2.0),
+                                    egui::Align2::LEFT_TOP,
+                                    icon,
+                                    FontId::new(font_id.size, crate::icons::family()),
+                                    if selected {
+                                        ui.visuals().selection.stroke.color
+                                    } else {
+                                        weak_color
+                                    },
+                                );
+                            }
+                            let label_pos = rect.min
+                                + egui::vec2(if icon.is_some() { 22.0 } else { 4.0 }, 2.0);
                             if entry.label_matches.is_empty() {
                                 ui.painter().text(
                                     label_pos,
@@ -1276,7 +1331,11 @@ fn paint_completion_popup(
 
                             // Description below label
                             ui.painter().text(
-                                rect.min + egui::vec2(4.0, font_id.size + 2.0),
+                                rect.min
+                                    + egui::vec2(
+                                        if icon.is_some() { 22.0 } else { 4.0 },
+                                        font_id.size + 2.0,
+                                    ),
                                 egui::Align2::LEFT_TOP,
                                 truncate_str(&entry.description, 60),
                                 small_font.clone(),

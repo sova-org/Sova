@@ -116,12 +116,8 @@ impl VisualsEngine {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let accent = ui.visuals().selection.bg_fill;
-                    let eval_text = egui::RichText::new(format!(
-                        "{} {}",
-                        crate::icons::PLAY,
-                        t!("visuals.eval")
-                    ))
-                    .strong();
+                    let eval_text =
+                        crate::icons::button_text(ui, crate::icons::PLAY, t!("visuals.eval"));
                     if ui.add(egui::Button::new(eval_text).fill(accent)).clicked() {
                         self.evaluate();
                     }
@@ -129,7 +125,7 @@ impl VisualsEngine {
                     self.show_compilation_dot(ui);
 
                     if self.dirty {
-                        ui.label(egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR));
+                        ui.label(crate::icons::colored(crate::icons::MODIFIED, COLOR_ERROR));
                     }
 
                     ui.add_space(4.0);
@@ -158,7 +154,7 @@ impl VisualsEngine {
         } else {
             (COLOR_MUTED, t!("visuals.title"))
         };
-        let dot = egui::RichText::new(crate::icons::CIRCLE_LARGE_FILLED).color(color);
+        let dot = crate::icons::colored(crate::icons::CIRCLE_LARGE_FILLED, color);
         ui.label(dot).on_hover_text(tip);
     }
 

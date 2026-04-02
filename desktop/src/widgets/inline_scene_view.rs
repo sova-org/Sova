@@ -430,7 +430,7 @@ impl InlineFrameState {
         };
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(collapse_icon).color(COLOR_MUTED))
+                egui::Button::new(crate::icons::rich(collapse_icon).color(COLOR_MUTED))
                     .fill(egui::Color32::TRANSPARENT),
             )
             .clicked()
@@ -448,7 +448,7 @@ impl InlineFrameState {
         let toggle_color = if enabled { COLOR_OK } else { COLOR_MUTED };
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(toggle_icon).color(toggle_color))
+                egui::Button::new(crate::icons::rich(toggle_icon).color(toggle_color))
                     .fill(egui::Color32::TRANSPARENT),
             )
             .clicked()
@@ -516,7 +516,7 @@ impl InlineFrameState {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Menu button
             let menu_btn = ui.add(
-                egui::Button::new(egui::RichText::new(crate::icons::CHEVRON_DOWN).small())
+                egui::Button::new(crate::icons::small(crate::icons::CHEVRON_DOWN))
                     .fill(egui::Color32::TRANSPARENT),
             );
             if menu_btn.clicked() {
@@ -526,7 +526,7 @@ impl InlineFrameState {
             // Dirty indicator
             if self.dirty {
                 let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                let discard_text = crate::icons::rich(crate::icons::MODIFIED)
                     .small()
                     .color(COLOR_ERROR);
                 if ui
@@ -839,7 +839,7 @@ impl InlineScriptState {
             if prelude_len > 0 {
                 let del_btn = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(crate::icons::CLOSE)
+                        crate::icons::rich(crate::icons::CLOSE)
                             .small()
                             .color(COLOR_MUTED),
                     )
@@ -862,7 +862,7 @@ impl InlineScriptState {
             // Dirty indicator
             if self.dirty {
                 let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                let discard_text = crate::icons::rich(crate::icons::MODIFIED)
                     .small()
                     .color(COLOR_ERROR);
                 if ui

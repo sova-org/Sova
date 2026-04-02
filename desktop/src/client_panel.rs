@@ -191,7 +191,7 @@ impl ClientPanel {
                 }
 
                 let r = ui.add(
-                    egui::Button::new(crate::icons::GEAR)
+                    egui::Button::new(crate::icons::rich(crate::icons::GEAR))
                         .min_size(egui::vec2(btn_height, btn_height)),
                 );
                 if r.hovered() {
@@ -243,12 +243,13 @@ impl ClientPanel {
             // Status line
             match status {
                 ConnectionStatus::Disconnected => {
-                    ui.colored_label(
-                        egui::Color32::GRAY,
-                        format!(
-                            "{} {}",
+                    ui.label(
+                        crate::icons::text_colored(
+                            ui,
+                            egui::TextStyle::Body,
                             crate::icons::CIRCLE_FILLED,
-                            t!("client.disconnected")
+                            t!("client.disconnected"),
+                            egui::Color32::GRAY,
                         ),
                     );
                 }
