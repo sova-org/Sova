@@ -1,5 +1,49 @@
+use sova_core::scene::{Line, Scene};
+
 // Language demos (auto-generated from assets/demos/cagire/ and assets/demos/boinx/)
 include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
+
+pub fn random_demo() -> crate::Snapshot {
+    let demos = DEMOS_GENERAL;
+    if demos.is_empty() {
+        return crate::Snapshot {
+            scene: Scene::new(vec![Line::new(vec![1.0])]),
+            tempo: 120.0,
+            beat: 0.0,
+            micros: 0,
+            quantum: 4.0,
+            devices: vec![],
+        };
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    // Splitmix64 mixing step for uniform distribution
+    let mut z = nanos.wrapping_add(0x9e3779b97f4a7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+    z ^= z >> 31;
+    let idx = z as usize % demos.len();
+    let (name, bytes) = demos[idx];
+    match serde_json::from_slice::<crate::Snapshot>(bytes) {
+        Ok(snap) => {
+            println!("Loaded demo: {name}");
+            snap
+        }
+        Err(e) => {
+            eprintln!("Failed to load demo '{name}': {e}");
+            crate::Snapshot {
+                scene: Scene::new(vec![Line::new(vec![1.0])]),
+                tempo: 120.0,
+                beat: 0.0,
+                micros: 0,
+                quantum: 4.0,
+                devices: vec![],
+            }
+        }
+    }
+}
 
 // General demos with curated display names
 pub const DEMOS_GENERAL: &[(&str, &[u8])] = &[

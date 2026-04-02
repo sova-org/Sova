@@ -394,7 +394,7 @@ impl InlineFrameState {
         li: usize,
         fi: usize,
         n_frames: usize,
-        current_playing_fi: Option<usize>,
+        playing_fis: &[usize],
         accent: egui::Color32,
         frame: &Frame,
         bridge: &ClientBridge,
@@ -541,9 +541,10 @@ impl InlineFrameState {
             // Step badge
             if n_frames > 1 {
                 let label = format!("{}/{}", fi + 1, n_frames);
-                let (badge_bg, badge_fg) = match current_playing_fi {
-                    Some(pfi) if fi == pfi => (accent, egui::Color32::WHITE),
-                    Some(pfi) if fi < pfi => (
+                let (badge_bg, badge_fg) = if playing_fis.contains(&fi) {
+                    (accent, egui::Color32::WHITE)
+                } else if playing_fis.iter().any(|&pfi| fi < pfi) {
+                    (
                         egui::Color32::from_rgba_unmultiplied(
                             accent.r(),
                             accent.g(),
@@ -551,8 +552,9 @@ impl InlineFrameState {
                             50,
                         ),
                         COLOR_MUTED,
-                    ),
-                    _ => (ui.visuals().extreme_bg_color, COLOR_MUTED),
+                    )
+                } else {
+                    (ui.visuals().extreme_bg_color, COLOR_MUTED)
                 };
                 let font = egui::FontId::monospace(10.0);
                 let galley = ui.painter().layout_no_wrap(label, font, badge_fg);

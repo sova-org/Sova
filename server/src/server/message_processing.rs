@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use sova_core::{
     Scene,
     clock::Clock,
+    scene::Line,
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
 
@@ -339,7 +340,7 @@ pub async fn on_message(
             }
         }
         ClientMessage::ResetScene(timing) => {
-            send_and_relay(state, SchedulerMessage::SetScene(Scene::default(), timing))
+            send_and_relay(state, SchedulerMessage::SetScene(Scene::new(vec![Line::new(vec![1.0])]), timing))
         }
         ClientMessage::RestartCore => {
             let restart_tx = state.core_restart_tx.clone();
