@@ -14,8 +14,9 @@ pub const POPOUT: &str = "\u{EB4C}";
 pub const DOCK: &str = "\u{EB4D}";
 
 // Scene grid indicators
-pub const LOOPING: &str = "\u{F01E}";
-pub const TRAILING: &str = "\u{EB80}";
+pub const LOOPING: &str = "\u{EA77}"; // cod-sync
+pub const TRAILING: &str = "\u{EBF9}"; // cod-indent
+pub const MANUAL: &str = "\u{EBA0}"; // cod-pinned
 
 // Status
 pub const CIRCLE_FILLED: &str = "\u{EA71}";

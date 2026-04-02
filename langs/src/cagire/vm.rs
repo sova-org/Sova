@@ -1700,6 +1700,16 @@ impl CagireVM {
                     let val = at!(stack.pop())?;
                     self.push_event(events, ConcreteEvent::Print(val.to_param_string()), 0);
                 }
+
+                Op::ExecuteFrame => {
+                    let f_i = at!(at!(stack.pop())?.as_int())? as usize;
+                    let l_i = at!(at!(stack.pop())?.as_int())? as usize;
+                    self.push_event(
+                        events,
+                        ConcreteEvent::ExecuteFrame(l_i, f_i),
+                        offset_micros(ctx, 0.0),
+                    );
+                }
             }
             pc += 1;
         }

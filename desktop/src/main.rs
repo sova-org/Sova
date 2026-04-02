@@ -30,6 +30,7 @@ mod vu_meter_panel;
 mod widgets;
 
 use eframe::egui;
+use egui_file_dialog::FileDialog;
 use server_panel::ServerAction;
 use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
@@ -235,6 +236,8 @@ fn main() -> eframe::Result {
             let visuals = visuals::VisualsEngine::new(cc.gl.clone(), &s.visuals);
 
             let mut app = SovaApp {
+                file_dialog: FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]),
+                pending_dialog: PendingDialog::None,
                 server,
                 client,
                 logs,
@@ -278,7 +281,16 @@ fn main() -> eframe::Result {
     )
 }
 
+enum PendingDialog {
+    None,
+    SaveScene { snapshot: Box<sova_server::Snapshot> },
+    LoadScene { timing: ActionTiming },
+    PickSampleFolder,
+}
+
 struct SovaApp {
+    file_dialog: FileDialog,
+    pending_dialog: PendingDialog,
     server: server_panel::ServerPanel,
     client: client_panel::ClientPanel,
     logs: log_panel::LogPanel,
@@ -423,28 +435,17 @@ impl SovaApp {
         let Some(snapshot) = self.bridge.build_snapshot() else {
             return;
         };
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Sova Scene", &["sova"])
-            .save_file()
-        else {
-            return;
-        };
-        let Ok(bytes) = serde_json::to_vec(&snapshot) else {
-            return;
-        };
-        if std::fs::write(&path, bytes).is_ok() {
-            self.push_recent_scene(path);
-        }
+        self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .add_file_filter_extensions("Sova Scene", vec!["sova"]);
+        self.file_dialog.save_file();
+        self.pending_dialog = PendingDialog::SaveScene { snapshot: Box::new(snapshot) };
     }
 
     fn load_scene(&mut self, timing: ActionTiming) {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Sova Scene", &["sova"])
-            .pick_file()
-        else {
-            return;
-        };
-        self.load_scene_from_path(&path, timing);
+        self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .add_file_filter_extensions("Sova Scene", vec!["sova"]);
+        self.file_dialog.pick_file();
+        self.pending_dialog = PendingDialog::LoadScene { timing };
     }
 
     fn load_scene_from_path(&mut self, path: &std::path::Path, timing: ActionTiming) {
@@ -543,6 +544,26 @@ impl eframe::App for SovaApp {
         if let widgets::ConfirmAction::Confirmed = self.confirm_reset_scene.show(ctx) {
             self.bridge
                 .send(ClientMessage::ResetScene(ActionTiming::Immediate));
+        }
+
+        self.file_dialog.update(ctx);
+        if let Some(path) = self.file_dialog.take_picked() {
+            match std::mem::replace(&mut self.pending_dialog, PendingDialog::None) {
+                PendingDialog::SaveScene { snapshot } => {
+                    if let Ok(bytes) = serde_json::to_vec(&*snapshot)
+                        && std::fs::write(&path, bytes).is_ok()
+                    {
+                        self.push_recent_scene(path);
+                    }
+                }
+                PendingDialog::LoadScene { timing } => {
+                    self.load_scene_from_path(&path, timing);
+                }
+                PendingDialog::PickSampleFolder => {
+                    self.audio.add_sample_path(path);
+                }
+                PendingDialog::None => {}
+            }
         }
 
         self.server.poll();
@@ -1005,9 +1026,14 @@ impl eframe::App for SovaApp {
             appearance: &mut self.appearance,
             dismissed_tips: &mut self.dismissed_tips,
         };
-        let (sidebar_server_action, sidebar_appearance_changed) =
+        let (sidebar_server_action, sidebar_appearance_changed, pick_sample_folder) =
             self.doc_panel
                 .show_side_panel(ctx, &self.bridge, settings_ctx);
+        if pick_sample_folder && matches!(self.pending_dialog, PendingDialog::None) {
+            self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]);
+            self.file_dialog.pick_directory();
+            self.pending_dialog = PendingDialog::PickSampleFolder;
+        }
         match sidebar_server_action {
             ServerAction::Start => {
                 self.server.start(self.audio.generate_audio_config());

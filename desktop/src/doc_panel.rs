@@ -297,7 +297,7 @@ impl DocPanel {
         ctx: &egui::Context,
         bridge: &ClientBridge,
         settings: SettingsContext<'_>,
-    ) -> (ServerAction, bool) {
+    ) -> (ServerAction, bool, bool) {
         let side = match self.settings.side {
             DocSide::Left => Side::Left,
             DocSide::Right => Side::Right,
@@ -307,7 +307,7 @@ impl DocPanel {
             self.show_expanded(ctx, bridge, side, settings)
         } else {
             self.show_collapsed(ctx, side);
-            (ServerAction::None, false)
+            (ServerAction::None, false, false)
         }
     }
 
@@ -369,9 +369,10 @@ impl DocPanel {
         bridge: &ClientBridge,
         side: Side,
         settings: SettingsContext<'_>,
-    ) -> (ServerAction, bool) {
+    ) -> (ServerAction, bool, bool) {
         let mut server_action = ServerAction::None;
         let mut appearance_changed = false;
+        let mut pick_sample_folder = false;
 
         let panel = egui::SidePanel::new(side, "doc_panel_expanded")
             .default_width(self.settings.width)
@@ -448,9 +449,10 @@ impl DocPanel {
                     self.show_content(ui, bridge, settings.editor_settings);
                 }
                 SidebarMode::Settings => {
-                    let (sa, ac) = self.show_settings_content(ui, bridge, settings);
+                    let (sa, ac, pf) = self.show_settings_content(ui, bridge, settings);
                     server_action = sa;
                     appearance_changed = ac;
+                    pick_sample_folder = pf;
                 }
             }
         });
@@ -466,7 +468,7 @@ impl DocPanel {
             }
         }
 
-        (server_action, appearance_changed)
+        (server_action, appearance_changed, pick_sample_folder)
     }
 
     fn show_settings_content(
@@ -474,7 +476,7 @@ impl DocPanel {
         ui: &mut egui::Ui,
         bridge: &ClientBridge,
         settings: SettingsContext<'_>,
-    ) -> (ServerAction, bool) {
+    ) -> (ServerAction, bool, bool) {
         let SettingsContext {
             server,
             audio,
@@ -487,6 +489,7 @@ impl DocPanel {
         } = settings;
         let mut server_action = ServerAction::None;
         let mut appearance_changed = false;
+        let mut pick_sample_folder = false;
 
         egui::TopBottomPanel::top("settings_tabs").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
@@ -539,7 +542,7 @@ impl DocPanel {
                                         ui.horizontal(|ui| {
                                             audio.show_restart_button(ui, bridge);
                                         });
-                                        audio.show_config(ui);
+                                        pick_sample_folder |= audio.show_config(ui);
                                     });
 
                                 if bridge.is_connected() && bridge.audio_state().running {
@@ -569,7 +572,7 @@ impl DocPanel {
             }
         }
 
-        (server_action, appearance_changed)
+        (server_action, appearance_changed, pick_sample_folder)
     }
 
     fn show_content(

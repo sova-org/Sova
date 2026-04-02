@@ -587,7 +587,12 @@ impl ScenePanel {
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new(crate::icons::LOOPING).color(loop_color),
+                                egui::RichText::new(format!(
+                                    "{} Loop",
+                                    crate::icons::LOOPING
+                                ))
+                                .color(loop_color)
+                                .small(),
                             )
                             .fill(egui::Color32::TRANSPARENT),
                         )
@@ -601,7 +606,12 @@ impl ScenePanel {
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new(crate::icons::TRAILING).color(trail_color),
+                                egui::RichText::new(format!(
+                                    "{} Trail",
+                                    crate::icons::TRAILING
+                                ))
+                                .color(trail_color)
+                                .small(),
                             )
                             .fill(egui::Color32::TRANSPARENT),
                         )
@@ -609,6 +619,25 @@ impl ScenePanel {
                         .clicked()
                     {
                         self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
+                    }
+
+                    let manual_color = if line.manual { accent } else { COLOR_MUTED };
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!(
+                                    "{} Manual",
+                                    crate::icons::MANUAL
+                                ))
+                                .color(manual_color)
+                                .small(),
+                            )
+                            .fill(egui::Color32::TRANSPARENT),
+                        )
+                        .on_hover_text(t!("scene.toggle_manual"))
+                        .clicked()
+                    {
+                        self.toggle_line_field(li, bridge, |l| l.manual = !l.manual);
                     }
 
                     // Right side: speed, frame range, peer dots

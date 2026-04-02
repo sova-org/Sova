@@ -152,6 +152,7 @@ pub enum Op {
     Orec,
     Odub,
     Print,
+    ExecuteFrame,
 }
 
 impl Op {

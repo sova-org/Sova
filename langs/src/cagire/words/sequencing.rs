@@ -535,6 +535,17 @@ pub(super) const WORDS: &[Word] = &[
         compile: Simple,
         varargs: false,
     },
+    // Scene
+    Word {
+        name: "exe",
+        aliases: &[],
+        category: "Scene",
+        stack: "(line frame --)",
+        desc: "Execute a script at given line and frame",
+        example: include_str!("../../../docs/cagire/examples/exe.cagire"),
+        compile: Simple,
+        varargs: false,
+    },
     // Debug
     Word {
         name: "print",
