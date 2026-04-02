@@ -281,16 +281,16 @@ impl SovaApp {
         ctx.input(|i| {
             if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Comma) {
                 self.doc_panel
-                    .toggle_settings_tab(doc_panel::SettingsTab::Options);
+                    .toggle_settings_tab(doc_panel::SettingsTab::Appearance);
             }
             if i.modifiers.command && i.modifiers.shift {
                 if i.key_pressed(egui::Key::S) {
                     self.doc_panel
-                        .toggle_settings_tab(doc_panel::SettingsTab::Config);
+                        .toggle_settings_tab(doc_panel::SettingsTab::Server);
                 }
                 if i.key_pressed(egui::Key::A) {
                     self.doc_panel
-                        .toggle_settings_tab(doc_panel::SettingsTab::Config);
+                        .toggle_settings_tab(doc_panel::SettingsTab::Server);
                 }
                 if i.key_pressed(egui::Key::I) {
                     self.doc_panel
@@ -1048,7 +1048,7 @@ impl eframe::App for SovaApp {
             if panels.sidebar != sidebar_open {
                 if panels.sidebar {
                     self.doc_panel
-                        .open_settings_tab(doc_panel::SettingsTab::Config);
+                        .open_settings_tab(doc_panel::SettingsTab::Server);
                 } else {
                     self.doc_panel.settings.collapsed = true;
                 }
@@ -1079,7 +1079,7 @@ impl eframe::App for SovaApp {
             }
             if action.open_server_config {
                 self.doc_panel
-                    .open_settings_tab(doc_panel::SettingsTab::Config);
+                    .open_settings_tab(doc_panel::SettingsTab::Server);
             }
             if action.start_feedback && !self.server.is_running() && !self.bridge.has_feedback() {
                 self.bridge
@@ -1193,10 +1193,10 @@ impl SovaApp {
         match cmd {
             Server => self
                 .doc_panel
-                .toggle_settings_tab(doc_panel::SettingsTab::Config),
+                .toggle_settings_tab(doc_panel::SettingsTab::Server),
             Audio => self
                 .doc_panel
-                .toggle_settings_tab(doc_panel::SettingsTab::Config),
+                .toggle_settings_tab(doc_panel::SettingsTab::Server),
             Devices => self
                 .doc_panel
                 .toggle_settings_tab(doc_panel::SettingsTab::Devices),
@@ -1210,7 +1210,7 @@ impl SovaApp {
                 .toggle_settings_tab(doc_panel::SettingsTab::Logs),
             Options => self
                 .doc_panel
-                .toggle_settings_tab(doc_panel::SettingsTab::Options),
+                .toggle_settings_tab(doc_panel::SettingsTab::Appearance),
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,

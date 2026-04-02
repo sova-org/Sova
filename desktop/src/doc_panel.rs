@@ -178,8 +178,8 @@ impl SidebarMode {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
-    Config = 0,
-    Options = 1,
+    Server = 0,
+    Appearance = 1,
     Devices = 2,
     Logs = 3,
 }
@@ -187,17 +187,17 @@ pub enum SettingsTab {
 impl SettingsTab {
     fn from_u8(v: u8) -> Self {
         match v {
-            1 => Self::Options,
+            1 => Self::Appearance,
             2 => Self::Devices,
             3 => Self::Logs,
-            _ => Self::Config,
+            _ => Self::Server,
         }
     }
 
     fn label(self) -> String {
         match self {
-            Self::Config => t!("config.title").into(),
-            Self::Options => t!("options.title").into(),
+            Self::Server => t!("config.title").into(),
+            Self::Appearance => t!("options.title").into(),
             Self::Devices => t!("devices.title").into(),
             Self::Logs => t!("log.title").into(),
         }
@@ -205,8 +205,8 @@ impl SettingsTab {
 }
 
 const SETTINGS_TABS: [SettingsTab; 4] = [
-    SettingsTab::Config,
-    SettingsTab::Options,
+    SettingsTab::Server,
+    SettingsTab::Appearance,
     SettingsTab::Devices,
     SettingsTab::Logs,
 ];
@@ -398,7 +398,7 @@ impl DocPanel {
 
                     let settings_r = ui.selectable_label(
                         mode == SidebarMode::Settings,
-                        t!("config.title").as_ref(),
+                        t!("settings.title").as_ref(),
                     );
                     if mode == SidebarMode::Settings {
                         let accent = ui.visuals().selection.bg_fill;
@@ -520,7 +520,7 @@ impl DocPanel {
                     .show(ui, |ui| {
                         ui.add_space(4.0);
                         match tab {
-                            SettingsTab::Config => {
+                            SettingsTab::Server => {
                                 egui::CollapsingHeader::new(t!("config.server"))
                                     .default_open(true)
                                     .show(ui, |ui| {
@@ -553,7 +553,7 @@ impl DocPanel {
                                         });
                                 }
                             }
-                            SettingsTab::Options => {
+                            SettingsTab::Appearance => {
                                 appearance_changed = options.show_inside(
                                     ui,
                                     editor_settings,

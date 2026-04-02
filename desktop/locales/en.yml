@@ -50,7 +50,8 @@ hint.mute: "Mute audio"
 hint.unmute: "Unmute audio"
 
 # Server panel
-config.title: "Config"
+config.title: "Server"
+settings.title: "Settings"
 config.server: "Server"
 config.audio: "Audio"
 config.link: "Link"
@@ -104,7 +105,7 @@ client.audio_feedback: "Audio feedback"
 client.hint.audio_feedback: "Mirror the session locally for audio output"
 
 # Options panel
-options.title: "Options"
+options.title: "Appearance"
 options.appearance: "Appearance"
 options.theme: "Theme"
 options.theme.system: "System"
