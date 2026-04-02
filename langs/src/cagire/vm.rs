@@ -8,6 +8,8 @@ use sova_core::clock::SyncTime;
 use sova_core::protocol::osc::OSCMessage;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
+use sova_core::device_map::DeviceMap;
+use sova_core::protocol::DeviceKind;
 use sova_core::vm::EvaluationContext;
 
 use super::compiler::{compile_script, Dictionary};
@@ -470,7 +472,7 @@ impl CagireVM {
                 }
 
                 Op::Emit => {
-                    at!(self.emit_events(cmd, ctx, events))?;
+                    at!(self.emit_events(cmd, ctx, events, eval_ctx.device_map))?;
                 }
 
                 Op::Get => {
@@ -1786,11 +1788,12 @@ impl CagireVM {
         cmd: &mut CmdRegister,
         ctx: &StepContext,
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
+        device_map: &DeviceMap,
     ) -> Result<(), String> {
         let delta_secs = cmd.take_delta_secs().unwrap_or(ctx.nudge_secs);
         let poly_count = compute_poly_count(cmd);
         for poly_idx in 0..poly_count {
-            self.emit_single(cmd, ctx, events, poly_idx, delta_secs)?;
+            self.emit_single(cmd, ctx, events, poly_idx, delta_secs, device_map)?;
         }
 
         Ok(())
@@ -1803,6 +1806,7 @@ impl CagireVM {
         events: &mut Vec<(ConcreteEvent, SyncTime)>,
         poly_idx: usize,
         delta_secs: f64,
+        device_map: &DeviceMap,
     ) -> Result<(), String> {
         let time = offset_micros(ctx, delta_secs);
 
@@ -1927,6 +1931,40 @@ impl CagireVM {
                 );
             }
         } else {
+            if let Some(addr_val) = find_param("address") {
+                let addr_str = resolve_cycling(addr_val, poly_idx).to_param_string();
+                if !addr_str.is_empty() {
+                    if let Some(dev_ref) = device_map.get_out_device_at_slot(dev) {
+                        if dev_ref.kind() == DeviceKind::Osc {
+                            let mut osc_args = Vec::with_capacity(params.len() * 2);
+                            for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                                if *k == "device" || *k == "address" {
+                                    continue;
+                                }
+                                let resolved = resolve_cycling(v, poly_idx);
+                                osc_args.push(VariableValue::Str(k.to_string()));
+                                let param_str = resolved.to_param_string();
+                                if let Ok(f) = param_str.parse::<f64>() {
+                                    osc_args.push(VariableValue::Float(f));
+                                } else {
+                                    osc_args.push(VariableValue::Str(param_str));
+                                }
+                            }
+                            let message = OSCMessage::new(addr_str, osc_args);
+                            self.push_event(
+                                events,
+                                ConcreteEvent::Osc {
+                                    message,
+                                    device_id: dev,
+                                },
+                                time,
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
             let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
 
             if let (Some(cc), Some(val)) = (get_int("ccnum"), get_int("ccout")) {

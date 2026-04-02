@@ -36,70 +36,7 @@ use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
-include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
-
-const DEMOS_GENERAL: &[(&str, &[u8])] = &[
-    (
-        "Aliens near us",
-        include_bytes!("../assets/demos/demos/aliens_near_us.sova"),
-    ),
-    (
-        "2005 algorave",
-        include_bytes!("../assets/demos/demos/2005_algorave.sova"),
-    ),
-    (
-        "By the pond",
-        include_bytes!("../assets/demos/demos/by_the_pond.sova"),
-    ),
-    (
-        "Classic move",
-        include_bytes!("../assets/demos/demos/classic_move.sova"),
-    ),
-    (
-        "Lush elegiac stuff",
-        include_bytes!("../assets/demos/demos/lush_elegiac_stuff.sova"),
-    ),
-    (
-        "Intense boots and cats",
-        include_bytes!("../assets/demos/demos/intense_boots_and_cats.sova"),
-    ),
-    (
-        "Infinite gongs",
-        include_bytes!("../assets/demos/demos/infinite_gongs.sova"),
-    ),
-    (
-        "Chill 808",
-        include_bytes!("../assets/demos/demos/chill_808.sova"),
-    ),
-    (
-        "Mayo sandwich",
-        include_bytes!("../assets/demos/demos/mayo_sandwich.sova"),
-    ),
-    (
-        "First day with my modular",
-        include_bytes!("../assets/demos/demos/first_day_with_my_modular.sova"),
-    ),
-    (
-        "Bit after bit",
-        include_bytes!("../assets/demos/demos/bit_after_bit.sova"),
-    ),
-    (
-        "Some soup ?",
-        include_bytes!("../assets/demos/demos/some_soup.sova"),
-    ),
-    (
-        "Storm of sand",
-        include_bytes!("../assets/demos/demos/darude.sova"),
-    ),
-    (
-        "Dirty & Crunchy", 
-        include_bytes!("../assets/demos/demos/crado.sova")
-    ),
-    (
-        "Studious", 
-        include_bytes!("../assets/demos/demos/chords.sova")
-    ),
-];
+use sova_server::demos::{DEMOS_BOINX, DEMOS_CAGIRE, DEMOS_GENERAL};
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
     ctx.set_theme(egui::ThemePreference::Dark);

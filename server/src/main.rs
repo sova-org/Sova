@@ -193,7 +193,25 @@ async fn main() {
 
     let languages = Arc::new(langs::create_language_center());
 
-    let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
+    let initial_scene = {
+        let demos = sova_server::demos::DEMOS_GENERAL;
+        if demos.is_empty() {
+            Scene::new(vec![Line::new(vec![1.0])])
+        } else {
+            let idx = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as usize % demos.len())
+                .unwrap_or(0);
+            let (name, bytes) = demos[idx];
+            match serde_json::from_slice::<sova_server::Snapshot>(bytes) {
+                Ok(snap) => {
+                    println!("Loaded demo: {name}");
+                    snap.scene
+                }
+                Err(_) => Scene::new(vec![Line::new(vec![1.0])]),
+            }
+        }
+    };
     let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
 
     #[cfg(feature = "audio")]
