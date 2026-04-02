@@ -198,6 +198,7 @@ impl ActionProcessor {
         update_notifier: &Sender<SovaNotification>,
         languages: &LanguageCenter,
         feedback: &Sender<SchedulerMessage>,
+        clock: &mut Clock,
     ) {
         match event {
             ConcreteEvent::ExecuteFrame(l_i, f_i) => {
@@ -285,6 +286,9 @@ impl ActionProcessor {
                 }
                 let frame = scene.frame_mut(l_i, f_i);
                 frame.kill_executions();
+            }
+            ConcreteEvent::SetTempo(t) => {
+                clock.set_tempo(t);
             }
             _ => (),
         }

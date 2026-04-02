@@ -29,14 +29,14 @@ pub fn make_documentation() -> LanguageDocumentation {
     );
     let entry = ReferenceEntry::new("An evenly spaced sequence in time.")
         .with_example("[C4 E4 G4]")
-        .with_category("Sets");
+        .with_category("Items");
     doc.reference.insert(
         LanguageElement::Brackets("[".to_owned(), "]".to_owned()),
         entry,
     );
     let entry = ReferenceEntry::new("Simultaneous set of elements.")
         .with_example("(C4 E4 G4)")
-        .with_category("Sets");
+        .with_category("Items");
     doc.reference.insert(
         LanguageElement::Brackets("(".to_owned(), ")".to_owned()),
         entry,
