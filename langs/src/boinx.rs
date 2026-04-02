@@ -89,6 +89,11 @@ fn make_internal_event(ctx: &EvaluationContext, item: BoinxItem) -> Option<Concr
             let text = map.remove("text").unwrap_or_default().as_str(ctx);
             Some(ConcreteEvent::SetFrame(l_i, f_i, lang, text))
         }
+        "kill" => {
+            let l_i = map.remove("line").unwrap_or_default().as_integer(ctx) as usize;
+            let f_i = map.remove("frame").unwrap_or_default().as_integer(ctx) as usize;
+            Some(ConcreteEvent::KillExecutions(l_i, f_i))
+        }
         _ => None,
     }
 }

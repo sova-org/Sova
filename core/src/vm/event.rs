@@ -46,6 +46,7 @@ pub enum ConcreteEvent {
     SetLineManual(usize, bool),
     SetLineSpeedFactor(usize, f64),
     SetFrame(usize, usize, String, String),
+    KillExecutions(usize, usize),
 }
 
 impl ConcreteEvent {
@@ -79,7 +80,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) => None,
+            | ConcreteEvent::SetFrame(..) 
+            | ConcreteEvent::KillExecutions(..) => None,
         }
     }
 
@@ -94,7 +96,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) => true,
+            | ConcreteEvent::SetFrame(..) 
+            | ConcreteEvent::KillExecutions(..) => true,
             _ => false,
         }
     }
@@ -157,6 +160,9 @@ impl fmt::Display for ConcreteEvent {
             ConcreteEvent::SetFrame(l_i, f_i, lang, _) => {
                 write!(f, "set-frame {l_i}:{f_i} | {lang}")
             }
+            ConcreteEvent::KillExecutions(l_i, f_i) => {
+                write!(f, "kill {l_i}:{f_i}")
+            }
         }
     }
 }
@@ -206,6 +212,7 @@ pub enum Event {
     SetLineManual(Variable, Variable),
     SetLineSpeedFactor(Variable, Variable),
     SetFrame(Variable, Variable, Variable, Variable),
+    KillExecutions(Variable, Variable),
 }
 
 impl Event {
@@ -366,6 +373,10 @@ impl Event {
                 ctx.evaluate(f_i).as_integer(ctx) as usize,
                 ctx.evaluate(lang).as_str(ctx),
                 ctx.evaluate(script).as_str(ctx),
+            ),
+            Event::KillExecutions(l_i, f_i) => ConcreteEvent::KillExecutions(
+                ctx.evaluate(l_i).as_integer(ctx) as usize,
+                ctx.evaluate(f_i).as_integer(ctx) as usize,
             ),
         }
     }

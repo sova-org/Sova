@@ -38,7 +38,7 @@ impl World {
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
-                    Ok(_) => log_eprintln!("World: real-time priority set"),
+                    Ok(_) => log_println!("World: real-time priority set"),
                     Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
                 }
                 let mut world = World {
