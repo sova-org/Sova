@@ -118,23 +118,6 @@ fn main() -> eframe::Result {
             let ctx = cc.egui_ctx.clone();
             egui_extras::install_image_loaders(&ctx);
 
-            ctx.add_font(egui::epaint::text::FontInsert::new(
-                "nerd-font",
-                egui::FontData::from_static(include_bytes!(
-                    "../assets/SymbolsNerdFont-Regular.ttf"
-                )),
-                vec![
-                    egui::epaint::text::InsertFontFamily {
-                        family: egui::FontFamily::Proportional,
-                        priority: egui::epaint::text::FontPriority::Lowest,
-                    },
-                    egui::epaint::text::InsertFontFamily {
-                        family: egui::FontFamily::Monospace,
-                        priority: egui::epaint::text::FontPriority::Lowest,
-                    },
-                ],
-            ));
-
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio Runtime");
             let handle = runtime.handle().clone();
 
@@ -143,7 +126,7 @@ fn main() -> eframe::Result {
             let s = settings::load();
             rust_i18n::set_locale(&s.appearance.locale);
             apply_appearance(&ctx, &s.appearance);
-            fonts::apply_custom_fonts(&ctx, &s.appearance.ui_font, &s.appearance.editor_font);
+            fonts::apply_fonts(&ctx, &s.appearance.ui_font, &s.appearance.editor_font);
 
             let server = server_panel::ServerPanel::new(
                 handle.clone(),
@@ -588,7 +571,7 @@ impl eframe::App for SovaApp {
                                     }
                                 }
                                 ui.separator();
-                                if ui.button(t!("menu.clear")).clicked() {
+                                if ui.button(crate::icons::button_text(ui, crate::icons::TRASH, t!("menu.clear"))).clicked() {
                                     clear = true;
                                     ui.close();
                                 }
@@ -710,18 +693,18 @@ impl eframe::App for SovaApp {
                     };
                     let r = ui.menu_button(t!("menu.server"), |ui| {
                         if self.server.is_running() {
-                            if ui.button(t!("menu.stop_server")).clicked() {
+                            if ui.button(crate::icons::button_text(ui, crate::icons::STOP, t!("menu.stop_server"))).clicked() {
                                 ui.close();
                                 self.bridge.disconnect();
                                 self.server.stop();
                             }
-                        } else if ui.button(t!("menu.start_server")).clicked() {
+                        } else if ui.button(crate::icons::button_text(ui, crate::icons::PLAY, t!("menu.start_server"))).clicked() {
                             ui.close();
                             self.server.start(self.audio.generate_audio_config());
                         }
                         if self.bridge.is_connected() {
                             ui.separator();
-                            if ui.button(t!("common.disconnect")).clicked() {
+                            if ui.button(crate::icons::button_text(ui, crate::icons::DISCONNECT, t!("common.disconnect"))).clicked() {
                                 ui.close();
                                 self.bridge.disconnect();
                             }
@@ -857,7 +840,7 @@ impl eframe::App for SovaApp {
                             &format!("{mod_sym}{shift_sym}B"),
                         );
                         ui.separator();
-                        if ui.button(t!("menu.keybindings")).clicked() {
+                        if ui.button(crate::icons::button_text(ui, crate::icons::KEYBOARD, t!("menu.keybindings"))).clicked() {
                             self.keybindings_open = !self.keybindings_open;
                             ui.close();
                         }
@@ -909,7 +892,7 @@ impl eframe::App for SovaApp {
                         } else {
                             icons::UNMUTE
                         };
-                        let btn = ui.button(icon);
+                        let btn = ui.button(icons::rich(icon));
                         if btn.clicked() {
                             self.muted = !self.muted;
                             self.bridge
@@ -985,7 +968,7 @@ impl eframe::App for SovaApp {
         }
         if sidebar_appearance_changed {
             apply_appearance(ctx, &self.appearance);
-            fonts::apply_custom_fonts(ctx, &self.appearance.ui_font, &self.appearance.editor_font);
+            fonts::apply_fonts(ctx, &self.appearance.ui_font, &self.appearance.editor_font);
         }
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)

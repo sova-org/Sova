@@ -178,7 +178,7 @@ impl SpectrumPanel {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let r = ui
-                        .button(crate::icons::POPOUT)
+                        .button(crate::icons::rich(crate::icons::POPOUT))
                         .on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
                         crate::widgets::hint::set(ctx, t!("spectrum.hint.detach"));

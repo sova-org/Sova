@@ -128,7 +128,7 @@ impl SampleBrowserPanel {
             .horizontal(|ui| {
                 if show_popout {
                     let r = ui
-                        .button(crate::icons::POPOUT)
+                        .button(crate::icons::rich(crate::icons::POPOUT))
                         .on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
                         crate::widgets::hint::set(ui.ctx(), t!("sample_browser.hint.detach"));

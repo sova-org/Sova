@@ -129,7 +129,7 @@ impl AudioPanel {
         if !bridge.is_connected() {
             return;
         }
-        let r = ui.button(t!("audio.restart"));
+        let r = ui.button(crate::icons::button_text(ui, crate::icons::REFRESH, t!("audio.restart")));
         if r.hovered() {
             crate::widgets::hint::set(ui.ctx(), t!("audio.hint.restart"));
         }

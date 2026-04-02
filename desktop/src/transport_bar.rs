@@ -49,7 +49,7 @@ impl TransportBar {
                 ))
                 .inner_margin(egui::Margin::symmetric(2, 1))
                 .show(ui, |ui| {
-                    let r = ui.button(crate::icons::PAUSE);
+                    let r = ui.button(crate::icons::rich(crate::icons::PAUSE));
                     if r.hovered() {
                         crate::widgets::hint::set(ctx, t!("transport.hint.stop"));
                     }
@@ -58,7 +58,7 @@ impl TransportBar {
                     }
                 });
         } else {
-            let r = ui.button(crate::icons::PLAY);
+            let r = ui.button(crate::icons::rich(crate::icons::PLAY));
             if r.hovered() {
                 crate::widgets::hint::set(ctx, t!("transport.hint.play"));
             }
@@ -67,7 +67,7 @@ impl TransportBar {
             }
         }
 
-        let r = ui.button(crate::icons::HUSH);
+        let r = ui.button(crate::icons::rich(crate::icons::HUSH));
         if r.hovered() {
             crate::widgets::hint::set(ctx, t!("transport.hint.hush"));
         }
@@ -75,7 +75,7 @@ impl TransportBar {
             bridge.send(ClientMessage::Hush);
         }
 
-        let r = ui.button(crate::icons::PANIC);
+        let r = ui.button(crate::icons::rich(crate::icons::PANIC));
         if r.hovered() {
             crate::widgets::hint::set(ctx, t!("transport.hint.panic"));
         }
