@@ -243,15 +243,13 @@ impl ClientPanel {
             // Status line
             match status {
                 ConnectionStatus::Disconnected => {
-                    ui.label(
-                        crate::icons::text_colored(
-                            ui,
-                            egui::TextStyle::Body,
-                            crate::icons::CIRCLE_FILLED,
-                            t!("client.disconnected"),
-                            egui::Color32::GRAY,
-                        ),
-                    );
+                    ui.label(crate::icons::text_colored(
+                        ui,
+                        egui::TextStyle::Body,
+                        crate::icons::CIRCLE_FILLED,
+                        t!("client.disconnected"),
+                        egui::Color32::GRAY,
+                    ));
                 }
                 ConnectionStatus::Connecting => {
                     ui.label(t!("client.connecting"));

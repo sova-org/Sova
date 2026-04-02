@@ -203,8 +203,12 @@ fn main() -> eframe::Result {
 
 enum PendingDialog {
     None,
-    SaveScene { snapshot: Box<sova_server::Snapshot> },
-    LoadScene { timing: ActionTiming },
+    SaveScene {
+        snapshot: Box<sova_server::Snapshot>,
+    },
+    LoadScene {
+        timing: ActionTiming,
+    },
     PickSampleFolder,
 }
 
@@ -355,14 +359,18 @@ impl SovaApp {
         let Some(snapshot) = self.bridge.build_snapshot() else {
             return;
         };
-        self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        self.file_dialog = FileDialog::new()
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .add_file_filter_extensions("Sova Scene", vec!["sova"]);
         self.file_dialog.save_file();
-        self.pending_dialog = PendingDialog::SaveScene { snapshot: Box::new(snapshot) };
+        self.pending_dialog = PendingDialog::SaveScene {
+            snapshot: Box::new(snapshot),
+        };
     }
 
     fn load_scene(&mut self, timing: ActionTiming) {
-        self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        self.file_dialog = FileDialog::new()
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .add_file_filter_extensions("Sova Scene", vec!["sova"]);
         self.file_dialog.pick_file();
         self.pending_dialog = PendingDialog::LoadScene { timing };
@@ -571,7 +579,14 @@ impl eframe::App for SovaApp {
                                     }
                                 }
                                 ui.separator();
-                                if ui.button(crate::icons::button_text(ui, crate::icons::TRASH, t!("menu.clear"))).clicked() {
+                                if ui
+                                    .button(crate::icons::button_text(
+                                        ui,
+                                        crate::icons::TRASH,
+                                        t!("menu.clear"),
+                                    ))
+                                    .clicked()
+                                {
                                     clear = true;
                                     ui.close();
                                 }
@@ -693,18 +708,39 @@ impl eframe::App for SovaApp {
                     };
                     let r = ui.menu_button(t!("menu.server"), |ui| {
                         if self.server.is_running() {
-                            if ui.button(crate::icons::button_text(ui, crate::icons::STOP, t!("menu.stop_server"))).clicked() {
+                            if ui
+                                .button(crate::icons::button_text(
+                                    ui,
+                                    crate::icons::STOP,
+                                    t!("menu.stop_server"),
+                                ))
+                                .clicked()
+                            {
                                 ui.close();
                                 self.bridge.disconnect();
                                 self.server.stop();
                             }
-                        } else if ui.button(crate::icons::button_text(ui, crate::icons::PLAY, t!("menu.start_server"))).clicked() {
+                        } else if ui
+                            .button(crate::icons::button_text(
+                                ui,
+                                crate::icons::PLAY,
+                                t!("menu.start_server"),
+                            ))
+                            .clicked()
+                        {
                             ui.close();
                             self.server.start(self.audio.generate_audio_config());
                         }
                         if self.bridge.is_connected() {
                             ui.separator();
-                            if ui.button(crate::icons::button_text(ui, crate::icons::DISCONNECT, t!("common.disconnect"))).clicked() {
+                            if ui
+                                .button(crate::icons::button_text(
+                                    ui,
+                                    crate::icons::DISCONNECT,
+                                    t!("common.disconnect"),
+                                ))
+                                .clicked()
+                            {
                                 ui.close();
                                 self.bridge.disconnect();
                             }
@@ -840,7 +876,14 @@ impl eframe::App for SovaApp {
                             &format!("{mod_sym}{shift_sym}B"),
                         );
                         ui.separator();
-                        if ui.button(crate::icons::button_text(ui, crate::icons::KEYBOARD, t!("menu.keybindings"))).clicked() {
+                        if ui
+                            .button(crate::icons::button_text(
+                                ui,
+                                crate::icons::KEYBOARD,
+                                t!("menu.keybindings"),
+                            ))
+                            .clicked()
+                        {
                             self.keybindings_open = !self.keybindings_open;
                             ui.close();
                         }
@@ -948,9 +991,9 @@ impl eframe::App for SovaApp {
             appearance: &mut self.appearance,
             dismissed_tips: &mut self.dismissed_tips,
         };
-        let (sidebar_server_action, sidebar_appearance_changed, pick_sample_folder) =
-            self.doc_panel
-                .show_side_panel(ctx, &self.bridge, settings_ctx);
+        let (sidebar_server_action, sidebar_appearance_changed, pick_sample_folder) = self
+            .doc_panel
+            .show_side_panel(ctx, &self.bridge, settings_ctx);
         if pick_sample_folder && matches!(self.pending_dialog, PendingDialog::None) {
             self.file_dialog = FileDialog::new().anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]);
             self.file_dialog.pick_directory();

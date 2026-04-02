@@ -191,10 +191,8 @@ impl ScenePanel {
                         .enumerate()
                         .filter_map(|(hi, &(fi, _rep))| {
                             let frame = line.frames.get(fi)?;
-                            let start_beat = head_starts
-                                .and_then(|s| s.get(hi))
-                                .copied()
-                                .unwrap_or(beat);
+                            let start_beat =
+                                head_starts.and_then(|s| s.get(hi)).copied().unwrap_or(beat);
                             let elapsed = (beat - start_beat).max(0.0);
                             let dur = frame.duration / line.speed_factor;
                             if dur <= 0.0 {
@@ -801,16 +799,7 @@ impl ScenePanel {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.set_height(HEADER_HEIGHT);
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_header(
-                            ui,
-                            li,
-                            fi,
-                            n_frames,
-                            playing_fis,
-                            accent,
-                            frame,
-                            bridge,
-                        );
+                        state.show_header(ui, li, fi, n_frames, playing_fis, accent, frame, bridge);
                     }
                 });
 
@@ -1144,7 +1133,14 @@ impl ScenePanel {
                 ui.separator();
 
                 if !multi {
-                    if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_frame_before"))).clicked() {
+                    if ui
+                        .button(crate::icons::button_text(
+                            ui,
+                            crate::icons::ADD,
+                            t!("scene.insert_frame_before"),
+                        ))
+                        .clicked()
+                    {
                         bridge.send(SchedulerMessage::AddFrame(
                             li,
                             fi,
@@ -1154,7 +1150,14 @@ impl ScenePanel {
                         self.picker_open_pending.insert((li, fi));
                         ui.close();
                     }
-                    if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_frame_after"))).clicked() {
+                    if ui
+                        .button(crate::icons::button_text(
+                            ui,
+                            crate::icons::ADD,
+                            t!("scene.insert_frame_after"),
+                        ))
+                        .clicked()
+                    {
                         bridge.send(SchedulerMessage::AddFrame(
                             li,
                             fi + 1,
@@ -1256,7 +1259,14 @@ impl ScenePanel {
             Some(ContextTarget::Header(li)) => {
                 let num_lines = bridge.scene().map(|s| s.lines.len()).unwrap_or(0);
 
-                if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_line_before"))).clicked() {
+                if ui
+                    .button(crate::icons::button_text(
+                        ui,
+                        crate::icons::ADD,
+                        t!("scene.insert_line_before"),
+                    ))
+                    .clicked()
+                {
                     bridge.send(SchedulerMessage::AddLine(
                         li,
                         Line::new(vec![1.0]),
@@ -1265,7 +1275,14 @@ impl ScenePanel {
                     self.picker_open_pending.insert((li, 0));
                     ui.close();
                 }
-                if ui.button(crate::icons::button_text(ui, crate::icons::ADD, t!("scene.insert_line_after"))).clicked() {
+                if ui
+                    .button(crate::icons::button_text(
+                        ui,
+                        crate::icons::ADD,
+                        t!("scene.insert_line_after"),
+                    ))
+                    .clicked()
+                {
                     bridge.send(SchedulerMessage::AddLine(
                         li + 1,
                         Line::new(vec![1.0]),
@@ -1333,7 +1350,14 @@ impl ScenePanel {
 
                 ui.separator();
 
-                if ui.button(crate::icons::button_text(ui, crate::icons::BROOM, t!("scene.clear_frame_range"))).clicked() {
+                if ui
+                    .button(crate::icons::button_text(
+                        ui,
+                        crate::icons::BROOM,
+                        t!("scene.clear_frame_range"),
+                    ))
+                    .clicked()
+                {
                     self.toggle_line_field(li, bridge, |l| {
                         l.start_frame = None;
                         l.end_frame = None;
@@ -1932,9 +1956,9 @@ impl ScenePanel {
                             // Collapse button
                             if ui
                                 .add(
-                                    egui::Button::new(
-                                        crate::icons::small(crate::icons::CHEVRON_DOWN),
-                                    )
+                                    egui::Button::new(crate::icons::small(
+                                        crate::icons::CHEVRON_DOWN,
+                                    ))
                                     .fill(egui::Color32::TRANSPARENT),
                                 )
                                 .clicked()
@@ -1947,9 +1971,9 @@ impl ScenePanel {
                                 |ui| {
                                     if ui
                                         .add(
-                                            egui::Button::new(
-                                                crate::icons::small(crate::icons::ADD),
-                                            )
+                                            egui::Button::new(crate::icons::small(
+                                                crate::icons::ADD,
+                                            ))
                                             .fill(egui::Color32::TRANSPARENT),
                                         )
                                         .clicked()

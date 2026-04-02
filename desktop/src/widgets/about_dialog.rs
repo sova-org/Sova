@@ -82,7 +82,11 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                         };
                         col.with_layout(egui::Layout::top_down(align), |ui| {
                             if ui
-                                .button(crate::icons::trailing_text(ui, label, crate::icons::LINK_EXTERNAL))
+                                .button(crate::icons::trailing_text(
+                                    ui,
+                                    label,
+                                    crate::icons::LINK_EXTERNAL,
+                                ))
                                 .clicked()
                             {
                                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));

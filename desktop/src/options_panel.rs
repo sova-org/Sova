@@ -161,9 +161,8 @@ impl OptionsPanel {
                         // Scene opacity (only when visuals enabled)
                         if appearance.visuals_enabled {
                             ui.label(t!("options.scene_opacity"));
-                            let r = ui.add(
-                                egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0),
-                            );
+                            let r =
+                                ui.add(egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0));
                             changed |= r.changed();
                             ui.end_row();
                         }

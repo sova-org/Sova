@@ -1176,13 +1176,7 @@ fn category_icon(category: Option<&str>) -> Option<&'static str> {
     if category.starts_with("Sound:")
         || matches!(
             category,
-            "Sound"
-                | "Oscillator"
-                | "Wavetable"
-                | "FM"
-                | "LFO"
-                | "Audio Modulation"
-                | "Modulation"
+            "Sound" | "Oscillator" | "Wavetable" | "FM" | "LFO" | "Audio Modulation" | "Modulation"
         )
     {
         return Some(crate::icons::WAVE_SINE);
@@ -1281,8 +1275,8 @@ fn paint_completion_popup(
                                     },
                                 );
                             }
-                            let label_pos = rect.min
-                                + egui::vec2(if icon.is_some() { 22.0 } else { 4.0 }, 2.0);
+                            let label_pos =
+                                rect.min + egui::vec2(if icon.is_some() { 22.0 } else { 4.0 }, 2.0);
                             if entry.label_matches.is_empty() {
                                 ui.painter().text(
                                     label_pos,

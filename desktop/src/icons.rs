@@ -78,9 +78,21 @@ pub fn text_colored(
     color: egui::Color32,
 ) -> egui::WidgetText {
     let mut job = egui::text::LayoutJob::default();
-    job.append(icon, 0.0, icon_format_with_color(ui, text_style.clone(), color));
-    job.append(" ", 0.0, text_format_with_color(ui, text_style.clone(), color));
-    job.append(label.as_ref(), 0.0, text_format_with_color(ui, text_style, color));
+    job.append(
+        icon,
+        0.0,
+        icon_format_with_color(ui, text_style.clone(), color),
+    );
+    job.append(
+        " ",
+        0.0,
+        text_format_with_color(ui, text_style.clone(), color),
+    );
+    job.append(
+        label.as_ref(),
+        0.0,
+        text_format_with_color(ui, text_style, color),
+    );
     job.into()
 }
 
@@ -110,8 +122,8 @@ pub fn trailing_text(ui: &egui::Ui, label: impl AsRef<str>, icon: &str) -> egui:
 }
 
 // Transport
-pub use egui_phosphor::fill::PLAY;
 pub use egui_phosphor::fill::PAUSE;
+pub use egui_phosphor::fill::PLAY;
 pub use egui_phosphor::fill::STOP;
 
 // Chevrons
@@ -125,8 +137,8 @@ pub use egui_phosphor::fill::ROWS as DOCK;
 
 // Scene grid indicators
 pub use egui_phosphor::fill::ARROWS_CLOCKWISE as LOOPING;
-pub use egui_phosphor::fill::TEXT_INDENT as TRAILING;
 pub use egui_phosphor::fill::PUSH_PIN as MANUAL;
+pub use egui_phosphor::fill::TEXT_INDENT as TRAILING;
 
 // Status
 pub use egui_phosphor::fill::CIRCLE as CIRCLE_FILLED;
@@ -143,24 +155,24 @@ pub use egui_phosphor::fill::GEAR;
 pub use egui_phosphor::fill::PALETTE;
 
 // Editor
-pub use egui_phosphor::fill::PENCIL_SIMPLE as MODIFIED;
 pub use egui_phosphor::fill::CODE;
+pub use egui_phosphor::fill::PENCIL_SIMPLE as MODIFIED;
 
 // Log
-pub use egui_phosphor::fill::TRASH;
 pub use egui_phosphor::fill::FILE_TEXT;
+pub use egui_phosphor::fill::TRASH;
 
 // Doc panel
 pub use egui_phosphor::fill::BOOK_OPEN as BOOK;
 pub use egui_phosphor::fill::SWAP;
 
 // Volume
-pub use egui_phosphor::fill::SPEAKER_SLASH as MUTE;
 pub use egui_phosphor::fill::SPEAKER_HIGH as UNMUTE;
+pub use egui_phosphor::fill::SPEAKER_SLASH as MUTE;
 
 // Actions
-pub use egui_phosphor::fill::PLUS as ADD;
 pub use egui_phosphor::fill::PLUGS_CONNECTED;
+pub use egui_phosphor::fill::PLUS as ADD;
 
 // Transport actions
 pub const HUSH: &str = egui_phosphor::fill::SPEAKER_SLASH;
@@ -172,8 +184,8 @@ pub use egui_phosphor::fill::LINK_BREAK as DISCONNECT;
 
 // New icons for text-only buttons
 pub use egui_phosphor::fill::ARROW_COUNTER_CLOCKWISE as REFRESH;
-pub use egui_phosphor::fill::PAPER_PLANE_TILT as SEND;
-pub use egui_phosphor::fill::KEYBOARD;
 pub use egui_phosphor::fill::BROOM;
+pub use egui_phosphor::fill::KEYBOARD;
 pub use egui_phosphor::fill::MUSIC_NOTE;
+pub use egui_phosphor::fill::PAPER_PLANE_TILT as SEND;
 pub use egui_phosphor::fill::WAVE_SINE;

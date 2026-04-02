@@ -62,20 +62,14 @@ impl Default for DocSettings {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScopeSettings {
-    pub smoothing: f32,
-    pub stroke_width: f32,
-    pub fill_alpha: f32,
-    pub glow: f32,
+    pub persistence: f32,
     pub detached: bool,
 }
 
 impl Default for ScopeSettings {
     fn default() -> Self {
         Self {
-            smoothing: 0.0,
-            stroke_width: 1.0,
-            fill_alpha: 0.35,
-            glow: 0.5,
+            persistence: 0.65,
             detached: false,
         }
     }

@@ -20,7 +20,10 @@ pub fn bottom_bar(
             ui.colored_label(COLOR_OK, crate::icons::rich(crate::icons::CIRCLE_FILLED));
             ui.label(t!("bottom.server", addr = &server.address));
         } else {
-            ui.colored_label(egui::Color32::GRAY, crate::icons::rich(crate::icons::CIRCLE_FILLED));
+            ui.colored_label(
+                egui::Color32::GRAY,
+                crate::icons::rich(crate::icons::CIRCLE_FILLED),
+            );
             ui.label(t!("bottom.server_stopped"));
         }
 
@@ -43,7 +46,10 @@ pub fn bottom_bar(
                 disconnect = true;
             }
         } else {
-            ui.colored_label(egui::Color32::GRAY, crate::icons::rich(crate::icons::CIRCLE_FILLED));
+            ui.colored_label(
+                egui::Color32::GRAY,
+                crate::icons::rich(crate::icons::CIRCLE_FILLED),
+            );
             ui.label(t!("bottom.disconnected"));
         }
 

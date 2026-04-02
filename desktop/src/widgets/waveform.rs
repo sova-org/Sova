@@ -2,10 +2,13 @@ use eframe::egui;
 
 pub struct Waveform<'a> {
     samples: &'a [f32],
+    peaks: Option<&'a [(f32, f32)]>,
+    fill_peaks: Option<&'a [(f32, f32)]>,
+    line_samples: Option<&'a [f32]>,
+    trace: Option<&'a [(f32, f32)]>,
     color: egui::Color32,
     fill_alpha: f32,
     stroke_width: f32,
-    glow: f32,
     normalize: bool,
     num_bins: usize,
     cursor_pos: Option<f32>,
@@ -15,14 +18,41 @@ impl<'a> Waveform<'a> {
     pub fn new(samples: &'a [f32], color: egui::Color32) -> Self {
         Self {
             samples,
+            peaks: None,
+            fill_peaks: None,
+            line_samples: None,
+            trace: None,
             color,
             fill_alpha: 0.35,
             stroke_width: 1.0,
-            glow: 0.0,
             normalize: false,
             num_bins: 256,
             cursor_pos: None,
         }
+    }
+
+    pub fn from_line(
+        line: &'a [f32],
+        color: egui::Color32,
+    ) -> Self {
+        Self {
+            samples: &[],
+            peaks: None,
+            fill_peaks: None,
+            line_samples: Some(line),
+            trace: None,
+            color,
+            fill_alpha: 0.35,
+            stroke_width: 1.0,
+            normalize: false,
+            num_bins: 0,
+            cursor_pos: None,
+        }
+    }
+
+    pub fn with_trace(mut self, trace: &'a [(f32, f32)]) -> Self {
+        self.trace = Some(trace);
+        self
     }
 
     pub fn cursor(mut self, pos: Option<f32>) -> Self {
@@ -45,11 +75,6 @@ impl<'a> Waveform<'a> {
         self
     }
 
-    pub fn glow(mut self, g: f32) -> Self {
-        self.glow = g;
-        self
-    }
-
     pub fn num_bins(mut self, n: usize) -> Self {
         self.num_bins = n;
         self
@@ -60,6 +85,7 @@ impl<'a> Waveform<'a> {
         let desired = egui::vec2(avail.x, avail.y.max(60.0));
         let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
         let painter = ui.painter_at(rect);
+        let guide_color = self.color.gamma_multiply(0.08);
 
         let center_y = rect.center().y;
         painter.line_segment(
@@ -67,35 +93,130 @@ impl<'a> Waveform<'a> {
                 egui::pos2(rect.left(), center_y),
                 egui::pos2(rect.right(), center_y),
             ],
-            egui::Stroke::new(0.5, self.color.gamma_multiply(0.2)),
+            egui::Stroke::new(1.0, self.color.gamma_multiply(0.3)),
         );
-
-        if self.samples.len() < 2 {
-            return self.handle_click(&resp, rect);
+        for t in [0.25_f32, 0.75_f32] {
+            let y = egui::lerp(rect.top()..=rect.bottom(), t);
+            painter.line_segment(
+                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                egui::Stroke::new(0.5, guide_color),
+            );
         }
 
-        let gain = if self.normalize {
-            let peak = self.samples.iter().fold(0.0_f32, |mx, &s| mx.max(s.abs()));
-            if peak > 0.0 { 1.0 / peak } else { 1.0 }
+        if let Some(line) = self.line_samples {
+            if line.len() < 2 {
+                return self.handle_click(&resp, rect);
+            }
+            self.draw_line(&painter, rect, center_y, line);
         } else {
-            1.0
-        };
+            if self.samples.len() < 2 && self.peaks.is_none_or(|p| p.len() < 2) {
+                return self.handle_click(&resp, rect);
+            }
+            self.draw_peaks(&painter, rect, center_y);
+        }
 
-        let num_bins = self.num_bins.min(self.samples.len());
-        let len = self.samples.len() as f32;
-        let bins = num_bins as f32;
-        let peaks: Vec<(f32, f32)> = (0..num_bins)
-            .map(|i| {
-                let start = (i as f32 * len / bins) as usize;
-                let end = ((i as f32 + 1.0) * len / bins) as usize;
-                self.samples[start..end]
-                    .iter()
-                    .fold((f32::MAX, f32::MIN), |(mn, mx), &s| {
-                        let s = s * gain;
-                        (mn.min(s), mx.max(s))
-                    })
-            })
+        if let Some(pos) = self.cursor_pos {
+            let x = rect.left() + pos.clamp(0.0, 1.0) * rect.width();
+            painter.line_segment(
+                [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                egui::Stroke::new(1.5, self.color),
+            );
+        }
+
+        self.handle_click(&resp, rect)
+    }
+
+    fn draw_line(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        center_y: f32,
+        line: &[f32],
+    ) {
+        let half_h = rect.height() * 0.5;
+        let width = rect.width();
+        let len = line.len() as f32;
+
+        let x_of = |i: usize| rect.left() + (i as f32 / (len - 1.0)) * width;
+        let y_of = |v: f32| center_y - v.clamp(-1.0, 1.0) * half_h;
+
+        // Trace envelope: fading ghost of where the waveform has been
+        if let Some(trace) = self.trace {
+            let trace_color = self.color.gamma_multiply(self.fill_alpha * 0.6);
+            let mut mesh = egui::Mesh::default();
+            for i in 0..trace.len() - 1 {
+                let x0 = x_of(i);
+                let x1 = x_of(i + 1);
+                let base = mesh.vertices.len() as u32;
+                mesh.colored_vertex(egui::pos2(x0, y_of(trace[i].1)), trace_color);
+                mesh.colored_vertex(egui::pos2(x0, y_of(trace[i].0)), trace_color);
+                mesh.colored_vertex(egui::pos2(x1, y_of(trace[i + 1].1)), trace_color);
+                mesh.colored_vertex(egui::pos2(x1, y_of(trace[i + 1].0)), trace_color);
+                mesh.add_triangle(base, base + 1, base + 2);
+                mesh.add_triangle(base + 1, base + 2, base + 3);
+            }
+            painter.add(egui::Shape::mesh(mesh));
+        }
+
+        // Fill from waveform to center line
+        if self.fill_alpha > 0.01 {
+            let fill_color = self.color.gamma_multiply(self.fill_alpha * 0.4);
+            let mut mesh = egui::Mesh::default();
+            for i in 0..line.len() - 1 {
+                let x0 = x_of(i);
+                let x1 = x_of(i + 1);
+                let base = mesh.vertices.len() as u32;
+                mesh.colored_vertex(egui::pos2(x0, y_of(line[i])), fill_color);
+                mesh.colored_vertex(egui::pos2(x0, center_y), egui::Color32::TRANSPARENT);
+                mesh.colored_vertex(egui::pos2(x1, y_of(line[i + 1])), fill_color);
+                mesh.colored_vertex(egui::pos2(x1, center_y), egui::Color32::TRANSPARENT);
+                mesh.add_triangle(base, base + 1, base + 2);
+                mesh.add_triangle(base + 1, base + 2, base + 3);
+            }
+            painter.add(egui::Shape::mesh(mesh));
+        }
+
+        let points: Vec<egui::Pos2> = line
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| egui::pos2(x_of(i), y_of(v)))
             .collect();
+        painter.add(egui::Shape::line(
+            points,
+            egui::Stroke::new(self.stroke_width, self.color),
+        ));
+    }
+
+    fn draw_peaks(&self, painter: &egui::Painter, rect: egui::Rect, center_y: f32) {
+        let owned_peaks;
+        let peaks = if let Some(peaks) = self.peaks {
+            peaks
+        } else {
+            let gain = if self.normalize {
+                let peak = self.samples.iter().fold(0.0_f32, |mx, &s| mx.max(s.abs()));
+                if peak > 0.0 { 1.0 / peak } else { 1.0 }
+            } else {
+                1.0
+            };
+
+            let num_bins = self.num_bins.min(self.samples.len());
+            let len = self.samples.len() as f32;
+            let bins = num_bins as f32;
+            owned_peaks = (0..num_bins)
+                .map(|i| {
+                    let start = (i as f32 * len / bins) as usize;
+                    let end = ((i as f32 + 1.0) * len / bins) as usize;
+                    self.samples[start..end]
+                        .iter()
+                        .fold((f32::MAX, f32::MIN), |(mn, mx), &s| {
+                            let s = s * gain;
+                            (mn.min(s), mx.max(s))
+                        })
+                })
+                .collect::<Vec<_>>();
+            &owned_peaks
+        };
+        let fill_peaks = self.fill_peaks.unwrap_or(peaks);
 
         let half_h = rect.height() * 0.5;
         let num_peaks = peaks.len() as f32;
@@ -104,19 +225,20 @@ impl<'a> Waveform<'a> {
         let peak_x = |i: usize| rect.left() + (i as f32 / (num_peaks - 1.0)) * width;
         let val_y = |v: f32| center_y - v.clamp(-1.0, 1.0) * half_h;
 
-        let fill_color = self.color.gamma_multiply(self.fill_alpha);
+        let fill_top = self.color.gamma_multiply(self.fill_alpha * 0.8);
+        let fill_bottom = self.color.gamma_multiply(self.fill_alpha * 0.3);
         let mut mesh = egui::Mesh::default();
-        for i in 0..peaks.len() - 1 {
+        for i in 0..fill_peaks.len() - 1 {
             let x0 = peak_x(i);
             let x1 = peak_x(i + 1);
-            let (min0, max0) = peaks[i];
-            let (min1, max1) = peaks[i + 1];
+            let (min0, max0) = fill_peaks[i];
+            let (min1, max1) = fill_peaks[i + 1];
 
             let base = mesh.vertices.len() as u32;
-            mesh.colored_vertex(egui::pos2(x0, val_y(max0)), fill_color);
-            mesh.colored_vertex(egui::pos2(x0, val_y(min0)), fill_color);
-            mesh.colored_vertex(egui::pos2(x1, val_y(max1)), fill_color);
-            mesh.colored_vertex(egui::pos2(x1, val_y(min1)), fill_color);
+            mesh.colored_vertex(egui::pos2(x0, val_y(max0)), fill_top);
+            mesh.colored_vertex(egui::pos2(x0, val_y(min0)), fill_bottom);
+            mesh.colored_vertex(egui::pos2(x1, val_y(max1)), fill_top);
+            mesh.colored_vertex(egui::pos2(x1, val_y(min1)), fill_bottom);
             mesh.add_triangle(base, base + 1, base + 2);
             mesh.add_triangle(base + 1, base + 2, base + 3);
         }
@@ -133,30 +255,9 @@ impl<'a> Waveform<'a> {
             .map(|(i, &(min, _))| egui::pos2(peak_x(i), val_y(min)))
             .collect();
 
-        if self.glow > 0.0 {
-            for &(width_mul, alpha_mul) in &[(4.0_f32, 0.06_f32), (2.0, 0.15)] {
-                let glow_stroke = egui::Stroke::new(
-                    self.stroke_width * width_mul,
-                    self.color.gamma_multiply(alpha_mul * self.glow),
-                );
-                painter.add(egui::Shape::line(top_line.clone(), glow_stroke));
-                painter.add(egui::Shape::line(bot_line.clone(), glow_stroke));
-            }
-        }
-
         let stroke = egui::Stroke::new(self.stroke_width, self.color);
         painter.add(egui::Shape::line(top_line, stroke));
         painter.add(egui::Shape::line(bot_line, stroke));
-
-        if let Some(pos) = self.cursor_pos {
-            let x = rect.left() + pos.clamp(0.0, 1.0) * rect.width();
-            painter.line_segment(
-                [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-                egui::Stroke::new(1.5, self.color),
-            );
-        }
-
-        self.handle_click(&resp, rect)
     }
 
     fn handle_click(&self, resp: &egui::Response, rect: egui::Rect) -> Option<f32> {

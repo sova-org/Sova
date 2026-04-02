@@ -6,7 +6,9 @@ use crate::widgets::{self, Waveform};
 pub struct ScopeBarPanel {
     pub open: bool,
     height: f32,
-    smoothed: Vec<f32>,
+    aligned: Vec<f32>,
+    line_buffer: Vec<f32>,
+    trace: Vec<(f32, f32)>,
 }
 
 impl ScopeBarPanel {
@@ -14,7 +16,9 @@ impl ScopeBarPanel {
         Self {
             open: false,
             height,
-            smoothed: Vec::new(),
+            aligned: Vec::new(),
+            line_buffer: Vec::new(),
+            trace: Vec::new(),
         }
     }
 
@@ -32,26 +36,31 @@ impl ScopeBarPanel {
             .resizable(true)
             .default_height(self.height)
             .max_height(200.0)
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
                 if scope_data.is_empty() {
                     return;
                 }
 
                 let accent = ui.visuals().selection.bg_fill;
-                let a = scope_settings.smoothing;
+                widgets::align_trigger(&mut self.aligned, scope_data);
+                let target = (ui.available_width() as usize).clamp(128, 800);
+                widgets::downsample_lttb(&mut self.line_buffer, &self.aligned, target);
 
-                let data: &[f32] = if a > 0.0 {
-                    widgets::smooth(&mut self.smoothed, scope_data, a);
-                    &self.smoothed
-                } else {
-                    scope_data
-                };
+                let mut waveform = Waveform::from_line(&self.line_buffer, accent)
+                    .stroke_width(2.2)
+                    .fill_alpha(0.46);
 
-                Waveform::new(data, accent)
-                    .stroke_width(scope_settings.stroke_width)
-                    .fill_alpha(scope_settings.fill_alpha)
-                    .glow(scope_settings.glow)
-                    .show(ui);
+                if scope_settings.persistence > 0.0 {
+                    widgets::apply_trace(
+                        &mut self.trace,
+                        &self.line_buffer,
+                        scope_settings.persistence,
+                    );
+                    waveform = waveform.with_trace(&self.trace);
+                }
+
+                waveform.show(ui);
                 ctx.request_repaint_after(std::time::Duration::from_millis(33));
             });
 

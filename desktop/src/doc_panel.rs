@@ -1087,7 +1087,10 @@ impl DocPanel {
             }
             ui.label(format!("{} / {}", idx + 1, total));
             if ui
-                .add_enabled(idx + 1 < total, egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)))
+                .add_enabled(
+                    idx + 1 < total,
+                    egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)),
+                )
                 .clicked()
             {
                 self.set_view(DocView::DouxModule(idx + 1));
@@ -1422,7 +1425,14 @@ impl DocPanel {
                                 ));
                                 self.example_output = Some(Ok(t!("doc.sent").into()));
                             }
-                            if ui.button(crate::icons::button_text(ui, crate::icons::REFRESH, t!("doc.reset"))).clicked() {
+                            if ui
+                                .button(crate::icons::button_text(
+                                    ui,
+                                    crate::icons::REFRESH,
+                                    t!("doc.reset"),
+                                ))
+                                .clicked()
+                            {
                                 self.edited_example = example.clone();
                                 self.example_output = None;
                             }
@@ -1477,7 +1487,10 @@ impl DocPanel {
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(idx > 0, egui::Button::new(icons::rich(icons::CHEVRON_LEFT)))
+                            .add_enabled(
+                                idx > 0,
+                                egui::Button::new(icons::rich(icons::CHEVRON_LEFT)),
+                            )
                             .clicked()
                         {
                             let new_idx = idx - 1;
@@ -1489,7 +1502,10 @@ impl DocPanel {
                         ui.label(format!("{} / {}", idx + 1, total));
 
                         if ui
-                            .add_enabled(idx + 1 < total, egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)))
+                            .add_enabled(
+                                idx + 1 < total,
+                                egui::Button::new(icons::rich(icons::CHEVRON_RIGHT)),
+                            )
                             .clicked()
                         {
                             let new_idx = idx + 1;

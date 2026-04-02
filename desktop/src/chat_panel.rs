@@ -71,8 +71,11 @@ impl ChatPanel {
                     let input_id = ui.id().with("chat_input");
                     let (resp, send_btn) = ui
                         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let send_btn =
-                                ui.button(crate::icons::button_text(ui, crate::icons::SEND, t!("common.send")));
+                            let send_btn = ui.button(crate::icons::button_text(
+                                ui,
+                                crate::icons::SEND,
+                                t!("common.send"),
+                            ));
                             let resp = ui.add(
                                 egui::TextEdit::singleline(&mut self.input)
                                     .id(input_id)
