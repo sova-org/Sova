@@ -348,7 +348,7 @@ Words: `scan`, `wtlen`.
 | `bjork` | `(quot k n --)` | Euclidean distribution by frame runs |
 | `pbjork` | `(quot k n --)` | Euclidean distribution by line iteration |
 | `loop` | `(n --)` | Fit sample to n beats |
-| `at` | `(v..n --)` | Looping block: re-executes body per delta. Close with `.` or `done` |
+| `at` | `(v..n quot --)` | Loop quotation per delta |
 | `tempo!` | `(bpm --)` | Set global tempo |
 | `speed!` | `(multiplier --)` | Set line speed multiplier |
 

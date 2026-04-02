@@ -1,6 +1,6 @@
-0 0.5 at
+0 0.5 (
 c3 e3 g3 c4 4 bounce ( 12 + ) 2 every note
 sine snd
 0.005 0.3 ad
 0.15 verb
-.
+. ) at

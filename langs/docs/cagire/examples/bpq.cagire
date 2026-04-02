@@ -1,6 +1,6 @@
-0 1 0.125 ., at
+0 1 0.125 ., (
 white snd
 1000 8000 ( drop ) 2 every bpf
 [ 0.0 1.0 0.125 ., ]  cycle bpq
 0.1 decay
-.
+. ) at

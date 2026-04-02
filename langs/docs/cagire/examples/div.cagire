@@ -1,3 +1,3 @@
-3 div at kick snd .
+3 div ( kick snd . ) at
 clear
-4 div at hat snd 0.6 gain 0.1 decay .
+4 div ( hat snd 0.6 gain 0.1 decay . ) at

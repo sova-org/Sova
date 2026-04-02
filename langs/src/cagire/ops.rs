@@ -103,7 +103,6 @@ pub enum Op {
     ClearCmd,
     SetSpeed,
     At,
-    AtLoop(Arc<[Op]>, Arc<[Span]>),
     PatPush,
     PatRot,
     PatRev,

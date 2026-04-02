@@ -1,8 +1,8 @@
 ;; filtering mid frequencies
-0 .25 .5 .75 at
+0 .25 .5 .75 (
 saw snd
 [ c2 c3 e3 g3 bb3 ] cycle note
 0.8 decay
 -24 -48 rand eqmid
 2000 5000 rand eqmidfreq
-.
+. ) at

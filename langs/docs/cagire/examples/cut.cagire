@@ -1,6 +1,6 @@
 ;; cut without waiting for the envelope to finish
-0 1 0.125 2 / ., at
+0 1 0.125 2 / ., (
 hat snd
 0.4 gain
 1 cut
-.
+. ) at

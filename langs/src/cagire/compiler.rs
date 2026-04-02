@@ -216,20 +216,6 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, Vec<Span
                         push(&mut ops, &mut spans, Op::Branch(else_ops.len()), sp);
                         extend(&mut ops, &mut spans, else_ops, else_spans);
                     }
-                } else if word == "at" {
-                    if let Some((body_ops, body_spans, consumed)) =
-                        compile_at(&tokens[i + 1..], dict)?
-                    {
-                        i += consumed;
-                        push(
-                            &mut ops,
-                            &mut spans,
-                            Op::AtLoop(Arc::from(body_ops), Arc::from(body_spans)),
-                            sp,
-                        );
-                    } else {
-                        compile_word(word, sp, &mut ops, &mut spans, dict);
-                    }
                 } else if word == "pat" {
                     if let Some(Op::PushStr(s)) = ops.last() {
                         pattern::parse_pattern(s).map_err(|e| err(format!("pat: {e}"), sp))?;
@@ -459,53 +445,6 @@ fn compile_case(
     Ok((ops, op_spans, endcase_pos + 1))
 }
 
-fn compile_at(
-    tokens: &[Token],
-    dict: &mut Dictionary,
-) -> Result<Option<(Vec<Op>, Vec<Span>, usize)>, CagireError> {
-    let mut depth = 1;
-    let mut paren_depth: i32 = 0;
-    let mut bracket_depth: i32 = 0;
-
-    enum AtCloser {
-        Dot,
-        Done,
-    }
-    let mut found: Option<(usize, AtCloser)> = None;
-
-    for (i, tok) in tokens.iter().enumerate() {
-        if let TokenKind::Word(w) = &tok.kind {
-            match w.as_str() {
-                "(" => paren_depth += 1,
-                ")" => paren_depth -= 1,
-                "[" => bracket_depth += 1,
-                "]" => bracket_depth -= 1,
-                "at" if paren_depth == 0 && bracket_depth == 0 => depth += 1,
-                "." if depth == 1 && paren_depth == 0 && bracket_depth == 0 => {
-                    found = Some((i, AtCloser::Dot));
-                    break;
-                }
-                "done" if depth == 1 && paren_depth == 0 && bracket_depth == 0 => {
-                    found = Some((i, AtCloser::Done));
-                    break;
-                }
-                "." | "done" if paren_depth == 0 && bracket_depth == 0 => depth -= 1,
-                _ => {}
-            }
-        }
-    }
-
-    let Some((pos, closer)) = found else {
-        return Ok(None);
-    };
-    let (mut body_ops, mut body_spans) = compile(&tokens[..pos], dict)?;
-    if matches!(closer, AtCloser::Dot) {
-        let dot_span = tokens[pos].span;
-        push(&mut body_ops, &mut body_spans, Op::Emit, dot_span);
-    }
-    Ok(Some((body_ops, body_spans, pos + 1)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -673,13 +612,12 @@ mod tests {
     }
 
     #[test]
-    fn test_at_with_quoted_emit() {
+    fn test_at_with_quotation() {
         let mut dict = Dictionary::new();
-        // ( . ) inside an at block must not be mistaken for the at closer
-        let result = compile_script("0 0.5 at ( . ) 50 prob .", &mut dict);
+        let result = compile_script("0 0.5 ( kick snd . ) at", &mut dict);
         assert!(
             result.is_ok(),
-            "quoted emit inside at block should compile: {result:?}"
+            "quotation-based at should compile: {result:?}"
         );
     }
 }

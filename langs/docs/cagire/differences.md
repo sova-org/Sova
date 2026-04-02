@@ -42,7 +42,7 @@ Standalone Cagire has project and bank preludes (scripts that run before playbac
 
 ### Timing with at
 
-Sova's `at` is a looping block where each delta iteration gets independent state. Nondeterministic ops (`rand`, `choose`, `coin`) roll fresh values per delta. Close an `at` block with `.` (emit sound) or `done` (no emit).
+Sova's `at` is quotation-based. It pops a quotation from the stack, then drains remaining values as timing deltas, and loops the quotation once per delta. Each delta iteration gets independent state — nondeterministic ops (`rand`, `choose`, `coin`) roll fresh values per delta. To emit sound, put `.` inside the quotation. To run side-effects without emitting, leave `.` out.
 
 ### Tempo and Speed
 
@@ -158,7 +158,7 @@ Cagire uses a quotation-based loop with `times`:
 The loop counter is stored in the variable `i`, accessed with `@i`.
 
 ```forth
-4 ( @i 4 / at hat snd . ) times    ;; hat at 0, 0.25, 0.5, 0.75
+4 ( @i 4 / ( hat snd . ) at ) times    ;; hat at 0, 0.25, 0.5, 0.75
 4 ( c4 @i + note sine snd . ) times ;; ascending notes
 ```
 

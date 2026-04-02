@@ -7,7 +7,7 @@ clear
 
 (
 2 orbit
-0 ( 0.125 ) 10 prob 0.25 0.5 at
-rim snd .
+0 ( 0.125 ) 10 prob 0.25 0.5 (
+rim snd . ) at
 )
 beat 3 mod ?

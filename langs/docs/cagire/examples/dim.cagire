@@ -1,6 +1,6 @@
-0 0.25 0.75 0.5 at
+0 0.25 0.75 0.5 (
 [ c4 c5 ] bounce dim note
 tri snd .8 decay
 8000 2000 .1 slide lpf
 0.2 verb
-.
+. ) at

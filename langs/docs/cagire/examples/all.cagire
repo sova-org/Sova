@@ -6,6 +6,6 @@ c4 min7 note
 .5 decay
 .
 
-0 0.5 at
+0 0.5 (
 [ kick hat snare hat ] cycle sound
-.
+. ) at

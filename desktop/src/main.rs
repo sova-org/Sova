@@ -455,6 +455,7 @@ impl SovaApp {
         let Ok(snapshot) = serde_json::from_slice::<sova_server::Snapshot>(&bytes) else {
             return;
         };
+        self.scene_panel.clear_frame_states();
         self.bridge
             .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge
@@ -468,6 +469,7 @@ impl SovaApp {
         let Ok(snapshot) = serde_json::from_slice::<sova_server::Snapshot>(bytes) else {
             return;
         };
+        self.scene_panel.clear_frame_states();
         self.bridge
             .send(SchedulerMessage::SetScene(snapshot.scene, timing));
         self.bridge

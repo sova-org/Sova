@@ -146,6 +146,12 @@ impl ScenePanel {
         Default::default()
     }
 
+    pub fn clear_frame_states(&mut self) {
+        self.frame_states.clear();
+        self.last_line_count = 0;
+        self.last_frame_counts.clear();
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
