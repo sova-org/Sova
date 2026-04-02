@@ -329,12 +329,12 @@ impl CodeEditor {
 
         let cursor_char = edit_output.cursor_range.as_ref().map(|cr| cr.primary.index);
 
-        let (prefix_start, prefix_end_byte, prefix) = cursor_char
+        let (prefix_start, prefix) = cursor_char
             .map(|cc| {
                 let (start_char, start_byte, end_byte) = word_prefix_at_cursor(text, cc);
-                (start_char, end_byte, text[start_byte..end_byte].to_owned())
+                (start_char, text[start_byte..end_byte].to_owned())
             })
-            .unwrap_or((0, 0, String::new()));
+            .unwrap_or((0, String::new()));
 
         let cursor_at_word_end = cursor_char
             .map(|cc| {
@@ -357,7 +357,8 @@ impl CodeEditor {
             if consumed_tab && !state.entries.is_empty() {
                 let label = state.entries[state.selected].label.clone();
                 let start_byte = char_to_byte(text, state.prefix_start);
-                text.replace_range(start_byte..prefix_end_byte, &label);
+                let end_byte = char_to_byte(text, cursor_char.unwrap_or(0));
+                text.replace_range(start_byte..end_byte, &label);
                 let new_cursor_char = state.prefix_start + label.chars().count();
                 let mut te_state = edit_output.state.clone();
                 te_state
@@ -1086,9 +1087,7 @@ fn word_prefix_at_cursor(text: &str, cursor_char: usize) -> (usize, usize, usize
     while start_byte > 0 && is_word_byte(bytes[start_byte - 1]) {
         start_byte -= 1;
     }
-    // Word bytes are ASCII, so byte count == char count
-    let prefix_len = cursor_byte - start_byte;
-    let start_char = cursor_char - prefix_len;
+    let start_char = text[..start_byte].chars().count();
     (start_char, start_byte, cursor_byte)
 }
 
