@@ -496,7 +496,7 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     );
     funcs.insert(
         "bitrhythm".to_owned(),
-        ItemFunc::define("Bit rhythm (k,n)", |ctx, args| {
+        ItemFunc::define("Bit rhythm (n)", |ctx, args| {
             let mut args = unpack_if_one(args);
             if args.len() > 1 {
                 ctx.errors.throw(
@@ -512,7 +512,7 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     );
     funcs.insert(
         "cc".to_owned(),
-        ItemFunc::define("Access the value of a midi input CC", |ctx, args| {
+        ItemFunc::define("Access the value of a midi input CC (cc, device?, channel?)", |ctx, args| {
             let mut args = unpack_if_one(args);
             if args.len() == 1 {
                 ctx.errors.throw(
@@ -545,6 +545,42 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                     .unwrap_or_default(),
                 None,
             )
+        }),
+    );
+    funcs.insert(
+        "osc".to_owned(),
+        ItemFunc::define("Access the value of a OSC input (route, id?, index?)", |ctx, args| {
+            let mut args = unpack_if_one(args);
+            if args.len() > 3 {
+                ctx.errors.throw(
+                    SovaError::from(&*ctx)
+                        .message("Too many arguments for 'osc', taking three last !"),
+                );
+            }
+
+            let index = if args.len() == 3 {
+                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+            } else {
+                0
+            };
+
+            let device_id = if args.len() >= 2 {
+                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+            } else {
+                DEFAULT_DEVICE as usize
+            };
+
+            let route = VariableValue::from(args.pop().unwrap()).as_str(ctx);
+
+            ctx.device_map
+                .get_osc_input_values(device_id, &route)
+                .and_then(|mut v| if v.len() > index {
+                    Some(v.swap_remove(index))
+                } else {
+                    None
+                })
+                .unwrap_or_default()
+                .into()
         }),
     );
     funcs
