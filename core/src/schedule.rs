@@ -258,6 +258,7 @@ impl Scheduler {
                 &self.update_notifier,
                 &self.languages,
                 &self.feedback,
+                &mut self.clock
             );
             return;
         }

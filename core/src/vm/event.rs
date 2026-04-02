@@ -47,6 +47,7 @@ pub enum ConcreteEvent {
     SetLineSpeedFactor(usize, f64),
     SetFrame(usize, usize, String, String),
     KillExecutions(usize, usize),
+    SetTempo(f64),
 }
 
 impl ConcreteEvent {
@@ -81,7 +82,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
             | ConcreteEvent::SetFrame(..) 
-            | ConcreteEvent::KillExecutions(..) => None,
+            | ConcreteEvent::KillExecutions(..) 
+            | ConcreteEvent::SetTempo(_) => None,
         }
     }
 
@@ -97,7 +99,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
             | ConcreteEvent::SetFrame(..) 
-            | ConcreteEvent::KillExecutions(..) => true,
+            | ConcreteEvent::KillExecutions(..)
+            | ConcreteEvent::SetTempo(_) => true,
             _ => false,
         }
     }
@@ -163,6 +166,9 @@ impl fmt::Display for ConcreteEvent {
             ConcreteEvent::KillExecutions(l_i, f_i) => {
                 write!(f, "kill {l_i}:{f_i}")
             }
+            ConcreteEvent::SetTempo(t) => {
+                write!(f, "set-tempo {t}")
+            }
         }
     }
 }
@@ -213,6 +219,7 @@ pub enum Event {
     SetLineSpeedFactor(Variable, Variable),
     SetFrame(Variable, Variable, Variable, Variable),
     KillExecutions(Variable, Variable),
+    SetTempo(Variable),
 }
 
 impl Event {
@@ -378,6 +385,9 @@ impl Event {
                 ctx.evaluate(l_i).as_integer(ctx) as usize,
                 ctx.evaluate(f_i).as_integer(ctx) as usize,
             ),
+            Event::SetTempo(t) => ConcreteEvent::SetTempo(
+                ctx.evaluate(t).as_float(ctx)
+            )
         }
     }
 }
