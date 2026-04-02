@@ -306,22 +306,26 @@ impl AudioPanel {
         ui.label(t!("audio.sample_paths"));
 
         #[cfg(feature = "default-samples")]
-        ui.horizontal(|ui| {
-            ui.colored_label(
-                egui::Color32::GRAY,
-                self.default_samples_path.display().to_string(),
+        {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(self.default_samples_path.display().to_string())
+                        .color(egui::Color32::GRAY),
+                )
+                .wrap_mode(egui::TextWrapMode::Wrap),
             );
             ui.weak("(built-in)");
-        });
+        }
 
         let mut remove_idx = None;
         for (i, path) in self.sample_paths.iter().enumerate() {
-            ui.horizontal(|ui| {
-                ui.monospace(path.display().to_string());
-                if ui.small_button("x").clicked() {
-                    remove_idx = Some(i);
-                }
-            });
+            ui.add(
+                egui::Label::new(egui::RichText::new(path.display().to_string()).monospace())
+                    .wrap_mode(egui::TextWrapMode::Wrap),
+            );
+            if ui.small_button("x").clicked() {
+                remove_idx = Some(i);
+            }
         }
         if let Some(idx) = remove_idx {
             self.sample_paths.remove(idx);
@@ -386,9 +390,11 @@ impl AudioPanel {
                     ui.end_row();
 
                     ui.label(t!("audio.cpu"));
-                    ui.add(
+                    ui.add_sized(
+                        [120.0, ui.spacing().interact_size.y],
                         egui::ProgressBar::new(state.cpu_load)
-                            .text(format!("{:.1}%", state.cpu_load * 100.0)),
+                            .text(format!("{:.1}%", state.cpu_load * 100.0))
+                            .corner_radius(egui::CornerRadius::ZERO),
                     );
                     ui.end_row();
                 });

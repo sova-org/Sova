@@ -38,29 +38,7 @@ impl OptionsPanel {
                     .spacing([8.0, 4.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        // Scale
-                        let r = ui.label(t!("options.ui_scale"));
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
-                        let r = ui.add(
-                            egui::Slider::new(&mut appearance.zoom, 0.75..=2.0)
-                                .step_by(0.05)
-                                .suffix("x"),
-                        );
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
-                        changed |= r.changed();
-                        ui.end_row();
-
-                        // Font size
-                        let r = ui.label(t!("options.ui_font_size"));
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
-                        let r = ui.add(
-                            egui::DragValue::new(&mut appearance.ui_font_size)
-                                .range(10.0..=20.0)
-                                .speed(0.5),
-                        );
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
-                        changed |= r.changed();
-                        ui.end_row();
+                        // --- Dropdowns & pickers ---
 
                         // UI font
                         ui.label(t!("options.ui_font"));
@@ -97,6 +75,18 @@ impl OptionsPanel {
                             });
                         ui.end_row();
 
+                        // Font size
+                        let r = ui.label(t!("options.ui_font_size"));
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
+                        let r = ui.add(
+                            egui::DragValue::new(&mut appearance.ui_font_size)
+                                .range(10.0..=20.0)
+                                .speed(0.5),
+                        );
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_font_size"));
+                        changed |= r.changed();
+                        ui.end_row();
+
                         // Accent color
                         let r = ui.label(t!("options.accent_color"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.accent_color"));
@@ -129,6 +119,20 @@ impl OptionsPanel {
                             });
                         ui.end_row();
 
+                        // --- Sliders ---
+
+                        // Scale
+                        let r = ui.label(t!("options.ui_scale"));
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
+                        let r = ui.add(
+                            egui::Slider::new(&mut appearance.zoom, 0.75..=2.0)
+                                .step_by(0.05)
+                                .suffix("x"),
+                        );
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
+                        changed |= r.changed();
+                        ui.end_row();
+
                         // Animation speed
                         let r = ui.label(t!("options.animation_speed"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.animation_speed"));
@@ -154,6 +158,18 @@ impl OptionsPanel {
                         }
                         ui.end_row();
 
+                        // Scene opacity (only when visuals enabled)
+                        if appearance.visuals_enabled {
+                            ui.label(t!("options.scene_opacity"));
+                            let r = ui.add(
+                                egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0),
+                            );
+                            changed |= r.changed();
+                            ui.end_row();
+                        }
+
+                        // --- Checkboxes ---
+
                         // Window shadows
                         let r = ui.label(t!("options.window_shadows"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
@@ -169,16 +185,6 @@ impl OptionsPanel {
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.visuals_enabled"));
                         changed |= r.changed();
                         ui.end_row();
-
-                        // Scene opacity (only when visuals enabled)
-                        if appearance.visuals_enabled {
-                            ui.label(t!("options.scene_opacity"));
-                            let r = ui.add(
-                                egui::Slider::new(&mut appearance.scene_opacity, 0.0..=1.0),
-                            );
-                            changed |= r.changed();
-                            ui.end_row();
-                        }
                     });
             });
 
