@@ -496,8 +496,7 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     );
     funcs.insert(
         "bitrhythm".to_owned(),
-        ItemFunc::define("Bit rhythm (n)", |ctx, args| {
-            let mut args = unpack_if_one(args);
+        ItemFunc::define("Bit rhythm (n)", |ctx, mut args| {
             if args.len() > 1 {
                 ctx.errors.throw(
                     SovaError::from(&*ctx)
@@ -509,6 +508,20 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
 
             Sequence(bitrhythm(i))
         }),
+    );
+    funcs.insert(
+        "inv".to_owned(), 
+        ItemFunc::define("Rhythm inversion", |_, args| {
+            let mut args = unpack_if_one(args);
+            args.iter_mut().for_each(|i| {
+                match i {
+                    Placeholder => *i = Mute,
+                    Mute => *i = Placeholder,
+                    _ => ()
+                }
+            });
+            Sequence(args)
+        })
     );
     funcs.insert(
         "cc".to_owned(),
