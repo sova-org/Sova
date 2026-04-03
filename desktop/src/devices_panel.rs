@@ -8,6 +8,7 @@ pub struct DevicesPanel {
     creating_midi: bool,
     new_midi_name: String,
     creating_osc: bool,
+    creating_osc_input: bool,
     osc_step: u8,
     osc_name: String,
     osc_ip: String,
@@ -25,6 +26,7 @@ impl DevicesPanel {
             creating_midi: false,
             new_midi_name: String::new(),
             creating_osc: false,
+            creating_osc_input: false,
             osc_step: 0,
             osc_name: String::new(),
             osc_ip: String::new(),
@@ -281,6 +283,9 @@ impl DevicesPanel {
             self.show_midi_creation(ui, bridge);
         } else if self.creating_osc {
             self.show_osc_creation(ui, bridge);
+        } else if self.creating_osc_input {
+            self.show_osc_input_creation(ui, bridge);
+        
         } else {
             ui.horizontal(|ui| {
                 let r = ui.button(crate::icons::button_text(
@@ -308,6 +313,20 @@ impl DevicesPanel {
                     self.osc_step = 0;
                     self.osc_name.clear();
                     self.osc_ip = "127.0.0.1".into();
+                    self.osc_port = "9000".into();
+                }
+                let r = ui.button(crate::icons::button_text(
+                    ui,
+                    crate::icons::ADD,
+                    t!("devices.add_osc_input"),
+                ));
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), t!("devices.hint.new_osc"));
+                }
+                if r.clicked() {
+                    self.creating_osc_input = true;
+                    self.osc_step = 0;
+                    self.osc_name.clear();
                     self.osc_port = "9000".into();
                 }
             });
@@ -381,6 +400,46 @@ impl DevicesPanel {
             }
             if ui.button(t!("common.cancel")).clicked() {
                 self.creating_osc = false;
+            }
+        });
+    }
+
+    fn show_osc_input_creation(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        ui.horizontal(|ui| {
+            match self.osc_step {
+                0 => {
+                    ui.label(t!("devices.label.name"));
+                    let r = ui.text_edit_singleline(&mut self.osc_name);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.osc_name"));
+                    }
+                }
+                _ => {
+                    ui.label(t!("devices.label.port"));
+                    let r = ui.text_edit_singleline(&mut self.osc_port);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.osc_port"));
+                    }
+                }
+            }
+
+            let advance = ui.button(t!("common.next")).clicked();
+
+            if advance {
+                if self.osc_step == 0 {
+                    self.osc_step += 1;
+                } else {
+                    let name = self.osc_name.trim();
+                    if let Ok(port) = self.osc_port.trim().parse::<u16>()
+                        && !name.is_empty()
+                    {
+                        bridge.create_osc_input(name, port);
+                    }
+                    self.creating_osc_input = false;
+                }
+            }
+            if ui.button(t!("common.cancel")).clicked() {
+                self.creating_osc_input = false;
             }
         });
     }

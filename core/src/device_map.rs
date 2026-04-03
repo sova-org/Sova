@@ -574,7 +574,8 @@ impl DeviceMap {
     /// The internal Log device is excluded from this list.
     pub fn device_list(&self) -> Vec<DeviceInfo> {
         let mut discovered_devices_map: BTreeMap<String, DeviceInfo> = BTreeMap::new();
-        let connected_map = self.output_connections.lock().unwrap(); // Lock output connections once
+        let connected_outs = self.output_connections.lock().unwrap(); // Lock output connections once
+        let connected_ins = self.input_connections.lock().unwrap(); // Lock input connections once
 
         // Helper to create DeviceInfo, checking slot assignment and connection status
         let create_device_info = |name: String,
@@ -586,7 +587,7 @@ impl DeviceMap {
 
             // Determine connection status based on presence in connected_map for outputs
             // For system ports discovered but not explicitly connected via Sova, this might show false.
-            let is_connected = connected_map.contains_key(&name);
+            let is_connected = connected_outs.contains_key(&name) || connected_ins.contains_key(&name);
 
             // Extract address specifically for OSC devices using the provided reference
             let address = device_ref_opt.map(ProtocolDevice::address);
@@ -649,7 +650,7 @@ impl DeviceMap {
 
         // Add currently connected devices from output_connections, potentially overwriting discovered info
         // This ensures `is_connected` is true and addresses are included for these.
-        for (name, device_arc) in connected_map.iter() {
+        for (name, device_arc) in connected_outs.iter() {
             // Determine kind and get device reference
             let kind = device_arc.kind();
 
@@ -666,7 +667,29 @@ impl DeviceMap {
                 );
             }
         }
-        drop(connected_map); // Release lock
+
+        // Add currently connected devices from output_connections, potentially overwriting discovered info
+        // This ensures `is_connected` is true and addresses are included for these.
+        for (name, device_arc) in connected_ins.iter() {
+            // Determine kind and get device reference
+            let kind = device_arc.kind();
+
+            if kind != DeviceKind::Missing {
+                // Insert or update the entry using create_device_info with the device reference
+                discovered_devices_map.insert(
+                    name.clone(),
+                    create_device_info(
+                        name.clone(),
+                        kind,
+                        DeviceDirection::Input,
+                        Some(&device_arc),
+                    ),
+                );
+            }
+        }
+
+        drop(connected_outs); // Release lock
+        drop(connected_ins); // Release lock
 
         // Add missing devices (from snapshot that couldn't be restored)
         for missing_name in self.missing_devices.lock().unwrap().iter() {

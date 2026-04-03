@@ -114,6 +114,7 @@ pub enum ClientMessage {
     AssignDeviceToSlot(usize, String),
     UnassignDeviceFromSlot(usize),
     CreateOscDevice(String, String, u16),
+    CreateOscInputDevice(String, u16),
     RemoveOscDevice(String),
     SetDeviceLatency(String, f64),
     RestoreDevices(Vec<DeviceInfo>),

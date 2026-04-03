@@ -912,6 +912,17 @@ impl ClientBridge {
         }
     }
 
+    pub fn create_osc_input(&self, name: &str, port: u16) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().create_osc_input_device(name, port);
+        } else {
+            self.send(ClientMessage::CreateOscInputDevice(
+                name.to_owned(),
+                port,
+            ));
+        }
+    }
+
     pub fn remove_osc(&self, name: &str) {
         if let Some(engine) = &self.feedback_engine {
             let _ = engine.devices().remove_output_device(name);

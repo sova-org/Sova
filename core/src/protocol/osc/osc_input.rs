@@ -124,8 +124,8 @@ impl OSCIn {
                                     log_eprintln!("[!] OSC input error : {e}");
                                 }
                             },
-                            Err(e) => {
-                                log_eprintln!("[!] UDP socket error : {e} !");
+                            Err(_) => {
+                                // log_eprintln!("[!] UDP socket error : {e} !");
                             }
                         }
                     }
@@ -141,7 +141,7 @@ impl OSCIn {
                 return Err(ProtocolError::from(e));
             }
         }
-        todo!()
+        Ok(())
     }
 
     pub fn values(&self, route: &str) -> Vec<VariableValue> {

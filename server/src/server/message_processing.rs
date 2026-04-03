@@ -221,6 +221,22 @@ pub async fn on_message(
                 )),
             }
         }
+        ClientMessage::CreateOscInputDevice(name, port) => {
+            match state.devices.create_osc_input_device(&name, port) {
+                Ok(_) => {
+                    let updated_list = state.devices.device_list();
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
+                    msg
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to create OSC device '{}': {}",
+                    name, e
+                )),
+            }
+        }
         ClientMessage::RemoveOscDevice(name) => match state.devices.remove_output_device(&name) {
             Ok(_) => {
                 let updated_list = state.devices.device_list();

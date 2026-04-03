@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
@@ -174,50 +174,31 @@ impl OSCMessage {
                     date,
                 )]
             }
-            ConcreteEvent::Generic(args, duration, channel, _device_id) => {
+            ConcreteEvent::Generic(args, _duration, channel, _device_id) => {
                 let mut flat_args = Vec::new();
-                let mut args = match args {
-                    VariableValue::Map(map) => map,
-                    value @ VariableValue::Str(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), value);
-                        map
-                    }
-                    value @ VariableValue::Integer(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), "sine".to_owned().into());
-                        map.insert("note".to_owned(), value.into());
-                        map
-                    }
-                    value @ VariableValue::Float(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), "sine".to_owned().into());
-                        map.insert("freq".to_owned(), value.into());
-                        map
-                    }
+                match args {
+                    VariableValue::Map(map) => {
+                        for (key, value) in map.into_iter() {
+                            flat_args.push(VariableValue::Str(key));
+                            flat_args.push(value);
+                        }
+                    },
                     value => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), value);
-                        map
+                        flat_args.push(value);
                     }
                 };
-                if (args.contains_key("s") || args.contains_key("sound"))
-                    && !args.contains_key("sustain")
-                {
-                    let dur_s = (duration as f64) / 1_000_000.0;
-                    args.insert("sustain".to_owned(), dur_s.into());
-                }
-                for (key, value) in args.into_iter() {
-                    flat_args.push(VariableValue::Str(key));
-                    flat_args.push(value);
-                }
-                let mut dirt_msg = Self::dirt(flat_args, date, duration, clock).at_date(timetag);
+                
+                //let mut dirt_msg = Self::dirt(flat_args, date, duration, clock).at_date(timetag);
+                
+                let addr = if !channel.is_empty() {
+                    channel
+                } else {
+                    "/dirt/play".to_string()
+                };
 
-                if !channel.is_empty() {
-                    dirt_msg.addr = channel;
-                }
+                let msg = OSCMessage::new(addr, flat_args);
 
-                vec![(dirt_msg.into(), date)]
+                vec![(msg.into(), date)]
             }
             _ => Vec::new(), // Ignore other events for OSC for now
         }
