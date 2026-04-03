@@ -1,7 +1,7 @@
 use rosc::{OscBundle, OscMessage, OscPacket, OscTime, OscType};
 use std::collections::HashMap;
 use std::fmt;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
 use crate::clock::TimeSpan;
 use crate::protocol::error::ProtocolError;
@@ -91,6 +91,14 @@ impl OSCOut {
             .expect("Failed to parse local UDP bind address");
         match UdpSocket::bind(local_addr) {
             Ok(udp_socket) => {
+                if self.address.ip() == Ipv4Addr::new(255, 255, 255, 255) {
+                    if udp_socket.set_broadcast(true).is_err() {
+                        let e = format!("[!] Unable to create broadcast socket {}", self.address);
+                        crate::log_eprintln!("{e}");
+                        return Err(ProtocolError(format!("[!] Unable to connect socket to {}", self.address)));
+                    }
+                }
+                
                 crate::log_println!(
                     "    Created UDP socket bound to {}",
                     udp_socket.local_addr()?
