@@ -390,6 +390,8 @@ impl SovaApp {
             .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
         self.bridge
             .send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
+        self.bridge
+            .send(ClientMessage::RestoreDevices(snapshot.devices));
         self.push_recent_scene(path.to_path_buf());
     }
 
@@ -404,6 +406,8 @@ impl SovaApp {
             .send(SchedulerMessage::SetTempo(snapshot.tempo, timing));
         self.bridge
             .send(SchedulerMessage::SetQuantum(snapshot.quantum, timing));
+        self.bridge
+            .send(ClientMessage::RestoreDevices(snapshot.devices));
     }
 
     fn push_recent_scene(&mut self, path: std::path::PathBuf) {
