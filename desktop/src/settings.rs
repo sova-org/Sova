@@ -184,7 +184,7 @@ pub struct ServerSettings {
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {
-            ip: "127.0.0.1".into(),
+            ip: "0.0.0.0".into(),
             port: "8080".into(),
         }
     }
