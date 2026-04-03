@@ -1060,6 +1060,7 @@ impl CagireVM {
                     let clamped = tempo.clamp(20.0, 300.0);
                     self.vars
                         .insert("__tempo__".to_string(), Value::Float(clamped));
+                    self.push_event(events, ConcreteEvent::SetTempo(clamped), 0);
                 }
 
                 Op::SetSpeed => {
