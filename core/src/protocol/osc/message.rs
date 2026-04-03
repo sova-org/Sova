@@ -182,7 +182,10 @@ impl OSCMessage {
                             flat_args.push(VariableValue::Str(key));
                             flat_args.push(value);
                         }
-                    },
+                    }
+                    VariableValue::Vec(v) => {
+                        flat_args = v;
+                    }
                     value => {
                         flat_args.push(value);
                     }
