@@ -1115,6 +1115,16 @@ impl DeviceMap {
         }
     }
 
+    pub fn remove_osc_device(&self, name: &str) -> Result<(), String> {
+        let mut ok = self.remove_input_device(name).is_ok();
+        ok |= self.remove_output_device(name).is_ok();
+        if ok {
+            Ok(())
+        } else {
+            Err(format!("[!] Unable to find an OSC device to remove with name {name} !"))
+        }
+    }
+
     /// Removes an output device by its name.
     ///
     /// Removes the device registration from `output_connections`. The underlying socket
@@ -1128,11 +1138,11 @@ impl DeviceMap {
     /// - `Ok(())` on successful removal from registration.
     /// - `Err(String)` if no OSC Output device with the given name is found.
     pub fn remove_input_device(&self, name: &str) -> Result<(), String> {
-        log_println!("[🗑️] Removing OSC Output device: '{}'", name);
+        log_println!("[🗑️] Removing OSC Input device: '{}'", name);
         let mut input_connections = self.input_connections.lock().unwrap();
 
         if input_connections.remove(name).is_some() {
-            log_println!("[✅] Removed OSC Output device registration: '{}'", name);
+            log_println!("[✅] Removed OSC Input device registration: '{}'", name);
             // Release lock before potentially calling another method
             drop(input_connections);
             // Unassign from any slot

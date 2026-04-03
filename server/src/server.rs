@@ -478,6 +478,7 @@ impl SovaCoreServer {
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
+    let is_host = socket.peer_addr().map(|s| s.ip().is_loopback()).unwrap_or_default();
     socket.set_nodelay(true)?;
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(std::time::Duration::from_secs(60))
@@ -489,6 +490,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut reader = BufReader::with_capacity(32 * 1024, reader);
     let mut writer = BufWriter::with_capacity(32 * 1024, writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string();
+
 
     let clock = Clock::from(&state.clock_server);
 
@@ -648,7 +650,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     // Dedicated reader task — never cancelled, so read_wire_frame
     // can't lose partial reads (which would desync the TCP stream).
     enum ClientRead {
-        Message(Box<ClientMessage>),
+        Message(ClientMessage),
         Closed,
         Error(io::Error),
     }
@@ -659,7 +661,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             match read_message_internal(&mut reader, &reader_client_name).await {
                 Ok(Some(msg)) => {
                     if client_msg_tx
-                        .send(ClientRead::Message(Box::new(msg)))
+                        .send(ClientRead::Message(msg))
                         .is_err()
                     {
                         break;
@@ -687,10 +689,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             read_result = client_msg_rx.recv() => {
                 match read_result {
                     Some(ClientRead::Message(msg)) => {
-                        if matches!(*msg, ClientMessage::EnableFeedback) {
+                        if matches!(msg, ClientMessage::EnableFeedback) {
                             feedback_enabled = true;
                         }
-                        let response = on_message(*msg, &state, &mut client_name).await;
+                        let response = on_message(msg, &state, &mut client_name, is_host).await;
 
                         if !matches!(
                             timeout(WRITE_TIMEOUT, send_msg(&mut writer, response)).await,
