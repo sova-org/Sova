@@ -234,6 +234,7 @@ pub struct InlineFrameState {
     pub has_remote_edits: bool,
     pub height: f32,
     pub collapsed: bool,
+    pub focus_toggled: bool,
 }
 
 impl InlineFrameState {
@@ -263,6 +264,7 @@ impl InlineFrameState {
             has_remote_edits: false,
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
+            focus_toggled: false,
         }
     }
 
@@ -388,6 +390,7 @@ impl InlineFrameState {
         self.last_eval = Some(Instant::now());
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn show_header(
         &mut self,
         ui: &mut egui::Ui,
@@ -398,6 +401,7 @@ impl InlineFrameState {
         accent: egui::Color32,
         frame: &Frame,
         bridge: &ClientBridge,
+        is_focused: bool,
     ) {
         // Subdued style: transparent backgrounds so the header doesn't compete with the code
         let wv = &mut ui.style_mut().visuals.widgets;
@@ -521,6 +525,22 @@ impl InlineFrameState {
             );
             if menu_btn.clicked() {
                 self.menu_open = !self.menu_open;
+            }
+
+            // Focus toggle
+            let focus_icon = if is_focused {
+                crate::icons::UNFOCUS
+            } else {
+                crate::icons::FOCUS
+            };
+            if ui
+                .add(
+                    egui::Button::new(crate::icons::small(focus_icon).color(COLOR_MUTED))
+                        .fill(egui::Color32::TRANSPARENT),
+                )
+                .clicked()
+            {
+                self.focus_toggled = true;
             }
 
             // Dirty indicator

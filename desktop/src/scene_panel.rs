@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use eframe::egui;
 use sova_core::scene::script::Script;
-use sova_core::scene::{Frame, Line};
+use sova_core::scene::{Frame, Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::vm::language::LanguageDefinition;
 use sova_server::ClientMessage;
@@ -116,6 +116,7 @@ pub struct ScenePanel {
     pub prelude_collapsed: bool,
     pub prelude_col_width: f32,
     picker_open_pending: BTreeSet<(usize, usize)>,
+    focused_frame: Option<(usize, usize)>,
 }
 
 impl Default for ScenePanel {
@@ -137,6 +138,7 @@ impl Default for ScenePanel {
             prelude_collapsed: true,
             prelude_col_width: 300.0,
             picker_open_pending: BTreeSet::new(),
+            focused_frame: None,
         }
     }
 }
@@ -232,6 +234,31 @@ impl ScenePanel {
         // Track which frame has editor focus for StartedEditingFrame/StoppedEditingFrame
         let mut new_editing: Option<(usize, usize)> = None;
 
+        // Validate focused frame still exists
+        let was_focused = self.focused_frame.is_some();
+        if let Some((fli, ffi)) = self.focused_frame
+            && (fli >= scene.lines.len() || ffi >= scene.lines[fli].frames.len())
+        {
+            self.focused_frame = None;
+        }
+
+        if let Some((fli, ffi)) = self.focused_frame {
+            self.show_focused_frame(
+                ui,
+                fli,
+                ffi,
+                scene,
+                &head_progress,
+                accent,
+                &opacity,
+                &theme,
+                editor_settings,
+                bridge,
+                &default_lang,
+                sample_names,
+                &mut new_editing,
+            );
+        } else {
         egui::ScrollArea::horizontal()
             .auto_shrink(false)
             .show(ui, |ui| {
@@ -344,6 +371,24 @@ impl ScenePanel {
                                                         .is_some_and(|s| s.editor_has_focus)
                                                     {
                                                         new_editing = Some((li, fi));
+                                                    }
+
+                                                    // Handle focus toggle
+                                                    if self
+                                                        .frame_states
+                                                        .get(&(li, fi))
+                                                        .is_some_and(|s| s.focus_toggled)
+                                                    {
+                                                        if let Some(state) =
+                                                            self.frame_states.get_mut(&(li, fi))
+                                                        {
+                                                            state.focus_toggled = false;
+                                                        }
+                                                        if self.focused_frame == Some((li, fi)) {
+                                                            self.focused_frame = None;
+                                                        } else {
+                                                            self.focused_frame = Some((li, fi));
+                                                        }
                                                     }
 
                                                     // Handle click on cell
@@ -471,25 +516,23 @@ impl ScenePanel {
                             }
 
                             // Drag handle between columns
-                            if li + 1 < scene.lines.len() {
-                                let (handle_rect, handle_resp) = ui.allocate_exact_size(
-                                    egui::vec2(DRAG_HANDLE_WIDTH, available_height),
-                                    egui::Sense::drag(),
+                            let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                                egui::vec2(DRAG_HANDLE_WIDTH, available_height),
+                                egui::Sense::drag(),
+                            );
+                            if handle_resp.dragged() {
+                                let delta = handle_resp.drag_delta().x;
+                                self.column_widths[li] = (self.column_widths[li] + delta)
+                                    .clamp(MIN_COL_WIDTH, MAX_COL_WIDTH);
+                            }
+                            if handle_resp.hovered() || handle_resp.dragged() {
+                                let center_x = handle_rect.center().x;
+                                ui.painter().vline(
+                                    center_x,
+                                    handle_rect.y_range(),
+                                    egui::Stroke::new(1.0, accent),
                                 );
-                                if handle_resp.dragged() {
-                                    let delta = handle_resp.drag_delta().x;
-                                    self.column_widths[li] = (self.column_widths[li] + delta)
-                                        .clamp(MIN_COL_WIDTH, MAX_COL_WIDTH);
-                                }
-                                if handle_resp.hovered() || handle_resp.dragged() {
-                                    let center_x = handle_rect.center().x;
-                                    ui.painter().vline(
-                                        center_x,
-                                        handle_rect.y_range(),
-                                        egui::Stroke::new(1.0, accent),
-                                    );
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                                }
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                             }
                         });
                     }
@@ -519,6 +562,11 @@ impl ScenePanel {
                     });
                 });
             });
+        } // end else (normal grid view)
+
+        // Reset scroll flag after rendering consumed it.
+        // handle_keyboard (below) may set it again for the next frame.
+        self.scroll_to_cursor = false;
 
         // Handle editing notifications
         if new_editing != self.currently_editing {
@@ -541,7 +589,12 @@ impl ScenePanel {
             self.selection.insert((li, fi));
         }
 
-        // Modal: detect Escape from editor exiting edit mode
+        // Modal: detect exit from edit mode.
+        // Note: we cannot rely on `escape_pressed` alone because egui's memory system
+        // clears focused_widget on Escape BEFORE widgets render, so `editor_has_focus`
+        // is already false by the time show_body checks it. Instead, detect that
+        // edit_mode was active but no editor has focus anymore.
+        let was_editing = self.edit_mode;
         if self.edit_mode {
             let escaped = self.frame_states.values().any(|s| s.escape_pressed);
             if escaped {
@@ -554,17 +607,163 @@ impl ScenePanel {
                 self.edit_mode = false;
             }
         }
+        let just_exited_edit = was_editing && !self.edit_mode;
+        let just_exited_focus = was_focused && self.focused_frame.is_none();
 
-        // Navigation mode: process keyboard shortcuts (only when no text widget has focus)
-        if !self.edit_mode && !ui.ctx().memory(|m| m.focused().is_some()) {
+        // Navigation mode: process keyboard shortcuts (only when no text widget has focus).
+        // On the frame where we exit edit mode, the Escape event that caused it is still
+        // in egui's input buffer. Skip keyboard handling to prevent it from clearing cursor.
+        if !self.edit_mode && !just_exited_edit && !ui.ctx().memory(|m| m.focused().is_some()) {
             self.handle_clipboard(ui, bridge);
             self.handle_keyboard(ui, bridge, &default_lang);
         }
 
-        self.scroll_to_cursor = false;
+        // Re-center view on cursor after mode transitions
+        if just_exited_edit || just_exited_focus {
+            self.scroll_to_cursor = true;
+        }
 
         if has_positions {
             ui.ctx().request_repaint();
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn show_focused_frame(
+        &mut self,
+        ui: &mut egui::Ui,
+        fli: usize,
+        ffi: usize,
+        scene: &Scene,
+        head_progress: &[Vec<(usize, f32)>],
+        accent: egui::Color32,
+        opacity: &SceneOpacity,
+        theme: &SyntaxTheme,
+        editor_settings: &EditorSettings,
+        bridge: &ClientBridge,
+        default_lang: &str,
+        sample_names: &[String],
+        new_editing: &mut Option<(usize, usize)>,
+    ) {
+        let line = &scene.lines[fli];
+        let frame = &line.frames[ffi];
+        let line_heads = head_progress.get(fli);
+        let playing_fis: Vec<usize> = line_heads
+            .map(|h| h.iter().map(|&(fi, _)| fi).collect())
+            .unwrap_or_default();
+        let is_playing = playing_fis.contains(&ffi);
+        let progress = line_heads
+            .map(|h| {
+                h.iter()
+                    .filter(|&&(hfi, _)| hfi == ffi)
+                    .map(|&(_, p)| p)
+                    .fold(0.0_f32, f32::max)
+            })
+            .unwrap_or(0.0);
+
+        // Context header: line/frame indicator + unfocus button
+        let context_height = LINE_HEADER_HEIGHT;
+        ui.horizontal(|ui| {
+            ui.set_height(context_height);
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.label(
+                egui::RichText::new(format!("Line {} / Frame {}", fli + 1, ffi + 1))
+                    .small()
+                    .color(ui.visuals().text_color()),
+            );
+            if ui
+                .add(
+                    egui::Button::new(
+                        crate::icons::small(crate::icons::UNFOCUS)
+                            .color(ui.visuals().text_color()),
+                    )
+                    .fill(egui::Color32::TRANSPARENT),
+                )
+                .on_hover_text("Exit focus mode (Esc)")
+                .clicked()
+            {
+                self.focused_frame = None;
+            }
+        });
+
+        if self.focused_frame.is_none() {
+            return;
+        }
+
+        let available_height = ui.available_height();
+        let available_width = ui.available_width();
+
+        // Temporarily override the frame state height to fill available space
+        let body_height = available_height - HEADER_HEIGHT;
+        let old_height = self
+            .frame_states
+            .get(&(fli, ffi))
+            .map_or(CELL_HEIGHT, |s| s.height);
+        if let Some(state) = self.frame_states.get_mut(&(fli, ffi)) {
+            state.height = body_height;
+            state.collapsed = false;
+        }
+
+        // Ensure frame state exists
+        self.frame_states
+            .entry((fli, ffi))
+            .or_insert_with(|| InlineFrameState::new(frame));
+
+        ui.push_id("focused_frame", |ui| {
+            ui.allocate_ui(egui::vec2(available_width, available_height), |ui| {
+                let cell_resp = self.show_frame_cell(
+                    ui,
+                    fli,
+                    ffi,
+                    line.frames.len(),
+                    frame,
+                    is_playing,
+                    progress,
+                    true,
+                    true,
+                    &playing_fis,
+                    crate::widgets::cycled_accent(accent, fli),
+                    opacity,
+                    editor_settings,
+                    theme,
+                    bridge,
+                    default_lang,
+                    sample_names,
+                );
+
+                // Track editor focus
+                if self
+                    .frame_states
+                    .get(&(fli, ffi))
+                    .is_some_and(|s| s.editor_has_focus)
+                {
+                    *new_editing = Some((fli, ffi));
+                }
+
+                // Handle focus toggle from header button
+                if self
+                    .frame_states
+                    .get(&(fli, ffi))
+                    .is_some_and(|s| s.focus_toggled)
+                {
+                    if let Some(state) = self.frame_states.get_mut(&(fli, ffi)) {
+                        state.focus_toggled = false;
+                    }
+                    self.focused_frame = None;
+                }
+
+                // Handle click
+                if cell_resp.clicked() {
+                    self.update_cursor((fli, ffi), bridge);
+                    self.selection.clear();
+                    self.selection.insert((fli, ffi));
+                }
+            });
+        });
+
+        // Restore original height so grid view isn't affected
+        if let Some(state) = self.frame_states.get_mut(&(fli, ffi)) {
+            state.height = old_height;
         }
     }
 
@@ -798,8 +997,9 @@ impl ScenePanel {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.set_height(HEADER_HEIGHT);
+                    let is_focused = self.focused_frame == Some((li, fi));
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.show_header(ui, li, fi, n_frames, playing_fis, accent, frame, bridge);
+                        state.show_header(ui, li, fi, n_frames, playing_fis, accent, frame, bridge, is_focused);
                     }
                 });
 
@@ -1469,6 +1669,7 @@ impl ScenePanel {
             ctrl_del,
             alt_h,
             alt_l,
+            key_f,
         ) = ui.input(|i| {
             let no_mod =
                 !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift;
@@ -1504,6 +1705,8 @@ impl ScenePanel {
                     && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
                 i.modifiers.alt && i.key_pressed(egui::Key::H),
                 i.modifiers.alt && i.key_pressed(egui::Key::L),
+                // Focus
+                no_mod && i.key_pressed(egui::Key::F),
             )
         });
 
@@ -1516,10 +1719,24 @@ impl ScenePanel {
             return;
         }
 
-        // Escape: clear selection
+        // Escape: exit focus mode first, then clear selection
         if key_escape {
-            self.selection.clear();
-            self.cursor = None;
+            if self.focused_frame.is_some() {
+                self.focused_frame = None;
+            } else {
+                self.selection.clear();
+                self.cursor = None;
+            }
+            return;
+        }
+
+        // F: toggle focus mode on cursor frame
+        if key_f && line_lens[li] > 0 {
+            if self.focused_frame == Some((li, fi)) {
+                self.focused_frame = None;
+            } else {
+                self.focused_frame = Some((li, fi));
+            }
             return;
         }
 

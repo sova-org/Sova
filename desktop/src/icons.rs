@@ -182,6 +182,10 @@ pub use egui_phosphor::fill::WARNING as PANIC;
 pub use egui_phosphor::fill::LINK as CONNECT;
 pub use egui_phosphor::fill::LINK_BREAK as DISCONNECT;
 
+// Focus mode
+pub use egui_phosphor::fill::ARROWS_IN as UNFOCUS;
+pub use egui_phosphor::fill::ARROWS_OUT as FOCUS;
+
 // New icons for text-only buttons
 pub use egui_phosphor::fill::ARROW_COUNTER_CLOCKWISE as REFRESH;
 pub use egui_phosphor::fill::BROOM;
