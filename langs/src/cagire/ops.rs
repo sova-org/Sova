@@ -127,6 +127,7 @@ pub enum Op {
     DiatonicSeventh(&'static [i64]),
     ModLfo(u8),
     ModSlide(u8),
+    ModSlew(u8),
     ModRnd(u8),
     ModEnv,
     ModEnvAd,

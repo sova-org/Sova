@@ -46,10 +46,14 @@ impl World {
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
-                    midi_early_threshold: MIDI_EARLY_THRESHOLD, // 2ms for MIDI interface compensation
-                    non_midi_lookahead: NON_MIDI_LOOKAHEAD, // 20ms lookahead for OSC/AudioEngine
+                    midi_early_threshold: MIDI_EARLY_THRESHOLD,
+                    non_midi_lookahead: NON_MIDI_LOOKAHEAD,
                 };
-                world.live();
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    world.live();
+                })) {
+                    log_eprintln!("World thread panicked: {:?}", e);
+                }
             })
             .expect("Unable to start World");
         (handle, tx)
@@ -84,8 +88,7 @@ impl World {
                 time = self.clock.micros();
             }
 
-            if next.time <= time {
-                let msg = self.queue.pop().unwrap();
+            if next.time <= time && let Some(msg) = self.queue.pop() {
                 self.execute_message(msg);
             }
             self.refresh_next_timeout();

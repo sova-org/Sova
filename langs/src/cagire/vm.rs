@@ -1480,6 +1480,22 @@ impl CagireVM {
                         span!(),
                     );
                 }
+                Op::ModSlew(curve) => {
+                    let dur = at!(stack.pop_float())? * ctx.step_duration;
+                    let target = at!(stack.pop_float())?;
+                    let suffix = match curve {
+                        1 => "e",
+                        2 => "s",
+                        3 => "i",
+                        4 => "o",
+                        5 => "p",
+                        _ => "",
+                    };
+                    stack.push(
+                        Value::Str(format!(">{target}:{dur}{suffix}").into()),
+                        span!(),
+                    );
+                }
                 Op::ModRnd(dist) => {
                     let period = at!(stack.pop_float())? * ctx.step_duration;
                     let max = at!(stack.pop_float())?;

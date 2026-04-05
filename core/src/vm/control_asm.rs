@@ -14,6 +14,7 @@ use crate::{error::SovaError, log_eprintln};
 
 pub const DEFAULT_DEVICE: i64 = 1;
 pub const DEFAULT_CHAN: i64 = 1;
+pub const MAX_CALL_DEPTH: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ControlASM {
@@ -750,6 +751,12 @@ impl ControlASM {
             }
             // Calls and returns
             ControlASM::CallFunction(f) => {
+                if return_stack.len() >= MAX_CALL_DEPTH {
+                    ctx.errors.throw(
+                        SovaError::from(&mut *ctx).message("maximum call depth exceeded"),
+                    );
+                    return ReturnInfo::IndexChange(usize::MAX);
+                }
                 return_stack.push(ReturnInfo::ProgChange(
                     instruction_position + 1,
                     current_prog.clone(),

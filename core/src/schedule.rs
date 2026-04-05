@@ -2,7 +2,7 @@ use crate::{
     clock::{Clock, ClockServer, NEVER, SyncTime},
     device_map::DeviceMap,
     error::ErrorQueue,
-    log_println,
+    log_eprintln, log_println,
     protocol::TimedMessage,
     scene::{Scene, script::ScriptExecution},
     schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
@@ -72,13 +72,13 @@ impl Scheduler {
             .name("Sova-scheduler")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
-                // match audio_thread_priority::promote_current_thread_to_real_time(512, 44100) {
-                //     Ok(_) => log_eprintln!("Scheduler: real-time priority set"),
-                //     Err(e) => log_eprintln!("Scheduler: failed to set RT priority: {:?}", e),
-                // }
                 let mut sched =
                     Scheduler::new(clock, devices, languages, world_iface, feedback, rx, p_tx);
-                sched.do_your_thing();
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    sched.do_your_thing();
+                })) {
+                    log_eprintln!("Scheduler thread panicked: {:?}", e);
+                }
             })
             .expect("Unable to start Scheduler");
         (handle, tx, p_rx)
@@ -422,8 +422,10 @@ impl Scheduler {
             }
         }
         log_println!("[-] Exiting scheduler...");
-        for (_, device) in self.devices.output_connections.lock().unwrap().iter() {
-            device.flush();
+        if let Ok(connections) = self.devices.output_connections.lock() {
+            for (_, device) in connections.iter() {
+                device.flush();
+            }
         }
     }
 
