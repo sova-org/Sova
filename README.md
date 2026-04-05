@@ -2,6 +2,8 @@
 
 <p align="center"><em>A Polyglot Live Coding Sequencer</em></p>
 
+<p align="center"><a href="https://sova.livecoding.fr">sova.livecoding.fr</a></p>
+
 <p align="center">
   <img src="pictures/sova_gui_real.webp" alt="Sova GUI">
 </p>
@@ -21,13 +23,15 @@ Sova is a sequencer and musical programming environment written in Rust. It is b
 
 ## Quick Start
 
+Pre-built binaries are available on [sova.livecoding.fr](https://sova.livecoding.fr).
+
+To build from source:
+
 ```bash
 git clone https://github.com/sova-org/Sova.git
 cd Sova
 cargo run -p sova-desktop --release    # requires Rust (latest stable)
 ```
-
-Pre-built releases are available on the [Releases](https://github.com/sova-org/Sova/releases) page.
 
 ## Build
 
