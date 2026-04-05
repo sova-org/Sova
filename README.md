@@ -26,12 +26,12 @@ Sova is a sequencer and musical programming environment written in Rust. It is b
 ## Quick Start
 
 ```bash
-git clone https://github.com/Bubobubobubobubo/Sova.git
+git clone https://github.com/sova-org/Sova.git
 cd Sova
 cargo run -p sova-desktop --release    # requires Rust (latest stable)
 ```
 
-Pre-built releases are available on the [Releases](https://github.com/Bubobubobubobubo/Sova/releases) page.
+Pre-built releases are available on the [Releases](https://github.com/sova-org/Sova/releases) page.
 
 ## Build
 
@@ -91,8 +91,8 @@ Sova is distributed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.e
 
 ## Community
 
-- [GitHub Issues](https://github.com/Bubobubobubobubo/Sova/issues) - Bug reports and feature requests.
-- [GitHub Discussions](https://github.com/Bubobubobubobubo/Sova/discussions) - Questions and general discussion.
+- [GitHub Issues](https://github.com/sova-org/Sova/issues) - Bug reports and feature requests.
+- [GitHub Discussions](https://github.com/sova-org/Sova/discussions) - Questions and general discussion.
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to Sova.
 
 ## Acknowledgments
