@@ -6,7 +6,6 @@ use crate::widgets::{self, Waveform};
 pub struct ScopePanel {
     pub open: bool,
     pub settings: ScopeSettings,
-    aligned: Vec<f32>,
     line_buffer: Vec<f32>,
     trace: Vec<(f32, f32)>,
 }
@@ -16,7 +15,6 @@ impl ScopePanel {
         Self {
             open: false,
             settings,
-            aligned: Vec::new(),
             line_buffer: Vec::new(),
             trace: Vec::new(),
         }
@@ -25,16 +23,16 @@ impl ScopePanel {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        scope_data: &[f32],
+        aligned: &[f32],
         appearance: &AppearanceSettings,
     ) {
         if !self.open {
             return;
         }
         if self.settings.detached {
-            self.show_detached(ctx, scope_data, appearance);
+            self.show_detached(ctx, aligned, appearance);
         } else {
-            self.show_embedded(ctx, scope_data);
+            self.show_embedded(ctx, aligned);
         }
     }
 
@@ -47,16 +45,15 @@ impl ScopePanel {
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.trace"));
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
-        if scope_data.is_empty() {
+    fn content(&mut self, ui: &mut egui::Ui, aligned: &[f32]) {
+        if aligned.is_empty() {
             ui.colored_label(egui::Color32::GRAY, t!("scope.no_data"));
             return;
         }
 
         let accent = ui.visuals().selection.bg_fill;
-        widgets::align_trigger(&mut self.aligned, scope_data);
         let target = (ui.available_width() as usize).clamp(128, 800);
-        widgets::downsample_lttb(&mut self.line_buffer, &self.aligned, target);
+        widgets::downsample_lttb(&mut self.line_buffer, aligned, target);
 
         let mut waveform = Waveform::from_line(&self.line_buffer, accent)
             .stroke_width(2.2)
@@ -72,7 +69,6 @@ impl ScopePanel {
         }
 
         waveform.show(ui);
-        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, detached_toggle: bool) {
@@ -102,7 +98,7 @@ impl ScopePanel {
         &mut self,
         ui: &mut egui::Ui,
         ctx: &egui::Context,
-        scope_data: &[f32],
+        aligned: &[f32],
         detached_toggle: bool,
     ) {
         let previous_spacing = ui.spacing().item_spacing;
@@ -112,13 +108,13 @@ impl ScopePanel {
 
         let available = ui.available_size();
         ui.allocate_ui_with_layout(available, egui::Layout::top_down(egui::Align::Min), |ui| {
-            self.content(ui, ctx, scope_data);
+            self.content(ui, aligned);
         });
 
         ui.spacing_mut().item_spacing = previous_spacing;
     }
 
-    fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
+    fn show_embedded(&mut self, ctx: &egui::Context, aligned: &[f32]) {
         let mut open = self.open;
         egui::Window::new(t!("scope.title"))
             .open(&mut open)
@@ -127,7 +123,7 @@ impl ScopePanel {
             .default_size([400.0, 150.0])
             .frame(egui::Frame::window(ctx.style().as_ref()).inner_margin(egui::Margin::ZERO))
             .show(ctx, |ui| {
-                self.window_content(ui, ctx, scope_data, true);
+                self.window_content(ui, ctx, aligned, true);
             });
         self.open = open;
     }
@@ -135,7 +131,7 @@ impl ScopePanel {
     fn show_detached(
         &mut self,
         ctx: &egui::Context,
-        scope_data: &[f32],
+        aligned: &[f32],
         appearance: &AppearanceSettings,
     ) {
         let mut open = self.open;
@@ -149,7 +145,7 @@ impl ScopePanel {
             [400.0, 200.0],
             appearance,
             |ui| {
-                self.window_content(ui, ctx, scope_data, false);
+                self.window_content(ui, ctx, aligned, false);
             },
         );
         self.open = open;

@@ -1,90 +1,13 @@
-use std::sync::Arc;
-
 use eframe::egui;
-use rustfft::{FftPlanner, num_complex::Complex};
 
 use crate::settings::{AppearanceSettings, SpectrumSettings};
 use crate::widgets::{self, Spectrum};
 
-const FFT_SIZE: usize = 2048;
-const NUM_BANDS: usize = 128;
-
-struct SpectrumAnalyzer {
-    fft: Arc<dyn rustfft::Fft<f32>>,
-    window: Vec<f32>,
-    band_edges: Vec<usize>,
-    buffer: Vec<Complex<f32>>,
-}
-
-impl SpectrumAnalyzer {
-    fn new(sample_rate: f32) -> Self {
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(FFT_SIZE);
-
-        let window: Vec<f32> = (0..FFT_SIZE)
-            .map(|i| {
-                let t = i as f32 / (FFT_SIZE - 1) as f32;
-                0.5 - 0.5 * (2.0 * std::f32::consts::PI * t).cos()
-            })
-            .collect();
-
-        let min_freq: f32 = 20.0;
-        let max_freq = (sample_rate * 0.5).min(20000.0);
-        let log_min = min_freq.ln();
-        let log_max = max_freq.ln();
-        let bin_hz = sample_rate / FFT_SIZE as f32;
-
-        let band_edges: Vec<usize> = (0..=NUM_BANDS)
-            .map(|i| {
-                let freq = (log_min + (log_max - log_min) * i as f32 / NUM_BANDS as f32).exp();
-                (freq / bin_hz) as usize
-            })
-            .collect();
-
-        Self {
-            fft,
-            window,
-            band_edges,
-            buffer: vec![Complex::new(0.0, 0.0); FFT_SIZE],
-        }
-    }
-
-    fn analyze(&mut self, samples: &[f32]) -> Vec<f32> {
-        let n = samples.len().min(FFT_SIZE);
-        for (i, buf) in self.buffer.iter_mut().enumerate() {
-            *buf = if i < n {
-                Complex::new(samples[i] * self.window[i], 0.0)
-            } else {
-                Complex::new(0.0, 0.0)
-            };
-        }
-
-        self.fft.process(&mut self.buffer);
-
-        let nyquist = FFT_SIZE / 2;
-        let norm = 2.0 / FFT_SIZE as f32;
-
-        (0..NUM_BANDS)
-            .map(|i| {
-                let lo = self.band_edges[i].min(nyquist);
-                let hi = self.band_edges[i + 1].min(nyquist);
-                if lo >= hi {
-                    return 0.0;
-                }
-                let sum: f32 = self.buffer[lo..hi].iter().map(|c| c.norm() * norm).sum();
-                sum / (hi - lo) as f32
-            })
-            .collect()
-    }
-}
-
 pub struct SpectrumPanel {
     pub open: bool,
     pub settings: SpectrumSettings,
-    analyzer: Option<SpectrumAnalyzer>,
     bands: Vec<f32>,
     normalized: Vec<f32>,
-    last_data_ptr: usize,
 }
 
 impl SpectrumPanel {
@@ -92,26 +15,24 @@ impl SpectrumPanel {
         Self {
             open: false,
             settings,
-            analyzer: None,
-            bands: vec![0.0; NUM_BANDS],
-            normalized: vec![0.0; NUM_BANDS],
-            last_data_ptr: 0,
+            bands: vec![0.0; crate::widgets::spectrum_analyzer::NUM_BANDS],
+            normalized: vec![0.0; crate::widgets::spectrum_analyzer::NUM_BANDS],
         }
     }
 
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        scope_data: &[f32],
+        raw_bands: &[f32],
         appearance: &AppearanceSettings,
     ) {
         if !self.open {
             return;
         }
         if self.settings.detached {
-            self.show_detached(ctx, scope_data, appearance);
+            self.show_detached(ctx, raw_bands, appearance);
         } else {
-            self.show_embedded(ctx, scope_data);
+            self.show_embedded(ctx, raw_bands);
         }
     }
 
@@ -134,29 +55,19 @@ impl SpectrumPanel {
         hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.gradient"));
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
-        if scope_data.is_empty() {
+    fn content(&mut self, ui: &mut egui::Ui, raw_bands: &[f32]) {
+        if raw_bands.is_empty() {
             ui.colored_label(egui::Color32::GRAY, t!("spectrum.no_data"));
-            self.analyzer = None;
             self.bands.fill(0.0);
             return;
         }
 
         let accent = ui.visuals().selection.bg_fill;
 
-        let analyzer = self
-            .analyzer
-            .get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
-
-        let data_ptr = scope_data.as_ptr() as usize;
-        let smoothing = self.settings.smoothing;
-        if data_ptr != self.last_data_ptr {
-            self.last_data_ptr = data_ptr;
-            let raw = analyzer.analyze(scope_data);
-            widgets::smooth(&mut self.bands, &raw, smoothing);
-        }
+        widgets::smooth(&mut self.bands, raw_bands, self.settings.smoothing);
 
         let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
+        self.normalized.resize(self.bands.len(), 0.0);
         for (i, &b) in self.bands.iter().enumerate() {
             self.normalized[i] = (b / peak).min(1.0);
         }
@@ -165,10 +76,9 @@ impl SpectrumPanel {
             .bar_gap(self.settings.bar_gap)
             .gradient_strength(self.settings.gradient_strength)
             .show(ui);
-        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
-    fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
+    fn show_embedded(&mut self, ctx: &egui::Context, raw_bands: &[f32]) {
         let mut open = self.open;
         egui::Window::new(t!("spectrum.title"))
             .open(&mut open)
@@ -190,7 +100,7 @@ impl SpectrumPanel {
                         .default_open(false)
                         .show(ui, |ui| self.settings_ui(ui));
                 });
-                self.content(ui, ctx, scope_data);
+                self.content(ui, raw_bands);
             });
         self.open = open;
     }
@@ -198,7 +108,7 @@ impl SpectrumPanel {
     fn show_detached(
         &mut self,
         ctx: &egui::Context,
-        scope_data: &[f32],
+        raw_bands: &[f32],
         appearance: &AppearanceSettings,
     ) {
         let mut open = self.open;
@@ -215,7 +125,7 @@ impl SpectrumPanel {
                 egui::CollapsingHeader::new(t!("common.settings"))
                     .default_open(false)
                     .show(ui, |ui| self.settings_ui(ui));
-                self.content(ui, ctx, scope_data);
+                self.content(ui, raw_bands);
             },
         );
         self.open = open;

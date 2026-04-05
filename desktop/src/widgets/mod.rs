@@ -7,6 +7,7 @@ pub mod hint;
 mod inline_markdown;
 pub mod inline_scene_view;
 mod spectrum;
+pub mod spectrum_analyzer;
 pub mod syntax_highlight;
 pub mod tip_popup;
 mod toast;
@@ -23,6 +24,7 @@ pub use spectrum::Spectrum;
 pub use syntax_highlight::SyntaxThemePref;
 pub use toast::{ToastLevel, ToastStack};
 pub use vu_meter::VuMeter;
+pub use spectrum_analyzer::SpectrumAnalyzer;
 pub use waveform::Waveform;
 
 pub fn smooth(buffer: &mut Vec<f32>, source: &[f32], factor: f32) {

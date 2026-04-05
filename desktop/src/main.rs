@@ -191,6 +191,10 @@ fn main() -> eframe::Result {
                 master_volume: saved_master_volume,
                 muted: false,
                 was_audio_running: false,
+                spectrum_analyzer: None,
+                raw_bands: Vec::new(),
+                aligned_scope: Vec::new(),
+                last_scope_ptr: 0,
             };
 
             app.chat_panel.detached = s.windows.chat_detached;
@@ -248,6 +252,11 @@ struct SovaApp {
     master_volume: f32,
     muted: bool,
     was_audio_running: bool,
+    // Shared visualization preprocessing
+    spectrum_analyzer: Option<widgets::SpectrumAnalyzer>,
+    raw_bands: Vec<f32>,
+    aligned_scope: Vec<f32>,
+    last_scope_ptr: usize,
 }
 
 impl SovaApp {
@@ -974,13 +983,26 @@ impl eframe::App for SovaApp {
             self.bridge.disconnect();
         }
 
+        // Preprocess visualization data once for all panels
+        let scope_data = self.bridge.scope_data();
+        let scope_ptr = scope_data.as_ptr() as usize;
+        if !scope_data.is_empty() && scope_ptr != self.last_scope_ptr {
+            self.last_scope_ptr = scope_ptr;
+            widgets::align_trigger(&mut self.aligned_scope, scope_data);
+            let analyzer = self
+                .spectrum_analyzer
+                .get_or_insert_with(|| widgets::SpectrumAnalyzer::new(44100.0));
+            self.raw_bands = analyzer.analyze(scope_data);
+        }
+
         // Scope bar as bottom panel (must be before VU meter and CentralPanel)
         if self.scope_bar_panel.open
             && (self.bridge.audio_state().running || self.bridge.has_feedback())
         {
             self.scope_bar_panel.show_bottom_panel(
                 ctx,
-                self.bridge.scope_data(),
+                &self.aligned_scope,
+                &self.raw_bands,
                 &self.scope_panel.settings,
                 &self.spectrum_panel.settings,
             );
@@ -1141,9 +1163,18 @@ impl eframe::App for SovaApp {
             is_hosting,
         );
 
-        let scope_data = self.bridge.scope_data();
-        self.scope_panel.show(ctx, scope_data, &self.appearance);
-        self.spectrum_panel.show(ctx, scope_data, &self.appearance);
+        self.scope_panel
+            .show(ctx, &self.aligned_scope, &self.appearance);
+        self.spectrum_panel
+            .show(ctx, &self.raw_bands, &self.appearance);
+
+        // Single repaint request for all visualization panels
+        let any_viz_open = self.scope_panel.open
+            || self.spectrum_panel.open
+            || self.scope_bar_panel.open;
+        if any_viz_open && (self.bridge.audio_state().running || self.bridge.has_feedback()) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        }
 
         self.visuals.show_editor(ctx, &self.editor_settings);
 
