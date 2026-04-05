@@ -134,6 +134,7 @@ pub enum Op {
     ModEnvAdr,
     Lpg,
     GetMidiCC,
+    GetOscIn,
     MidiClock,
     MidiStart,
     MidiStop,

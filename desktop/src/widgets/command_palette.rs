@@ -1,5 +1,7 @@
 use eframe::egui;
 
+use crate::icons;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CommandId {
     // Panels
@@ -40,6 +42,7 @@ pub enum PaletteAction {
 
 struct Command {
     id: CommandId,
+    icon: Option<&'static str>,
     label: String,
     category: String,
     desc: String,
@@ -58,109 +61,127 @@ fn modifier_prefix() -> &'static str {
 fn commands() -> Vec<Command> {
     let m = modifier_prefix();
 
-    let panel = |id, label_key: &str, desc_key: &str, shortcut: String| Command {
-        id,
-        label: t!(label_key).into(),
-        category: t!("cmd.category.panel").into(),
-        desc: t!(desc_key).into(),
-        shortcut: Some(shortcut),
-        active: false,
-    };
+    let panel =
+        |id, icon: &'static str, label_key: &str, desc_key: &str, shortcut: String| Command {
+            id,
+            icon: Some(icon),
+            label: t!(label_key).into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!(desc_key).into(),
+            shortcut: Some(shortcut),
+            active: false,
+        };
 
     vec![
         // Panels
         panel(
             CommandId::Options,
+            icons::GEAR,
             "cmd.options",
             "cmd.options.desc",
             format!("{m}+,"),
         ),
         panel(
             CommandId::Server,
+            icons::CONNECT,
             "cmd.server",
             "cmd.server.desc",
             format!("{m}+Shift+S"),
         ),
         panel(
             CommandId::Audio,
+            icons::UNMUTE,
             "cmd.audio",
             "cmd.audio.desc",
             format!("{m}+Shift+A"),
         ),
         panel(
             CommandId::Devices,
+            icons::PLUGS_CONNECTED,
             "cmd.devices",
             "cmd.devices.desc",
             format!("{m}+Shift+I"),
         ),
         panel(
             CommandId::Scope,
+            icons::WAVE_SINE,
             "cmd.scope",
             "cmd.scope.desc",
             format!("{m}+Shift+O"),
         ),
         panel(
             CommandId::Spectrum,
+            icons::WAVE_SINE,
             "cmd.spectrum",
             "cmd.spectrum.desc",
             format!("{m}+Shift+P"),
         ),
         panel(
             CommandId::VuMeter,
+            icons::WAVE_SINE,
             "cmd.vu_meter",
             "cmd.vu_meter.desc",
             format!("{m}+Shift+U"),
         ),
         panel(
             CommandId::ScopeBar,
+            icons::WAVE_SINE,
             "cmd.scope_bar",
             "cmd.scope_bar.desc",
             format!("{m}+Shift+W"),
         ),
         panel(
             CommandId::Chat,
+            icons::SEND,
             "cmd.chat",
             "cmd.chat.desc",
             format!("{m}+Shift+C"),
         ),
         panel(
             CommandId::Logs,
+            icons::FILE_TEXT,
             "cmd.logs",
             "cmd.logs.desc",
             format!("{m}+Shift+L"),
         ),
         panel(
             CommandId::SampleBrowser,
+            icons::MUSIC_NOTE,
             "cmd.sample_browser",
             "cmd.sample_browser.desc",
             format!("{m}+Shift+E"),
         ),
         panel(
             CommandId::Documentation,
+            icons::BOOK,
             "cmd.documentation",
             "cmd.documentation.desc",
             format!("{m}+Shift+H"),
         ),
         panel(
             CommandId::Visuals,
+            icons::PALETTE,
             "cmd.visuals",
             "cmd.visuals.desc",
             format!("{m}+Shift+V"),
         ),
         panel(
             CommandId::Debug,
+            icons::CPU,
             "cmd.debug",
             "cmd.debug.desc",
             format!("{m}+Shift+B"),
         ),
         panel(
             CommandId::Keybindings,
+            icons::KEYBOARD,
             "cmd.keybindings",
             "cmd.keybindings.desc",
             "F1".into(),
         ),
         panel(
             CommandId::About,
+            icons::CIRCLE_FILLED,
             "cmd.about",
             "cmd.about.desc",
             String::new(),
@@ -168,6 +189,7 @@ fn commands() -> Vec<Command> {
         // Engine
         Command {
             id: CommandId::RestartCore,
+            icon: Some(icons::REFRESH),
             label: t!("cmd.restart_core").into(),
             category: t!("cmd.category.engine").into(),
             desc: t!("cmd.restart_core.desc").into(),
@@ -177,6 +199,7 @@ fn commands() -> Vec<Command> {
         // Transport
         Command {
             id: CommandId::PlayPause,
+            icon: Some(icons::PLAY),
             label: t!("cmd.play_pause").into(),
             category: t!("cmd.category.transport").into(),
             desc: t!("cmd.play_pause.desc").into(),
@@ -186,6 +209,7 @@ fn commands() -> Vec<Command> {
         // File
         Command {
             id: CommandId::SaveScene,
+            icon: Some(icons::FILE_TEXT),
             label: t!("cmd.save_scene").into(),
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.save_scene.desc").into(),
@@ -194,6 +218,7 @@ fn commands() -> Vec<Command> {
         },
         Command {
             id: CommandId::LoadScene,
+            icon: Some(icons::FILE_TEXT),
             label: t!("cmd.load_scene").into(),
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.load_scene.desc").into(),
@@ -202,6 +227,7 @@ fn commands() -> Vec<Command> {
         },
         Command {
             id: CommandId::ResetScene,
+            icon: Some(icons::TRASH),
             label: t!("cmd.reset_scene").into(),
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.reset_scene.desc").into(),
@@ -211,6 +237,7 @@ fn commands() -> Vec<Command> {
         // View
         Command {
             id: CommandId::ZoomIn,
+            icon: Some(icons::FOCUS),
             label: t!("cmd.zoom_in").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_in.desc").into(),
@@ -219,6 +246,7 @@ fn commands() -> Vec<Command> {
         },
         Command {
             id: CommandId::ZoomOut,
+            icon: Some(icons::UNFOCUS),
             label: t!("cmd.zoom_out").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_out.desc").into(),
@@ -227,6 +255,7 @@ fn commands() -> Vec<Command> {
         },
         Command {
             id: CommandId::ZoomReset,
+            icon: Some(icons::FOCUS),
             label: t!("cmd.zoom_reset").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_reset.desc").into(),
@@ -432,8 +461,30 @@ impl CommandPalette {
 
                             let text_offset = if cmd.active { 14.0 } else { 0.0 };
 
+                            // Icon
+                            let icon_offset = if let Some(icon) = cmd.icon {
+                                let icon_pos =
+                                    rect.min + egui::vec2(label_x + text_offset, 2.0);
+                                let icon_color = if selected {
+                                    ui.visuals().selection.stroke.color
+                                } else {
+                                    text_color
+                                };
+                                ui.painter().text(
+                                    icon_pos,
+                                    egui::Align2::LEFT_TOP,
+                                    icon,
+                                    egui::FontId::new(13.0, icons::family()),
+                                    icon_color,
+                                );
+                                18.0
+                            } else {
+                                0.0
+                            };
+
                             // Label with fuzzy match highlighting
-                            let label_pos = rect.min + egui::vec2(label_x + text_offset, 2.0);
+                            let label_pos =
+                                rect.min + egui::vec2(label_x + text_offset + icon_offset, 2.0);
                             let (label_normal, label_highlight) = if selected {
                                 let sel = ui.visuals().selection.stroke.color;
                                 (sel.gamma_multiply(0.7), sel)
@@ -480,7 +531,8 @@ impl CommandPalette {
                                 weak_color
                             };
                             ui.painter().text(
-                                rect.min + egui::vec2(label_x + text_offset, 20.0),
+                                rect.min
+                                    + egui::vec2(label_x + text_offset + icon_offset, 20.0),
                                 egui::Align2::LEFT_TOP,
                                 &cmd.desc,
                                 egui::FontId::proportional(11.0),
@@ -516,19 +568,31 @@ impl CommandPalette {
             return;
         }
 
+        let needle = self.query.to_lowercase();
         let mut scored: Vec<(usize, i32, Vec<usize>)> = self
             .commands
             .iter()
             .enumerate()
             .filter_map(|(i, cmd)| {
                 let haystack = format!("{} {} {}", cmd.category, cmd.label, cmd.desc);
-                super::fuzzy_score(&self.query, &haystack).map(|(score, _full_indices)| {
-                    // Get match indices within the label specifically for highlighting
-                    let label_matches = super::fuzzy_score(&self.query, &cmd.label)
-                        .map(|(_, indices)| indices)
-                        .unwrap_or_default();
-                    (i, score, label_matches)
-                })
+                let hay_lower = haystack.to_lowercase();
+                let pos = hay_lower.find(&needle)?;
+                // Prefer matches in label over category/desc
+                let label_lower = cmd.label.to_lowercase();
+                let label_pos = label_lower.find(&needle);
+                let score = if label_pos == Some(0) {
+                    30 // prefix match in label
+                } else if label_pos.is_some() {
+                    20 // substring match in label
+                } else if pos == 0 {
+                    15 // prefix match in category+label+desc
+                } else {
+                    10 // substring match somewhere
+                };
+                let label_matches = label_pos
+                    .map(|start| (start..start + needle.len()).collect())
+                    .unwrap_or_default();
+                Some((i, score, label_matches))
             })
             .collect();
 

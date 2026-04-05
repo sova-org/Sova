@@ -11,4 +11,14 @@ pub(super) const WORDS: &[Word] = &[
         compile: Param,
         varargs: true,
     },
+    Word {
+        name: "oscin",
+        aliases: &[],
+        category: "OSC",
+        stack: "(route idx -- val)",
+        desc: "Read value from OSC input device",
+        example: include_str!("../../../docs/cagire/examples/oscin.cagire"),
+        compile: Simple,
+        varargs: false,
+    },
 ];

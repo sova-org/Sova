@@ -1,0 +1,7 @@
+;; Read first OSC argument from "/sensor" on device 3
+;; Use as filter cutoff frequency
+3 device
+"/sensor" 0 oscin 200 4000 range lpf
+saw snd
+.5 decay
+.

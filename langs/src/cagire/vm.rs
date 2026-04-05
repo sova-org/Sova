@@ -1576,6 +1576,26 @@ impl CagireVM {
                     stack.push(Value::Int(cc_value), span!());
                 }
 
+                Op::GetOscIn => {
+                    let idx = at!(stack.pop_int())? as usize;
+                    let route_val = at!(stack.pop())?;
+                    let route = at!(route_val.as_str())?;
+                    let device_id = cmd
+                        .params()
+                        .iter()
+                        .find(|(k, _)| *k == "device")
+                        .and_then(|(_, v)| v.as_int().ok())
+                        .map(|d| d.max(0) as usize)
+                        .unwrap_or(ctx.default_device);
+                    let val = eval_ctx
+                        .device_map
+                        .get_osc_input_values(device_id, &route)
+                        .and_then(|v| v.into_iter().nth(idx))
+                        .map(|vv| Value::from_variable_value(&vv))
+                        .unwrap_or(Value::Float(0.0));
+                    stack.push(val, span!());
+                }
+
                 Op::MidiClock => {
                     let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(

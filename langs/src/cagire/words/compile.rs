@@ -121,6 +121,7 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "swing" => Op::Swing,
         "times" => Op::Times,
         "ccval" => Op::GetMidiCC,
+        "oscin" => Op::GetOscIn,
         "mclock" => Op::MidiClock,
         "mstart" => Op::MidiStart,
         "mstop" => Op::MidiStop,
