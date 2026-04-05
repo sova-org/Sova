@@ -39,7 +39,15 @@ impl World {
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
                     Ok(_) => log_println!("World: real-time priority set"),
-                    Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
+                    Err(e) => {
+                        log_eprintln!("World: failed to set RT priority: {:?}", e);
+                        #[cfg(target_os = "linux")]
+                        eprintln!(
+                            "[sova] WARNING: Real-time audio priority unavailable. \
+                             Set rtprio in /etc/security/limits.conf or run with CAP_SYS_NICE. \
+                             Audio glitches are likely on this system."
+                        );
+                    }
                 }
                 let mut world = World {
                     queue: BinaryHeap::with_capacity(4096),
