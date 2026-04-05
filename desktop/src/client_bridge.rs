@@ -100,6 +100,7 @@ pub struct ClientBridge {
     clock: ClockState,
     audio_state: AudioEngineState,
     scope_data: Vec<f32>,
+    scope_generation: u64,
     peak_data: Vec<f32>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
@@ -153,6 +154,7 @@ impl ClientBridge {
             clock: ClockState::default(),
             audio_state: AudioEngineState::default(),
             scope_data: Vec::new(),
+            scope_generation: 0,
             peak_data: Vec::new(),
             peers: Vec::new(),
             confirmed_username: None,
@@ -513,6 +515,7 @@ impl ClientBridge {
                 }
                 ServerMessage::ScopeData(data) => {
                     self.scope_data = data;
+                    self.scope_generation += 1;
                     self.audio_state.running = true;
                 }
                 ServerMessage::PeakData(data) => {
@@ -687,6 +690,7 @@ impl ClientBridge {
         }
         if let Some(ref engine) = self.feedback_engine {
             engine.fill_scope_data(&mut self.scope_data);
+            self.scope_generation += 1;
         }
         if let Some(ref engine) = self.feedback_engine {
             engine.fill_peak_data(&mut self.peak_data);
@@ -753,6 +757,10 @@ impl ClientBridge {
 
     pub fn scope_data(&self) -> &[f32] {
         &self.scope_data
+    }
+
+    pub fn scope_generation(&self) -> u64 {
+        self.scope_generation
     }
 
     pub fn peak_data(&self) -> &[f32] {

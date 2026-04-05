@@ -194,7 +194,7 @@ fn main() -> eframe::Result {
                 spectrum_analyzer: None,
                 raw_bands: Vec::new(),
                 aligned_scope: Vec::new(),
-                last_scope_ptr: 0,
+                last_scope_gen: 0,
             };
 
             app.chat_panel.detached = s.windows.chat_detached;
@@ -256,7 +256,7 @@ struct SovaApp {
     spectrum_analyzer: Option<widgets::SpectrumAnalyzer>,
     raw_bands: Vec<f32>,
     aligned_scope: Vec<f32>,
-    last_scope_ptr: usize,
+    last_scope_gen: u64,
 }
 
 impl SovaApp {
@@ -984,10 +984,10 @@ impl eframe::App for SovaApp {
         }
 
         // Preprocess visualization data once for all panels
+        let scope_gen = self.bridge.scope_generation();
         let scope_data = self.bridge.scope_data();
-        let scope_ptr = scope_data.as_ptr() as usize;
-        if !scope_data.is_empty() && scope_ptr != self.last_scope_ptr {
-            self.last_scope_ptr = scope_ptr;
+        if !scope_data.is_empty() && scope_gen != self.last_scope_gen {
+            self.last_scope_gen = scope_gen;
             widgets::align_trigger(&mut self.aligned_scope, scope_data);
             let analyzer = self
                 .spectrum_analyzer
