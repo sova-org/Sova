@@ -1,12 +1,12 @@
-No single programming language captures every way of thinking about music. A stack language rewards quick exploration. An imperative language gives precise sequential control. A functional language makes patterns composable. A notation language makes rhythm visible. Sova is built around this observation. Rather than choosing one language, Sova provides shared infrastructure — a virtual machine, a scheduler, a [variable](variables) system, [device](devices) routing — and lets multiple languages coexist on top of it. Each language follows its own paradigm and exposes its own abstractions. All of them access the same underlying machinery. See [About Sova](about) for the design philosophy behind this approach.
+No single programming language captures every way of thinking about music. A stack language rewards quick exploration. An imperative language gives precise sequential control. A functional language makes patterns composable. Languages can have a lot of personality or be very personal for experienced live coders too. Sova is built around this observation. Rather than choosing one language, the software provides shared infrastructure (virtual machine, scheduler, [variable](variables) system, [device](devices) routing) and lets multiple languages coexist on top of it. Each language follows its own paradigm and exposes its own abstractions. All of them access the same underlying machinery. See [About Sova](about) for the design philosophy behind this approach.
 
 ## Two execution models
 
 Languages integrate with Sova through one of two paths. Both run inside the same VM context (the same [variables](variables), [devices](devices), clock, and [timing](timing)) but they differ in how source code becomes events.
 
-- **Compiled languages**: transform source code into bytecode, a sequence of low-level instructions. The bytecode is stored in the frame. At execution time, the VM's instruction executor steps through it. Compilation happens once; the bytecode runs repeatedly without re-reading the source. Bob and BaLi are compiled.
+- **Compiled languages**: transform source code into bytecode, a sequence of low-level instructions. The bytecode is stored in the frame. At execution time, the VM's instruction executor steps through it. Compilation happens once; the bytecode runs repeatedly without re-reading the source.
 
-- **Interpreted languages**: skip the bytecode step. They evaluate the source directly using their own logic, but still run inside the same VM context and produce events through the same interface. Cagire and Boinx are interpreted.
+- **Interpreted languages**: skip the bytecode step. They evaluate the source directly using their own logic, but still run inside the same VM context and produce events through the same interface.
 
 From the scheduler's perspective, both models are interchangeable. The distinction matters when implementing a new language. It does not affect what you can express in one.
 

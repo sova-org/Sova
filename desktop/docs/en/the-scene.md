@@ -1,6 +1,6 @@
-The scene is where the action takes place: it is a visual representation of what is currently playing, a live representation of the step sequencer and machine state. Think of the scene as a bird-eye view of all the scripts currently active and executed by the server. The scene also allows you to see other musicians working if you are playing in multiplayer. It is the working space / the jam session or whatever you imagine it to be! Learning how to manipulate the scene view is probably the most important thing that you need to know, the rest can be learned while playing. The scene is edited it in real time, while playing. Sova is a step sequencer where each step is defined by code. Step duration is not fixed: a step can last a sixteenth note or a full measure (see [Timing](timing)).
+The scene is where the musical action takes place: it is a visual representation of what is currently playing, a live representation of the step sequencer and machine state. Think of the scene as a bird-eye view of all the scripts currently active and executed by the server. The scene also allows you to see other musicians working if you are playing in multiplayer. It is the working space / the jam session or whatever you imagine it to be! Learning how to manipulate the scene view is probably the most important thing that you need to know. Everything else can be learned by playing music.
 
-You will soon figure out that there are multiple ways to approach the scene. It can be used to structure a song, to structure space for improvisation, to give a space to all the musicians currently playing, etc. It is voluntarily left as a open space robust and flexible enough to let people organize the code however they want it to be!
+You will soon figure out that there are multiple ways to approach the scene. It can be used to structure a song, to distribute space for improvisers, to store scripts and processes, etc. Its purpose is voluntarily left as a open space. However, it is robust and flexible enough to let people organize the code however they need it to be!
 
 ## Structure
 
@@ -8,11 +8,13 @@ A scene contains **lines** and **frames**. Lines are columns on the grid. Think 
 
 ## Prelude
 
-The prelude is a list of scripts that execute **once** when playback starts. It appears as a collapsible column on the left side of the scene view. Use it to initialize [variables](variables), configure things or set up any state that other frames depend on. Prelude scripts are not part of any line and do not loop or repeat. Each has its own language selector and code editor. They run in order, top to bottom. Add a new script with the button in the prelude header. Here are a few things that you might be interested in doing using prelude scripts:
+The prelude is a list of scripts that execute **once** when playback starts. Prelude scripts are stored as a collapsible column on the left side of the scene view. Use it to initialize [variables](variables), to configure things or to set up any state that other frames depend on. Prelude scripts are not part of any line and do not loop or repeat. Each can be written in any available language. Prelude scripts run in order, top to bottom. Add a new script with the button in the prelude header. Here are a few things that you might be interested in doing using prelude scripts:
 
-- writing functions or code snippets to re-use in other frames.
-- define a root note or global variables that you are going to re-use in other scripts.
-- share information with other people playing with you.
+- writing functions or code snippets for re-use.
+- define global variables.
+- share global information with other people playing with you.
+
+You can forcefully re-evaluate a prelude script if you need to update it while playing.
 
 ## Frames
 
@@ -21,7 +23,6 @@ Each frame holds a **script**. Think of a **frame** as a _script container_ that
 - **Duration**: how long one execution of the frame lasts, in beats (see [Timing](timing)). Default is 1 beat. Fractional values work: 0.25 for a sixteenth note, 4 for a full bar at 4/4.
 - **Repetitions**: how many times the frame plays before the line advances. Each repetition gets the full duration window. A frame with duration 1 and 4 repetitions runs its script four times, one beat each, occupying 4 beats total. Default is 1.
 - **Enabled**: toggles the frame on or off. Disabled frames are skipped during playback but their code is preserved.
-- **Name**: optional label shown in the frame header.
 - **Script**: the code, along with the language it uses (Bob, Boinx, Cagire, or BaLi). See [Languages](languages).
 
 Frame properties are edited directly in the frame header. Each frame also contains an inline code editor. Just by looking at the scene, you can see all the code that is currently running on the server. You can also visualize all the properties of all frames at all times. We try to minimize hidden state in the graphical interface.
@@ -32,6 +33,7 @@ Lines have their own controls, accessible in the line header:
 
 - **Loop**: the line restarts after reaching the end of its playback range. Otherwise, it plays through once and stops.
 - **Trailing**: when the line loops, previous script executions keep running alongside the new iteration. Otherwise, they are stopped when the line restarts. Trailing lets sounds ring out naturally across loop boundaries.
+- **Manual**: whether the playback is automatic or manually scheduled. Useful to store code that you are going to trigger from another line.
 - **Speed**: multiplier on the line's tempo. 2.0 for double time, 0.5 for half. One line at normal speed, another at half — polymetric structures emerge. See [Timing](timing) for details.
 - **Start frame / End frame**: restricts playback to a range within the line. Useful for looping a section while building the next one.
 

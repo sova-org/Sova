@@ -1,5 +1,3 @@
-# Multiplayer
-
 Sova follows a client/server architecture where the server owns everything: the scene, the clock, the execution engine. Clients send edits and receive state. This holds whether one musician is connected or ten — the workflow is the same. There is no "single-player mode" to switch away from. You start a server, you connect, you play. When multiple musicians connect to the same server, they share the same scene, the same clock, the same global variables. Everyone sees the same grid and can modify it in real time. Even without sharing a scene, musicians on the same local network stay synchronized through Ableton Link — tempo and beat position are locked across all Link-enabled applications.
 
 ## Hosting a session

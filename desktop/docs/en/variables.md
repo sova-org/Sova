@@ -14,7 +14,7 @@ There are four variable scopes, here sorted from from the narrowest to the wides
 
 ## Reading and writing
 
-Each language has its own syntax for variables, but the mechanism is identical: store a value under a name in a given scope, fetch it later. Scope is encoded in the variable name through a prefix. The exact conventions differ per language: see the language tabs for syntax. Reading an undefined variable returns zero. No error, no null, no exception. Safe to read before any script has written. Variables are dynamically typed. The first assignment determines the type. Subsequent writes coerce the new value to match. Write a float into an integer variable and it truncates to an integer.
+Each language has its own syntax for variables, telling you what scope you are currently assigning a variable to. The exact conventions differ per language: see the language tabs for syntax. Reading an undefined variable returns zero. There is no error, no `null` value, no exception. It is safe to read a variable before it has been used or defined. Variables are dynamically typed. The first assignment determines the type. Subsequent writes coerce the new value to match. Write a float into an integer variable and it truncates to an integer.
 
 ## Environment values
 
