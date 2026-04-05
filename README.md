@@ -19,10 +19,6 @@ Sova is a sequencer and musical programming environment written in Rust. It is b
 * **Visuals**: Built-in GLSL shader editor with real-time compilation.
 * **Modular**: VM, server and clients are separate components. Use the whole system or just the parts you need.
 
-<p align="center">
-  <img src="pictures/sova_architecture.svg" alt="Sova Architecture">
-</p>
-
 ## Quick Start
 
 ```bash
