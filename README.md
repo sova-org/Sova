@@ -23,7 +23,11 @@ Sova is a sequencer and musical programming environment written in Rust. It is b
 
 ## Quick Start
 
+### Pre-built binaries
+
 Pre-built binaries are available on [sova.livecoding.fr](https://sova.livecoding.fr).
+
+### Quick build
 
 To build from source:
 
@@ -32,6 +36,17 @@ git clone https://github.com/sova-org/Sova.git
 cd Sova
 cargo run -p sova-desktop --release    # requires Rust (latest stable)
 ```
+
+### First steps
+
+When the frontend is running:
+
+- click the "Start Server" button;
+- enter a name in the "User" field;
+- click the "Connect" button;
+- in the "Scene" menu choose a Demo;
+- click the "Play" button or type Ctrl+Shift+Space;
+- tweak the source in the demo frame then type Ctrl+Enter to validate the changes.
 
 ## Build
 
