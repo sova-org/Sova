@@ -185,9 +185,7 @@ impl BoinxItem {
             Self::ArgMap(map) => {
                 let evaluated = map
                     .iter_mut()
-                    .map(|(k,v)| {
-                        (k.clone(), v.evaluate_vars(ctx, forbidden))
-                    })
+                    .map(|(k, v)| (k.clone(), v.evaluate_vars(ctx, forbidden)))
                     .collect();
                 Self::ArgMap(evaluated)
             }

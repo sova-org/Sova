@@ -53,12 +53,35 @@ impl CagireError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Tuning {
+    pub period_cents: f64,
+    pub steps_cents: Arc<[f64]>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Scale {
+    pub tuning: Arc<Tuning>,
+    pub degrees: Arc<[usize]>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Str(Arc<str>),
     Quotation(Arc<[Op]>, Arc<[Span]>),
     CycleList(Arc<[Value]>),
+    Tuning {
+        period_cents: f64,
+        steps_cents: Arc<[f64]>,
+    },
+    Scale {
+        tuning: Arc<Tuning>,
+        degrees: Arc<[usize]>,
+    },
+    ChordQuality {
+        intervals: Arc<[i64]>,
+    },
 }
 
 impl Value {
@@ -85,6 +108,29 @@ impl Value {
         }
     }
 
+    pub(super) fn as_tuning(&self) -> Result<Tuning, String> {
+        match self {
+            Value::Tuning {
+                period_cents,
+                steps_cents,
+            } => Ok(Tuning {
+                period_cents: *period_cents,
+                steps_cents: steps_cents.clone(),
+            }),
+            _ => Err("expected tuning".into()),
+        }
+    }
+
+    pub(super) fn as_scale(&self) -> Result<Scale, String> {
+        match self {
+            Value::Scale { tuning, degrees } => Ok(Scale {
+                tuning: tuning.clone(),
+                degrees: degrees.clone(),
+            }),
+            _ => Err("expected scale".into()),
+        }
+    }
+
     pub(super) fn is_truthy(&self) -> bool {
         match self {
             Value::Int(i) => *i != 0,
@@ -92,6 +138,7 @@ impl Value {
             Value::Str(s) => !s.is_empty(),
             Value::Quotation(..) => true,
             Value::CycleList(items) => !items.is_empty(),
+            Value::Tuning { .. } | Value::Scale { .. } | Value::ChordQuality { .. } => true,
         }
     }
 
@@ -101,6 +148,9 @@ impl Value {
             Value::Float(f) => f.to_string(),
             Value::Str(s) => s.to_string(),
             Value::Quotation(..) | Value::CycleList(_) => String::new(),
+            Value::Tuning { .. } => "<tuning>".into(),
+            Value::Scale { .. } => "<scale>".into(),
+            Value::ChordQuality { .. } => "<chord>".into(),
         }
     }
 
@@ -109,7 +159,11 @@ impl Value {
             Value::Int(i) => Some(VariableValue::Integer(*i)),
             Value::Float(f) => Some(VariableValue::Float(*f)),
             Value::Str(s) => Some(VariableValue::Str(s.to_string())),
-            Value::Quotation(..) | Value::CycleList(_) => None,
+            Value::Quotation(..)
+            | Value::CycleList(_)
+            | Value::Tuning { .. }
+            | Value::Scale { .. }
+            | Value::ChordQuality { .. } => None,
         }
     }
 
@@ -251,6 +305,7 @@ pub(super) fn float_to_value(result: f64) -> Value {
 #[derive(Clone, Debug, Default)]
 pub(super) struct CmdRegister {
     sound: Option<Value>,
+    chord: Option<Value>,
     params: Vec<(&'static str, Value)>,
     global_params: Vec<(&'static str, Value)>,
     delta_secs: Option<f64>,
@@ -260,6 +315,7 @@ impl CmdRegister {
     pub(super) fn new() -> Self {
         Self {
             sound: None,
+            chord: None,
             params: Vec::with_capacity(16),
             global_params: Vec::new(),
             delta_secs: None,
@@ -268,6 +324,10 @@ impl CmdRegister {
 
     pub(super) fn set_sound(&mut self, val: Value) {
         self.sound = Some(val);
+    }
+
+    pub(super) fn set_chord(&mut self, val: Value) {
+        self.chord = Some(val);
     }
 
     pub(super) fn get_param_float(&self, key: &str) -> Option<f64> {
@@ -287,14 +347,24 @@ impl CmdRegister {
         self.sound.as_ref()
     }
 
+    pub(super) fn chord(&self) -> Option<&Value> {
+        self.chord.as_ref()
+    }
+
     pub(super) fn params(&self) -> &[(&'static str, Value)] {
         &self.params
     }
 
     #[allow(clippy::type_complexity)]
-    pub(super) fn snapshot(&self) -> Option<(Option<&Value>, &[(&'static str, Value)])> {
-        if self.sound.is_some() || !self.params.is_empty() {
-            Some((self.sound.as_ref(), self.params.as_slice()))
+    pub(super) fn snapshot(
+        &self,
+    ) -> Option<(Option<&Value>, Option<&Value>, &[(&'static str, Value)])> {
+        if self.sound.is_some() || self.chord.is_some() || !self.params.is_empty() {
+            Some((
+                self.sound.as_ref(),
+                self.chord.as_ref(),
+                self.params.as_slice(),
+            ))
         } else {
             None
         }
@@ -307,6 +377,7 @@ impl CmdRegister {
     pub(super) fn commit_global(&mut self) {
         self.global_params.append(&mut self.params);
         self.sound = None;
+        self.chord = None;
     }
 
     pub(super) fn clear_global(&mut self) {
@@ -333,12 +404,17 @@ impl CmdRegister {
         self.sound = None;
     }
 
+    pub(super) fn clear_chord(&mut self) {
+        self.chord = None;
+    }
+
     pub(super) fn clear_params(&mut self) {
         self.params.clear();
     }
 
     pub(super) fn clear(&mut self) {
         self.sound = None;
+        self.chord = None;
         self.params.clear();
         self.delta_secs = None;
     }

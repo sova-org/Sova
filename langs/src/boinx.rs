@@ -18,9 +18,9 @@ use sova_core::{
 };
 
 mod ast;
+mod internal_event;
 mod parser;
 mod position;
-mod internal_event;
 
 mod doc;
 use doc::make_documentation;

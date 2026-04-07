@@ -1,4 +1,4 @@
-( g3 dom7 inv note
+( g3 dom7 note
 saw snd
 0.01 0.3 ad 1500 lpf
 )

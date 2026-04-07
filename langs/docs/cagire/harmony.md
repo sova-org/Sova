@@ -1,6 +1,6 @@
 # Notes & Harmony
 
-Cagire speaks music theory. Notes, intervals, chords, and scales are all first-class words that compile to stack operations on MIDI values.
+Cagire speaks music theory. Notes and intervals still work as numeric pitch values, while chords, tunings, and scales are now first-class runtime values.
 
 ## MIDI Notes
 
@@ -77,12 +77,49 @@ Compound intervals (beyond one octave):
 
 ## Chords
 
-Chord words take a root note and push all the chord tones. They eat the root and replace it with the full voicing:
+Chord qualities are values. Push a quality like `min7` or `maj9`, then call `chord` to activate it for note playback:
 
 ```forth
-c4 maj        ;; stack: 60 64 67
-c4 min7       ;; stack: 60 63 67 70
-c4 dom9       ;; stack: 60 64 67 70 74
+c4 note
+min7 chord
+sine snd .
+```
+
+When `note` and `chord` are both present, `note` is the root note. If `cn` is absent, `.` emits the full voicing as polyphonic MIDI notes.
+
+Add `anchor` to ask Cagire for the inversion/register whose chord tone lands closest to that pitch:
+
+```forth
+c4 note
+maj7 chord
+g4 anchor
+sine snd .
+```
+
+With `anchor`, `cn` indexes the realized voiced notes from low to high. Indexes still wrap by octave: values above the voicing length climb upward, and negative values descend:
+
+```forth
+c4 note
+min7 chord
+[ 0 3 0 3 ] cycle cn
+sine snd .
+```
+
+```forth
+c4 note
+min7 chord
+[ 0 1 2 3 4 ] cycle cn
+sine snd .
+```
+
+Here `4` resolves to the root one octave higher.
+
+Numeric aliases also work through `chord`:
+
+```forth
+c4 note
+6 chord      ;; maj6
+sine snd .
 ```
 
 **Triads:**
@@ -103,7 +140,7 @@ c4 dom9       ;; stack: 60 64 67 70 74
 |------|-----------|-------------|
 | `maj7` | 0 4 7 11 | 60 64 67 71 |
 | `min7` | 0 3 7 10 | 60 63 67 70 |
-| `dom7` | 0 4 7 10 | 60 64 67 70 |
+| `dom7` / `7` | 0 4 7 10 | 60 64 67 70 |
 | `dim7` | 0 3 6 9 | 60 63 66 69 |
 | `m7b5` | 0 3 6 10 | 60 63 66 70 |
 | `minmaj7` | 0 3 7 11 | 60 63 67 71 |
@@ -115,7 +152,7 @@ c4 dom9       ;; stack: 60 64 67 70 74
 
 | Word | Intervals | Example (C4) |
 |------|-----------|-------------|
-| `maj6` | 0 4 7 9 | 60 64 67 69 |
+| `maj6` / `6` | 0 4 7 9 | 60 64 67 69 |
 | `min6` | 0 3 7 9 | 60 63 67 69 |
 | `maj69` | 0 4 7 9 14 | 60 64 67 69 74 |
 | `min69` | 0 3 7 9 14 | 60 63 67 69 74 |
@@ -124,12 +161,12 @@ c4 dom9       ;; stack: 60 64 67 70 74
 
 | Word | Intervals | Example (C4) |
 |------|-----------|-------------|
-| `dom9` | 0 4 7 10 14 | 60 64 67 70 74 |
+| `dom9` / `9` | 0 4 7 10 14 | 60 64 67 70 74 |
 | `maj9` | 0 4 7 11 14 | 60 64 67 71 74 |
 | `min9` | 0 3 7 10 14 | 60 63 67 70 74 |
-| `dom11` | 0 4 7 10 14 17 | 60 64 67 70 74 77 |
+| `dom11` / `11` | 0 4 7 10 14 17 | 60 64 67 70 74 77 |
 | `min11` | 0 3 7 10 14 17 | 60 63 67 70 74 77 |
-| `dom13` | 0 4 7 10 14 21 | 60 64 67 70 74 81 |
+| `dom13` / `13` | 0 4 7 10 14 21 | 60 64 67 70 74 81 |
 | `9sus4` | 0 5 7 10 14 | 60 65 67 70 74 |
 | `maj11` | 0 4 7 11 14 17 | 60 64 67 71 74 77 |
 | `maj13` | 0 4 7 11 14 21 | 60 64 67 71 74 81 |
@@ -153,174 +190,58 @@ c4 dom9       ;; stack: 60 64 67 70 74
 | `dom7s5` | 0 4 8 10 | 60 64 68 70 |
 | `dom7s11` | 0 4 7 10 18 | 60 64 67 70 78 |
 
-Chord tones are varargs — they eat the entire stack. So a chord word should come right after the root note:
+## Tunings & Scales
+
+Scales are now built in two layers:
+
+- A `tuning` is a set of cents positions inside a repeating period.
+- A `scale` is an ordered selection of tuning steps.
+- `deg` resolves a scale degree against a root note and returns a frequency in Hz.
+
+Equal divisions are easy:
 
 ```forth
-c4 maj note sine snd .    ;; plays all 3 notes as one chord
+12 edo              ;; 12-step tuning over 2/1
+19 edo              ;; 19-EDO tuning
 ```
 
-## Voicings
-
-Four words reshape chord voicings without changing the harmony.
-
-`inv` moves the bottom note up an octave (inversion):
+Custom tunings use cents within one period:
 
 ```forth
-c4 maj inv note sine snd .     ;; E4 G4 C5 — first inversion
-c4 maj inv inv note sine snd . ;; G4 C5 E5 — second inversion
+[ 90.225 204.090 294.135 408.000 498.045 588.090 702.000 ] 1200 tuning
 ```
 
-`dinv` moves the top note down an octave:
+Scales select steps from a tuning:
 
 ```forth
-c4 maj dinv note sine snd .    ;; G3 C4 E4
+[ 0 2 4 5 7 9 11 ] 12 edo scale
 ```
 
-`drop2` and `drop3` are jazz voicing techniques for four-note chords. `drop2` takes the second-from-top note and drops it an octave:
+Built-in names like `major`, `minor`, `dorian`, and `pentatonic` push reusable scale values. They are ordinary scale objects, not special degree operators.
+
+Resolve degrees with `deg`:
 
 ```forth
-c4 maj7 drop2 note saw snd .   ;; G3 C4 E4 B4
+c4 major 0 deg      ;; 261.63...
+c4 major 7 deg      ;; 523.25...
+c4 major -1 deg     ;; 246.94...
 ```
 
-`drop3` drops the third-from-top:
+Use `mode` to rotate the degree ordering while keeping the same tuning:
 
 ```forth
-c4 maj7 drop3 note saw snd .   ;; E3 C4 G4 B4
+1 major mode
 ```
 
-These create wider, more open voicings common in jazz guitar and piano.
-
-## Transposition
-
-`tp` shifts every integer on the stack by N semitones:
+A simple melodic line with the new flow:
 
 ```forth
-c4 maj 3 tp note sine snd .    ;; C major transposed up 3 = Eb major
-c4 min7 -2 tp note saw snd .   ;; down 2 semitones = Bb minor 7
+c4 minor 0 1 2 3 4 5 6 7 cycle deg freq sine snd .
 ```
 
-Unlike `oct` (which shifts a single note by octaves), `tp` shifts everything on the stack at once.
+Built-in scale names:
 
-## Scales
-
-Scale words convert a degree index into a MIDI note. The base note is C4 (MIDI 60). Degrees wrap around with octave transposition:
-
-```forth
-0 major       ;; 60 (C4 — degree 0)
-4 major       ;; 67 (G4 — degree 4)
-7 major       ;; 72 (C5 — degree 7, wraps to next octave)
--1 major      ;; 59 (B3 — negative degrees go down)
-```
-
-Use scales with `cycle` or `rand` to walk through pitches:
-
-```forth
-0 1 2 3 4 5 6 7 8 cycle minor note sine snd .
-```
-
-**Standard modes:**
-
-| Word | Pattern (semitones) |
-|------|-------------------|
-| `major` | 0 2 4 5 7 9 11 |
-| `minor` | 0 2 3 5 7 8 10 |
-| `dorian` | 0 2 3 5 7 9 10 |
-| `phrygian` | 0 1 3 5 7 8 10 |
-| `lydian` | 0 2 4 6 7 9 11 |
-| `mixolydian` | 0 2 4 5 7 9 10 |
-| `aeolian` | 0 2 3 5 7 8 10 |
-| `locrian` | 0 1 3 5 6 8 10 |
-
-**Pentatonic and blues:**
-
-| Word | Pattern |
-|------|---------|
-| `pentatonic` | 0 2 4 7 9 |
-| `minpent` | 0 3 5 7 10 |
-| `blues` | 0 3 5 6 7 10 |
-
-**Chromatic and whole tone:**
-
-| Word | Pattern |
-|------|---------|
-| `chromatic` | 0 1 2 3 4 5 6 7 8 9 10 11 |
-| `wholetone` | 0 2 4 6 8 10 |
-
-**Harmonic and melodic minor:**
-
-| Word | Pattern |
-|------|---------|
-| `harmonicminor` | 0 2 3 5 7 8 11 |
-| `melodicminor` | 0 2 3 5 7 9 11 |
-
-**Jazz / Bebop:**
-
-| Word | Pattern |
-|------|---------|
-| `bebop` | 0 2 4 5 7 9 10 11 |
-| `bebopmaj` | 0 2 4 5 7 8 9 11 |
-| `bebopmin` | 0 2 3 5 7 8 9 10 |
-| `altered` | 0 1 3 4 6 8 10 |
-| `lyddom` | 0 2 4 6 7 9 10 |
-
-**Symmetric:**
-
-| Word | Pattern |
-|------|---------|
-| `halfwhole` | 0 1 3 4 6 7 9 10 |
-| `wholehalf` | 0 2 3 5 6 8 9 11 |
-| `augmented` | 0 3 4 7 8 11 |
-| `tritone` | 0 1 4 6 7 10 |
-| `prometheus` | 0 2 4 6 9 10 |
-
-**Modal variants (from melodic minor):**
-
-| Word | Pattern |
-|------|---------|
-| `dorianb2` | 0 1 3 5 7 9 10 |
-| `lydianaug` | 0 2 4 6 8 9 11 |
-| `mixb6` | 0 2 4 5 7 8 10 |
-| `locrian2` | 0 2 3 5 6 8 10 |
-
-## Diatonic Harmony
-
-`triad` and `seventh` build chords from scale degrees. Instead of specifying a chord type, you get whatever chord the scale produces at that degree:
-
-```forth
-0 major triad note sine snd .     ;; C E G — major triad (degree 0)
-1 major triad note sine snd .     ;; D F A — minor triad (degree 1)
-4 major triad note sine snd .     ;; G B D — major triad (degree 4)
-```
-
-`seventh` adds a fourth note:
-
-```forth
-0 major seventh note saw snd .    ;; C E G B — Cmaj7
-4 major seventh note saw snd .    ;; G B D F — G7 (dominant)
-```
-
-The scale determines the chord quality automatically. Use `key!` to change the tonal center (default is C4):
-
-```forth
-g3 key! 0 major triad note sine snd .    ;; G major triad rooted at G3
-a3 key! 0 minor seventh note saw snd .   ;; Am7 rooted at A3
-```
-
-A I-vi-IV-V chord progression using `pcycle`:
-
-```forth
-( 0 major seventh ) ( 5 major seventh )
-( 3 major seventh ) ( 4 major seventh ) 4 pcycle
-note saw snd .
-```
-
-Combine with voicings for smoother voice leading:
-
-```forth
-( 0 major seventh ) ( 5 major seventh inv )
-( 3 major seventh ) ( 4 major seventh drop2 ) 4 pcycle
-note saw snd .
-```
+`major`, `minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`, `aeolian`, `locrian`, `pentatonic`, `minpent`, `blues`, `chromatic`, `wholetone`, `harmonicminor`, `melodicminor`, `bebop`, `bebopmaj`, `bebopmin`, `altered`, `lyddom`, `halfwhole`, `wholehalf`, `augmented`, `tritone`, `prometheus`, `dorianb2`, `lydianaug`, `mixb6`, `locrian2`
 
 ## Octave Shifting
 
@@ -355,14 +276,14 @@ c4 mtof freq sine snd .
 A chord progression cycling every line iteration:
 
 ```forth
-( c3 maj7 ) ( f3 maj7 ) ( g3 dom7 ) ( c3 maj7 ) 4 pcycle
-note sine snd .
+( c3 note maj7 chord . ) ( f3 note maj7 chord . )
+( g3 note 7 chord . ) ( c3 note maj7 chord . ) 4 pcycle
 ```
 
 Arpeggiate a chord across time divisions using `at`:
 
 ```forth
-0 0.25 0.5 0.75 ( c4 e4 g4 b4 4 cycle note 0.5 decay sine snd . ) at
+0 0.25 0.5 0.75 ( c4 note maj7 chord [ 0 1 2 3 ] cycle cn 0.5 decay sine snd . ) at
 ```
 
 Random notes from a scale:

@@ -136,8 +136,8 @@ impl Language for CagireInterpreterFactory {
                 "Sample" | "Oscillator" | "Wavetable" | "FM" | "Modulation" | "Envelope"
                 | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo" | "Mod FX" | "MIDI"
                 | "Context" => &mut symbol_words,
-                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord" | "LFO"
-                | "Audio Modulation" | "Debug" => &mut special_words,
+                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord" | "Scale"
+                | "LFO" | "Audio Modulation" | "Debug" => &mut special_words,
                 _ => &mut builtin_words,
             };
             bucket.push(word.name);
@@ -178,7 +178,7 @@ impl Language for CagireInterpreterFactory {
             SyntaxRule::new(String, r#""[^"]*""#),
             SyntaxRule::new(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
             SyntaxRule::new(String, r"\b(?:sol|do|r[eé]|mi|fa|la|si|ti|ut)[#b]?[0-9]\b"),
-            SyntaxRule::new(Number, r"-?\.?\d+(?:\.\d+)?"),
+            SyntaxRule::new(Number, r"-?(?:\d+/-?\d+|\.?\d+(?:\.\d+)?)"),
             SyntaxRule::new(Special, r"\."),
             SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
             SyntaxRule::new(Operator, r"\?\B|\?\b|!\?\b"),
@@ -270,6 +270,20 @@ mod tests {
         let dots: Vec<_> = tokens.iter().filter(|(t, _)| t == ".").collect();
         assert_eq!(dots.len(), 1);
         assert_eq!(dots[0].1, Special, "emit dot should be Special");
+    }
+
+    #[test]
+    fn syntax_ratio_literals_are_numbers() {
+        use TokenCategory::*;
+        let tokens = categories_for("3/2 / 18/4");
+        assert_eq!(
+            tokens,
+            vec![
+                ("3/2".to_owned(), Number),
+                ("/".to_owned(), Operator),
+                ("18/4".to_owned(), Number),
+            ]
+        );
     }
 
     #[test]

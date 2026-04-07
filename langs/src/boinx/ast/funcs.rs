@@ -239,78 +239,113 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
         }
     ));
-    funcs.insert("after".to_owned(), ItemFunc::define(
-        "Generates a composable sequence with a placeholder after specified duration", 
-        |ctx, mut args| {
-            if args.len() > 1 {
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'after' function, taking only last !"));
-            }
-            let dur = match args.pop().unwrap() {
-                Duration(d) => d,
-                Number(f, _) => TimeSpan::Frames(f),
-                _ => {
-                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'after' is not a duration !"));
-                    TimeSpan::default()
+    funcs.insert(
+        "after".to_owned(),
+        ItemFunc::define(
+            "Generates a composable sequence with a placeholder after specified duration",
+            |ctx, mut args| {
+                if args.len() > 1 {
+                    ctx.errors
+                        .throw(SovaError::from(&*ctx).message(
+                            "Too many arguments for 'after' function, taking only last !",
+                        ));
                 }
-            };
-            Sequence(vec![WithDuration(Box::new(Mute), dur), Placeholder])
-        }
-    ));
-    funcs.insert("secs".to_owned(), ItemFunc::define(
-        "Converts specified duration into seconds", 
-        |ctx, mut args| {
-            if args.len() > 1 {
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'secs' function ! Taking only last !"));
-            }
-            let dur = match args.pop().unwrap() {
-                Duration(d) => d,
-                _ => {
-                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'secs' is not a duration !"));
-                    TimeSpan::default()
+                let dur = match args.pop().unwrap() {
+                    Duration(d) => d,
+                    Number(f, _) => TimeSpan::Frames(f),
+                    _ => {
+                        ctx.errors.throw(
+                            SovaError::from(&*ctx)
+                                .message("Argument for 'after' is not a duration !"),
+                        );
+                        TimeSpan::default()
+                    }
+                };
+                Sequence(vec![WithDuration(Box::new(Mute), dur), Placeholder])
+            },
+        ),
+    );
+    funcs.insert(
+        "secs".to_owned(),
+        ItemFunc::define(
+            "Converts specified duration into seconds",
+            |ctx, mut args| {
+                if args.len() > 1 {
+                    ctx.errors
+                        .throw(SovaError::from(&*ctx).message(
+                            "Too many arguments for 'secs' function ! Taking only last !",
+                        ));
                 }
-            };
-            Number(dur.as_secs(ctx.clock, ctx.frame_len), None)
-        }
-    ));
-    funcs.insert("frames".to_owned(), ItemFunc::define(
-        "Converts specified duration into seconds", 
-        |ctx, mut args| {
-            if args.len() > 1 {
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too many arguments for 'secs' function ! Taking only last !"));
-            }
-            let dur = match args.pop().unwrap() {
-                Duration(d) => {
-                    let beats = d.as_beats(ctx.clock, ctx.frame_len);
-                    let f_relative = beats / ctx.frame_len;
-                    TimeSpan::Frames(f_relative)
+                let dur = match args.pop().unwrap() {
+                    Duration(d) => d,
+                    _ => {
+                        ctx.errors.throw(
+                            SovaError::from(&*ctx)
+                                .message("Argument for 'secs' is not a duration !"),
+                        );
+                        TimeSpan::default()
+                    }
+                };
+                Number(dur.as_secs(ctx.clock, ctx.frame_len), None)
+            },
+        ),
+    );
+    funcs.insert(
+        "frames".to_owned(),
+        ItemFunc::define(
+            "Converts specified duration into seconds",
+            |ctx, mut args| {
+                if args.len() > 1 {
+                    ctx.errors
+                        .throw(SovaError::from(&*ctx).message(
+                            "Too many arguments for 'secs' function ! Taking only last !",
+                        ));
                 }
-                Number(f, _) => TimeSpan::Frames(f),
-                Note(i, _) => TimeSpan::Frames(i as f64),
-                _ => {
-                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'frames' is not a number !"));
-                    TimeSpan::Frames(1.0)
+                let dur = match args.pop().unwrap() {
+                    Duration(d) => {
+                        let beats = d.as_beats(ctx.clock, ctx.frame_len);
+                        let f_relative = beats / ctx.frame_len;
+                        TimeSpan::Frames(f_relative)
+                    }
+                    Number(f, _) => TimeSpan::Frames(f),
+                    Note(i, _) => TimeSpan::Frames(i as f64),
+                    _ => {
+                        ctx.errors.throw(
+                            SovaError::from(&*ctx)
+                                .message("Argument for 'frames' is not a number !"),
+                        );
+                        TimeSpan::Frames(1.0)
+                    }
+                };
+                Duration(dur)
+            },
+        ),
+    );
+    funcs.insert(
+        "len".to_owned(),
+        ItemFunc::define(
+            "Impose last argument as a duration for others",
+            |ctx, mut args| {
+                if args.len() <= 1 {
+                    ctx.errors.throw(
+                        SovaError::from(&*ctx).message("Too few arguments for 'len' ! Ignoring"),
+                    );
                 }
-            };
-            Duration(dur)
-        }
-    ));
-    funcs.insert("len".to_owned(), ItemFunc::define(
-        "Impose last argument as a duration for others", 
-        |ctx, mut args| {
-            if args.len() <= 1 {
-                ctx.errors.throw(SovaError::from(&*ctx).message("Too few arguments for 'len' ! Ignoring"));
-            }
-            let dur = match args.pop().unwrap() {
-                Duration(d) => d,
-                Number(f, _) => TimeSpan::Frames(f),
-                _ => {
-                    ctx.errors.throw(SovaError::from(&*ctx).message("Argument for 'len' is not a duration !"));
-                    TimeSpan::default()
-                }
-            };
-            WithDuration(Box::new(Simultaneous(args)), dur)
-        }
-    ));
+                let dur = match args.pop().unwrap() {
+                    Duration(d) => d,
+                    Number(f, _) => TimeSpan::Frames(f),
+                    _ => {
+                        ctx.errors.throw(
+                            SovaError::from(&*ctx)
+                                .message("Argument for 'len' is not a duration !"),
+                        );
+                        TimeSpan::default()
+                    }
+                };
+                WithDuration(Box::new(Simultaneous(args)), dur)
+            },
+        ),
+    );
     funcs.insert("at".to_owned(), ItemFunc::define(
         "Extract the n-th element of the arguments (or container), where n is the last argument", 
         |ctx, mut args| {
@@ -510,91 +545,97 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         }),
     );
     funcs.insert(
-        "inv".to_owned(), 
+        "inv".to_owned(),
         ItemFunc::define("Rhythm inversion", |_, args| {
             let mut args = unpack_if_one(args);
-            args.iter_mut().for_each(|i| {
-                match i {
-                    Placeholder => *i = Mute,
-                    Mute => *i = Placeholder,
-                    _ => ()
-                }
+            args.iter_mut().for_each(|i| match i {
+                Placeholder => *i = Mute,
+                Mute => *i = Placeholder,
+                _ => (),
             });
             Sequence(args)
-        })
+        }),
     );
     funcs.insert(
         "cc".to_owned(),
-        ItemFunc::define("Access the value of a midi input CC (cc, device?, channel?)", |ctx, args| {
-            let mut args = unpack_if_one(args);
-            if args.len() == 1 {
-                ctx.errors.throw(
-                    SovaError::from(&*ctx).message("Not enough arguments for 'cc' ! Ignoring"),
-                );
-                return Mute;
-            }
-            if args.len() > 3 {
-                ctx.errors.throw(
-                    SovaError::from(&*ctx)
-                        .message("Too many arguments for 'cc', taking three last !"),
-                );
-            }
+        ItemFunc::define(
+            "Access the value of a midi input CC (cc, device?, channel?)",
+            |ctx, args| {
+                let mut args = unpack_if_one(args);
+                if args.len() == 1 {
+                    ctx.errors.throw(
+                        SovaError::from(&*ctx).message("Not enough arguments for 'cc' ! Ignoring"),
+                    );
+                    return Mute;
+                }
+                if args.len() > 3 {
+                    ctx.errors.throw(
+                        SovaError::from(&*ctx)
+                            .message("Too many arguments for 'cc', taking three last !"),
+                    );
+                }
 
-            let channel = if args.len() >= 3 {
-                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8
-            } else {
-                DEFAULT_CHAN as i8
-            };
-            let device_id = if args.len() >= 2 {
-                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
-            } else {
-                DEFAULT_DEVICE as usize
-            };
-            let cc = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8;
+                let channel = if args.len() >= 3 {
+                    VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8
+                } else {
+                    DEFAULT_CHAN as i8
+                };
+                let device_id = if args.len() >= 2 {
+                    VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+                } else {
+                    DEFAULT_DEVICE as usize
+                };
+                let cc = VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as i8;
 
-            Note(
-                ctx.device_map
-                    .get_input_cc(device_id, cc, channel)
-                    .unwrap_or_default(),
-                None,
-            )
-        }),
+                Note(
+                    ctx.device_map
+                        .get_input_cc(device_id, cc, channel)
+                        .unwrap_or_default(),
+                    None,
+                )
+            },
+        ),
     );
     funcs.insert(
         "osc".to_owned(),
-        ItemFunc::define("Access the value of a OSC input (route, id?, index?)", |ctx, args| {
-            let mut args = unpack_if_one(args);
-            if args.len() > 3 {
-                ctx.errors.throw(
-                    SovaError::from(&*ctx)
-                        .message("Too many arguments for 'osc', taking three last !"),
-                );
-            }
+        ItemFunc::define(
+            "Access the value of a OSC input (route, id?, index?)",
+            |ctx, args| {
+                let mut args = unpack_if_one(args);
+                if args.len() > 3 {
+                    ctx.errors.throw(
+                        SovaError::from(&*ctx)
+                            .message("Too many arguments for 'osc', taking three last !"),
+                    );
+                }
 
-            let index = if args.len() == 3 {
-                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
-            } else {
-                0
-            };
-
-            let device_id = if args.len() >= 2 {
-                VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
-            } else {
-                DEFAULT_DEVICE as usize
-            };
-
-            let route = VariableValue::from(args.pop().unwrap()).as_str(ctx);
-
-            ctx.device_map
-                .get_osc_input_values(device_id, &route)
-                .and_then(|mut v| if v.len() > index {
-                    Some(v.swap_remove(index))
+                let index = if args.len() == 3 {
+                    VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
                 } else {
-                    None
-                })
-                .unwrap_or_default()
-                .into()
-        }),
+                    0
+                };
+
+                let device_id = if args.len() >= 2 {
+                    VariableValue::from(args.pop().unwrap()).yield_integer(ctx) as usize
+                } else {
+                    DEFAULT_DEVICE as usize
+                };
+
+                let route = VariableValue::from(args.pop().unwrap()).as_str(ctx);
+
+                ctx.device_map
+                    .get_osc_input_values(device_id, &route)
+                    .and_then(|mut v| {
+                        if v.len() > index {
+                            Some(v.swap_remove(index))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_default()
+                    .into()
+            },
+        ),
     );
     funcs
 });

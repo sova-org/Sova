@@ -1,21 +1,36 @@
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock};
 
 use sova_core::clock::SyncTime;
+use sova_core::device_map::DeviceMap;
 use sova_core::protocol::osc::OSCMessage;
+use sova_core::protocol::DeviceKind;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
-use sova_core::device_map::DeviceMap;
-use sova_core::protocol::DeviceKind;
 use sova_core::vm::EvaluationContext;
 
 use super::compiler::{compile_script, Dictionary};
 use super::ops::Op;
 use super::pattern;
-use super::types::{float_to_value, CagireError, CmdRegister, ResolvedValue, Span, Stack, Value};
+use super::theory::chords;
+use super::types::{
+    float_to_value, CagireError, CmdRegister, ResolvedValue, Span, Stack, Tuning, Value,
+};
+
+static TWELVE_EDO_TUNING: LazyLock<Arc<Tuning>> = LazyLock::new(|| {
+    Arc::new(Tuning {
+        period_cents: 1200.0,
+        steps_cents: Arc::from(
+            (0..12)
+                .map(|i| i as f64 * 100.0)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
+    })
+});
 
 pub(super) struct StepContext {
     pub step: usize,
@@ -470,6 +485,19 @@ impl CagireVM {
                     };
                     cmd.set_param(param, val);
                 }
+                Op::SetChord => {
+                    at!(stack.ensure(1))?;
+                    let values = drain_skip_quotations(stack);
+                    if values.is_empty() {
+                        return Err(CagireError::new("expected chord quality", span!()));
+                    }
+                    let val = if values.len() == 1 {
+                        values.into_iter().next().unwrap()
+                    } else {
+                        Value::CycleList(Arc::from(values))
+                    };
+                    cmd.set_chord(val);
+                }
 
                 Op::Emit => {
                     at!(self.emit_events(cmd, ctx, events, eval_ctx.device_map))?;
@@ -920,133 +948,158 @@ impl CagireVM {
 
                 Op::Mtof => {
                     let note = at!(stack.pop_float())?;
-                    stack.push(
-                        Value::Float(440.0 * 2.0_f64.powf((note - 69.0) / 12.0)),
-                        span!(),
-                    );
+                    stack.push(Value::Float(midi_to_hz(note)), span!());
                 }
                 Op::Ftom => {
                     let freq = at!(stack.pop_float())?;
-                    stack.push(Value::Float(69.0 + 12.0 * (freq / 440.0).log2()), span!());
+                    stack.push(Value::Float(hz_to_midi(freq)), span!());
                 }
 
-                Op::Degree(pattern) => {
-                    if pattern.is_empty() {
-                        return Err(CagireError::new("empty scale pattern", span!()));
+                Op::Edo => {
+                    let divisions = at!(stack.pop_int())?;
+                    if divisions <= 0 {
+                        return Err(CagireError::new("edo divisions must be > 0", span!()));
                     }
-                    let key = self.read_key();
-                    let len = pattern.len() as i64;
-                    at!(stack.ensure(1))?;
-                    let values = std::mem::take(&mut stack.values);
-                    let origins = std::mem::take(&mut stack.origins);
-                    for (val, origin) in values.into_iter().zip(origins) {
-                        let result = at!(lift_unary_int(val, |degree| {
-                            let octave_offset = degree.div_euclid(len);
-                            let idx = degree.rem_euclid(len) as usize;
-                            key + octave_offset * 12 + pattern[idx]
-                        }))?;
-                        stack.push(result, origin);
-                    }
+                    let divisions = divisions as usize;
+                    let step = 1200.0 / divisions as f64;
+                    let steps = (0..divisions).map(|i| i as f64 * step).collect::<Vec<_>>();
+                    stack.push(
+                        Value::Tuning {
+                            period_cents: 1200.0,
+                            steps_cents: Arc::from(steps),
+                        },
+                        span!(),
+                    );
                 }
 
-                Op::Chord(intervals) => {
-                    let root = at!(stack.pop_int())?;
-                    for &interval in *intervals {
-                        stack.push(Value::Int(root + interval), span!());
+                Op::BuildTuning => {
+                    let period = at!(stack.pop_float())?;
+                    if period <= 0.0 {
+                        return Err(CagireError::new("tuning period must be > 0", span!()));
                     }
-                }
-
-                Op::Transpose => {
-                    let n = at!(stack.pop_int())?;
-                    for val in stack.values.iter_mut() {
-                        if let Value::Int(v) = val {
-                            *v += n;
+                    let values = pop_counted_values(stack, span!(), "tuning")?;
+                    let mut steps = Vec::with_capacity(values.len() + 1);
+                    steps.push(0.0);
+                    let mut prev = 0.0;
+                    for val in values {
+                        let cents = at!(val.as_float())?;
+                        if cents <= 0.0 || cents >= period {
+                            return Err(CagireError::new(
+                                "tuning values must satisfy 0 < cents < period",
+                                span!(),
+                            ));
                         }
+                        if cents <= prev {
+                            return Err(CagireError::new(
+                                "tuning values must be strictly ascending",
+                                span!(),
+                            ));
+                        }
+                        prev = cents;
+                        steps.push(cents);
                     }
+                    stack.push(
+                        Value::Tuning {
+                            period_cents: period,
+                            steps_cents: Arc::from(steps),
+                        },
+                        span!(),
+                    );
                 }
 
-                Op::Invert => {
-                    at!(stack.ensure(2))?;
-                    let start = stack
-                        .values
-                        .iter()
-                        .rposition(|v| !matches!(v, Value::Int(_)))
-                        .map_or(0, |i| i + 1);
-                    let bottom = at!(stack.values[start].as_int())? + 12;
-                    stack.remove(start);
-                    stack.push(Value::Int(bottom), span!());
-                }
-
-                Op::DownInvert => {
-                    at!(stack.ensure(2))?;
-                    let top = at!(stack.pop_int())? - 12;
-                    let start = stack
-                        .values
-                        .iter()
-                        .rposition(|v| !matches!(v, Value::Int(_)))
-                        .map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(top), span!());
-                }
-
-                Op::VoiceDrop2 => {
-                    at!(stack.ensure(3))?;
-                    let len = stack.len();
-                    let note = at!(stack.values[len - 2].as_int())? - 12;
-                    stack.remove(len - 2);
-                    let start = stack
-                        .values
-                        .iter()
-                        .rposition(|v| !matches!(v, Value::Int(_)))
-                        .map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(note), span!());
-                }
-
-                Op::VoiceDrop3 => {
-                    at!(stack.ensure(4))?;
-                    let len = stack.len();
-                    let note = at!(stack.values[len - 3].as_int())? - 12;
-                    stack.remove(len - 3);
-                    let start = stack
-                        .values
-                        .iter()
-                        .rposition(|v| !matches!(v, Value::Int(_)))
-                        .map_or(0, |i| i + 1);
-                    stack.insert(start, Value::Int(note), span!());
-                }
-
-                Op::SetKey => {
-                    let key = at!(stack.pop_int())?;
-                    self.vars.insert("__key__".to_string(), Value::Int(key));
-                }
-
-                Op::DiatonicTriad(pattern) => {
-                    if pattern.is_empty() {
-                        return Err(CagireError::new("empty scale pattern", span!()));
+                Op::BuildScale => {
+                    let tuning = at!(stack.pop())?;
+                    let tuning = at!(tuning.as_tuning())?;
+                    let values = pop_counted_values(stack, span!(), "scale")?;
+                    if values.is_empty() {
+                        return Err(CagireError::new(
+                            "scale requires at least one degree",
+                            span!(),
+                        ));
                     }
+
+                    let mut degrees = Vec::with_capacity(values.len());
+                    let mut seen = HashSet::with_capacity(values.len());
+                    for val in values {
+                        let degree = at!(val.as_int())?;
+                        if degree < 0 || degree as usize >= tuning.steps_cents.len() {
+                            return Err(CagireError::new(
+                                "scale degree out of range for tuning",
+                                span!(),
+                            ));
+                        }
+                        let degree = degree as usize;
+                        if !seen.insert(degree) {
+                            return Err(CagireError::new("scale degrees must be unique", span!()));
+                        }
+                        degrees.push(degree);
+                    }
+
+                    stack.push(
+                        Value::Scale {
+                            tuning: Arc::new(tuning),
+                            degrees: Arc::from(degrees),
+                        },
+                        span!(),
+                    );
+                }
+
+                Op::Mode => {
+                    let scale = at!(stack.pop())?;
+                    let scale = at!(scale.as_scale())?;
+                    let shift = at!(stack.pop_int())?;
+                    let len = scale.degrees.len();
+                    if len == 0 {
+                        return Err(CagireError::new("mode requires a non-empty scale", span!()));
+                    }
+                    let rot = shift.rem_euclid(len as i64) as usize;
+                    let degrees = scale.degrees[rot..]
+                        .iter()
+                        .chain(scale.degrees[..rot].iter())
+                        .copied()
+                        .collect::<Vec<_>>();
+                    stack.push(
+                        Value::Scale {
+                            tuning: scale.tuning.clone(),
+                            degrees: Arc::from(degrees),
+                        },
+                        span!(),
+                    );
+                }
+
+                Op::Deg => {
                     let degree = at!(stack.pop_int())?;
-                    let key = self.read_key();
-                    let len = pattern.len() as i64;
-                    for offset in [0, 2, 4] {
-                        let d = degree + offset;
-                        let octave_offset = d.div_euclid(len);
-                        let idx = d.rem_euclid(len) as usize;
-                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]), span!());
+                    let scale = at!(stack.pop())?;
+                    let scale = at!(scale.as_scale())?;
+                    let root = at!(stack.pop_float())?;
+                    let len = scale.degrees.len();
+                    if len == 0 {
+                        return Err(CagireError::new("deg requires a non-empty scale", span!()));
                     }
+                    let scale_idx = degree.rem_euclid(len as i64) as usize;
+                    let periods = degree.div_euclid(len as i64);
+                    let cents = scale.tuning.steps_cents[scale.degrees[scale_idx]]
+                        + periods as f64 * scale.tuning.period_cents;
+                    let hz = midi_to_hz(root) * 2.0_f64.powf(cents / 1200.0);
+                    stack.push(Value::Float(hz), span!());
                 }
 
-                Op::DiatonicSeventh(pattern) => {
-                    if pattern.is_empty() {
-                        return Err(CagireError::new("empty scale pattern", span!()));
-                    }
-                    let degree = at!(stack.pop_int())?;
-                    let key = self.read_key();
-                    let len = pattern.len() as i64;
-                    for offset in [0, 2, 4, 6] {
-                        let d = degree + offset;
-                        let octave_offset = d.div_euclid(len);
-                        let idx = d.rem_euclid(len) as usize;
-                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]), span!());
-                    }
+                Op::PushScale(degrees) => {
+                    stack.push(
+                        Value::Scale {
+                            tuning: TWELVE_EDO_TUNING.clone(),
+                            degrees: Arc::from(*degrees),
+                        },
+                        span!(),
+                    );
+                }
+                Op::PushChordQuality(intervals) => {
+                    stack.push(
+                        Value::ChordQuality {
+                            intervals: Arc::from(*intervals),
+                        },
+                        span!(),
+                    );
                 }
 
                 Op::Oct => {
@@ -1163,7 +1216,13 @@ impl CagireVM {
                                     self.active_emit_annotations.push(span);
                                 }
                                 self.execute_ops(
-                                    &body_ops, &body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                                    &body_ops,
+                                    &body_spans,
+                                    &iter_ctx,
+                                    eval_ctx,
+                                    stack,
+                                    events,
+                                    cmd,
                                 )?;
                                 if highlight_span.is_some() {
                                     self.active_emit_annotations.pop();
@@ -1200,7 +1259,13 @@ impl CagireVM {
 
                         cmd.set_delta_secs(delta_secs);
                         self.execute_ops(
-                            &body_ops, &body_spans, &iter_ctx, eval_ctx, stack, events, cmd,
+                            &body_ops,
+                            &body_spans,
+                            &iter_ctx,
+                            eval_ctx,
+                            stack,
+                            events,
+                            cmd,
                         )?;
                         cmd.clear_params();
                         cmd.clear_sound();
@@ -1758,14 +1823,6 @@ impl CagireVM {
 
         Ok(())
     }
-
-    fn read_key(&self) -> i64 {
-        self.vars
-            .get("__key__")
-            .and_then(|v| v.as_int().ok())
-            .unwrap_or(60)
-    }
-
     fn get_var(&self, name: &str, eval_ctx: &mut EvaluationContext) -> Value {
         let (scope, key) = parse_var_scope(name);
         match scope {
@@ -1832,6 +1889,7 @@ impl CagireVM {
         for poly_idx in 0..poly_count {
             self.emit_single(cmd, ctx, events, poly_idx, delta_secs, device_map)?;
         }
+        cmd.clear_chord();
 
         Ok(())
     }
@@ -1847,12 +1905,13 @@ impl CagireVM {
     ) -> Result<(), String> {
         let time = offset_micros(ctx, delta_secs);
 
-        let (sound_opt, params) = match cmd.snapshot() {
+        let (sound_opt, chord_opt, params) = match cmd.snapshot() {
             Some(s) => s,
             None => return Ok(()),
         };
 
         let resolved_sound = sound_opt.map(|sv| resolve_cycling(sv, poly_idx));
+        let resolved_chord = chord_opt.map(|cv| resolve_cycling(cv, poly_idx));
 
         let has_sound = resolved_sound.as_ref().is_some_and(|v| match v.as_ref() {
             Value::Str(s) => !s.is_empty(),
@@ -1896,7 +1955,7 @@ impl CagireVM {
             if sound_str.starts_with('/') {
                 let mut osc_args = Vec::with_capacity(params.len() * 2);
                 for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                    if *k == "device" {
+                    if *k == "device" || is_internal_chord_param(k) {
                         continue;
                     }
                     let resolved = resolve_cycling(v, poly_idx);
@@ -1922,7 +1981,7 @@ impl CagireVM {
                 args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
                 for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                    if *k == "device" {
+                    if *k == "device" || is_internal_chord_param(k) {
                         continue;
                     }
                     let resolved = resolve_cycling(v, poly_idx);
@@ -1961,11 +2020,36 @@ impl CagireVM {
                     _ => ctx.step_duration,
                 };
                 let dur_micros = (gate_secs * 1_000_000.0) as SyncTime;
-                self.push_event(
-                    events,
-                    ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev),
-                    time,
-                );
+                let root = get_int("note").unwrap_or(60);
+                let chord_notes = resolve_chord_notes(
+                    root,
+                    resolved_chord.as_ref().map(|value| value.as_ref()),
+                    get_int("anchor"),
+                    get_int("cn"),
+                )?;
+
+                if let Some(notes) = chord_notes {
+                    for note in notes {
+                        let mut event_args = args.clone();
+                        event_args.insert("note".to_string(), VariableValue::Float(note as f64));
+                        self.push_event(
+                            events,
+                            ConcreteEvent::Generic(
+                                event_args.into(),
+                                dur_micros,
+                                String::new(),
+                                dev,
+                            ),
+                            time,
+                        );
+                    }
+                } else {
+                    self.push_event(
+                        events,
+                        ConcreteEvent::Generic(args.into(), dur_micros, String::new(), dev),
+                        time,
+                    );
+                }
             }
         } else {
             if let Some(addr_val) = find_param("address") {
@@ -1975,7 +2059,7 @@ impl CagireVM {
                         if dev_ref.kind() == DeviceKind::Osc {
                             let mut osc_args = Vec::with_capacity(params.len() * 2);
                             for (k, v) in cmd.global_params().iter().chain(params.iter()) {
-                                if *k == "device" || *k == "address" {
+                                if *k == "device" || *k == "address" || is_internal_chord_param(k) {
                                     continue;
                                 }
                                 let resolved = resolve_cycling(v, poly_idx);
@@ -2036,18 +2120,35 @@ impl CagireVM {
                     time,
                 );
             } else {
-                let note = get_int("note").unwrap_or(60).clamp(0, 127) as u64;
                 let velocity = get_int("velocity")
                     .or_else(|| get_int("vel"))
                     .unwrap_or(100)
                     .clamp(0, 127) as u64;
                 let dur_frac = get_float("gate").unwrap_or(1.0);
                 let dur_micros = (dur_frac * ctx.step_duration * 1_000_000.0) as SyncTime;
-                self.push_event(
-                    events,
-                    ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev),
-                    time,
-                );
+                let root = get_int("note").unwrap_or(60);
+                if let Some(notes) = resolve_chord_notes(
+                    root,
+                    resolved_chord.as_ref().map(|value| value.as_ref()),
+                    get_int("anchor"),
+                    get_int("cn"),
+                )? {
+                    for note in notes {
+                        let note = note.clamp(0, 127) as u64;
+                        self.push_event(
+                            events,
+                            ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev),
+                            time,
+                        );
+                    }
+                } else {
+                    let note = root.clamp(0, 127) as u64;
+                    self.push_event(
+                        events,
+                        ConcreteEvent::MidiNote(note, velocity, chan, dur_micros, dev),
+                        time,
+                    );
+                }
             }
         }
 
@@ -2060,6 +2161,154 @@ enum VarScope {
     Global,
     Line,
     Frame,
+}
+
+fn midi_to_hz(note: f64) -> f64 {
+    440.0 * 2.0_f64.powf((note - 69.0) / 12.0)
+}
+
+fn hz_to_midi(freq: f64) -> f64 {
+    69.0 + 12.0 * (freq / 440.0).log2()
+}
+
+fn resolve_chord_intervals(chord: &Value) -> Result<&[i64], String> {
+    match chord {
+        Value::ChordQuality { intervals } => Ok(intervals),
+        Value::Int(alias) => chords::lookup_numeric(*alias)
+            .map(|quality| quality.intervals)
+            .ok_or_else(|| format!("unknown chord quality alias: {alias}")),
+        Value::Str(name) => chords::lookup(name)
+            .map(|quality| quality.intervals)
+            .ok_or_else(|| format!("unknown chord quality: {}", name.as_ref())),
+        _ => Err("expected chord quality".into()),
+    }
+}
+
+fn resolve_chord_notes(
+    root: i64,
+    chord: Option<&Value>,
+    anchor: Option<i64>,
+    selector: Option<i64>,
+) -> Result<Option<Vec<i64>>, String> {
+    let Some(chord) = chord else {
+        return Ok(None);
+    };
+    let intervals = resolve_chord_intervals(chord)?;
+    if intervals.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+
+    let voiced = if let Some(anchor) = anchor {
+        realize_anchored_voicing(root, intervals, anchor)
+    } else {
+        intervals.iter().map(|interval| root + interval).collect()
+    };
+
+    if let Some(index) = selector {
+        Ok(Some(vec![select_voiced_note(index, &voiced)]))
+    } else {
+        Ok(Some(voiced))
+    }
+}
+
+fn realize_anchored_voicing(root: i64, intervals: &[i64], anchor: i64) -> Vec<i64> {
+    let canonical: Vec<i64> = intervals.iter().map(|interval| root + interval).collect();
+    let mut best_voicing: Option<Vec<i64>> = None;
+    let mut best_score: Option<(i64, i64, i64)> = None;
+
+    for inversion in chord_inversions(intervals) {
+        for octave_shift in candidate_octave_shifts(root, &inversion, anchor) {
+            let voiced: Vec<i64> = inversion
+                .iter()
+                .map(|interval| root + interval + octave_shift * 12)
+                .collect();
+            let score = score_voicing(&voiced, anchor, &canonical);
+            if best_score.is_none_or(|current| score < current) {
+                best_score = Some(score);
+                best_voicing = Some(voiced);
+            }
+        }
+    }
+
+    best_voicing.unwrap_or(canonical)
+}
+
+fn chord_inversions(intervals: &[i64]) -> Vec<Vec<i64>> {
+    let len = intervals.len();
+    let mut inversions = Vec::with_capacity(len);
+    for start in 0..len {
+        let mut inversion = Vec::with_capacity(len);
+        for offset in 0..len {
+            let mut interval = intervals[(start + offset) % len];
+            while inversion.last().is_some_and(|prev| interval <= *prev) {
+                interval += 12;
+            }
+            inversion.push(interval);
+        }
+        inversions.push(inversion);
+    }
+    inversions
+}
+
+fn candidate_octave_shifts(root: i64, intervals: &[i64], anchor: i64) -> Vec<i64> {
+    let mut shifts = Vec::with_capacity(intervals.len() * 2 + 1);
+    shifts.push(0);
+    for interval in intervals {
+        let delta = anchor - (root + *interval);
+        let floor_shift = delta.div_euclid(12);
+        shifts.push(floor_shift);
+        shifts.push(floor_shift + 1);
+    }
+    shifts.sort_unstable();
+    shifts.dedup();
+    shifts
+}
+
+fn score_voicing(voicing: &[i64], anchor: i64, canonical: &[i64]) -> (i64, i64, i64) {
+    let min_distance = voicing
+        .iter()
+        .map(|note| (anchor - *note).abs())
+        .min()
+        .unwrap_or(i64::MAX);
+    let total_distance = voicing.iter().map(|note| (anchor - *note).abs()).sum();
+    let upward_displacement = voicing
+        .iter()
+        .zip(canonical.iter())
+        .map(|(note, base)| (*note - *base).max(0))
+        .sum();
+    (min_distance, total_distance, upward_displacement)
+}
+
+fn select_voiced_note(index: i64, voiced: &[i64]) -> i64 {
+    let len = voiced.len() as i64;
+    let tone_idx = index.rem_euclid(len) as usize;
+    let octaves = index.div_euclid(len);
+    voiced[tone_idx] + octaves * 12
+}
+
+fn pop_counted_values(
+    stack: &mut Stack,
+    span: Span,
+    label: &str,
+) -> Result<Vec<Value>, CagireError> {
+    let count = stack.pop_int().map_err(|msg| CagireError::new(msg, span))?;
+    if count < 0 {
+        return Err(CagireError::new(
+            format!("{label} count must be >= 0"),
+            span,
+        ));
+    }
+    let count = count as usize;
+    stack
+        .ensure(count)
+        .map_err(|msg| CagireError::new(msg, span))?;
+
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        values.push(stack.pop().map_err(|msg| CagireError::new(msg, span))?);
+    }
+    values.reverse();
+    Ok(values)
 }
 
 fn parse_var_scope(name: &str) -> (VarScope, &str) {
@@ -2089,6 +2338,10 @@ fn offset_micros(_ctx: &StepContext, delta_secs: f64) -> SyncTime {
     } else {
         0
     }
+}
+
+fn is_internal_chord_param(name: &str) -> bool {
+    matches!(name, "cn" | "anchor")
 }
 
 fn is_tempo_scaled_param(name: &str) -> bool {
@@ -2123,6 +2376,10 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
         Some(Value::CycleList(items)) => items.len(),
         _ => 1,
     };
+    let chord_len = match cmd.chord() {
+        Some(Value::CycleList(items)) => items.len(),
+        _ => 1,
+    };
     let param_max = cmd
         .global_params()
         .iter()
@@ -2133,7 +2390,7 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
         })
         .max()
         .unwrap_or(1);
-    sound_len.max(param_max)
+    sound_len.max(chord_len).max(param_max)
 }
 
 fn resolve_cycling(val: &Value, emit_idx: usize) -> Cow<'_, Value> {
@@ -2224,13 +2481,6 @@ where
     F: Fn(f64) -> f64,
 {
     Ok(float_to_value(f(val.as_float()?)))
-}
-
-fn lift_unary_int<F>(val: Value, f: F) -> Result<Value, String>
-where
-    F: Fn(i64) -> i64,
-{
-    Ok(Value::Int(f(val.as_int()?)))
 }
 
 fn lift_binary<F>(a: Value, b: Value, f: F) -> Result<Value, String>
@@ -2390,6 +2640,32 @@ mod tests {
         vm.evaluate(script, &mut ctx).unwrap()
     }
 
+    fn eval_stack_result(script: &str) -> Result<Vec<Value>, CagireError> {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut ctx = tctx.eval_ctx();
+        let sctx = StepContext::from_eval_ctx(&ctx);
+        let mut dict = Dictionary::new();
+        let (ops, spans) = compile_script(script, &mut dict)?;
+        let mut stack = Stack::new();
+        let mut events = Vec::new();
+        let mut cmd = CmdRegister::new();
+        vm.execute_ops(
+            &ops,
+            &spans,
+            &sctx,
+            &mut ctx,
+            &mut stack,
+            &mut events,
+            &mut cmd,
+        )?;
+        Ok(stack.values)
+    }
+
+    fn eval_stack(script: &str) -> Vec<Value> {
+        eval_stack_result(script).unwrap()
+    }
+
     #[test]
     fn test_arithmetic() {
         let mut vm = CagireVM::new();
@@ -2413,6 +2689,31 @@ mod tests {
         .unwrap();
         assert_eq!(stack.len(), 1);
         assert_eq!(stack.values[0], Value::Int(70));
+    }
+
+    #[test]
+    fn test_ratio_literal_runtime() {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut ctx = tctx.eval_ctx();
+        let sctx = StepContext::from_eval_ctx(&ctx);
+        let mut dict = Dictionary::new();
+        let (ops, spans) = compile_script("3/2 1 +", &mut dict).unwrap();
+        let mut stack = Stack::new();
+        let mut events = Vec::new();
+        let mut cmd = CmdRegister::new();
+        vm.execute_ops(
+            &ops,
+            &spans,
+            &sctx,
+            &mut ctx,
+            &mut stack,
+            &mut events,
+            &mut cmd,
+        )
+        .unwrap();
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack.values[0], Value::Float(2.5));
     }
 
     #[test]
@@ -2518,6 +2819,224 @@ mod tests {
             &events[0].0,
             ConcreteEvent::MidiNote(60, _, _, _, _)
         ));
+    }
+
+    #[test]
+    fn test_edo_builds_tuning() {
+        let stack = eval_stack("12 edo");
+        match &stack[0] {
+            Value::Tuning {
+                period_cents,
+                steps_cents,
+            } => {
+                assert_eq!(*period_cents, 1200.0);
+                assert_eq!(steps_cents.len(), 12);
+                assert_eq!(steps_cents[0], 0.0);
+                assert_eq!(steps_cents[1], 100.0);
+                assert_eq!(steps_cents[11], 1100.0);
+            }
+            other => panic!("expected tuning, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tuning_validation() {
+        let err = eval_stack_result("[ 200 100 ] 1200 tuning").unwrap_err();
+        assert!(err.message.contains("strictly ascending"));
+
+        let err = eval_stack_result("[ 100 1200 ] 1200 tuning").unwrap_err();
+        assert!(err.message.contains("0 < cents < period"));
+
+        let err = eval_stack_result("[ 100 200 ] 0 tuning").unwrap_err();
+        assert!(err.message.contains("period must be > 0"));
+    }
+
+    #[test]
+    fn test_scale_validation() {
+        let err = eval_stack_result("[ ] 12 edo scale").unwrap_err();
+        assert!(err.message.contains("at least one degree"));
+
+        let err = eval_stack_result("[ 0 0 ] 12 edo scale").unwrap_err();
+        assert!(err.message.contains("must be unique"));
+
+        let err = eval_stack_result("[ 12 ] 12 edo scale").unwrap_err();
+        assert!(err.message.contains("out of range"));
+    }
+
+    #[test]
+    fn test_mode_rotates_scale() {
+        let stack = eval_stack("1 major mode");
+        match &stack[0] {
+            Value::Scale { degrees, .. } => {
+                assert_eq!(&degrees[..], &[2, 4, 5, 7, 9, 11, 0]);
+            }
+            other => panic!("expected scale, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_deg_resolves_builtin_scale_to_hz() {
+        let stack = eval_stack("c4 major 0 deg");
+        match &stack[0] {
+            Value::Float(hz) => assert!((*hz - 261.6255653005986).abs() < 1e-9),
+            other => panic!("expected float, got {other:?}"),
+        }
+
+        let stack = eval_stack("c4 major 7 deg");
+        match &stack[0] {
+            Value::Float(hz) => assert!((*hz - 523.2511306011972).abs() < 1e-9),
+            other => panic!("expected float, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_deg_wraps_negative_degrees() {
+        let stack = eval_stack("c4 major -1 deg");
+        match &stack[0] {
+            Value::Float(hz) => assert!((*hz - 246.94165062806206).abs() < 1e-9),
+            other => panic!("expected float, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_custom_tuning_deg_is_not_12_tet() {
+        let stack = eval_stack(
+            "[ 0 1 2 3 4 5 6 7 ] [ 90.225 204.090 294.135 408.000 498.045 588.090 702.000 ] 1200 tuning scale c4 swap 1 deg",
+        );
+        match &stack[0] {
+            Value::Float(hz) => {
+                let twelve_tet = 277.1826309768721;
+                assert!((*hz - twelve_tet).abs() > 0.1);
+            }
+            other => panic!("expected float, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_chord_full_voicing_plays_from_note_root() {
+        let events = eval("c4 note min7 chord .");
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 63, 67, 70]);
+    }
+
+    #[test]
+    fn test_chord_full_voicing_updates_sound_note_param() {
+        let events = eval("c4 note min7 chord sine snd .");
+        assert_eq!(events.len(), 4);
+        let notes: Vec<f64> = events
+            .iter()
+            .filter_map(|(ev, _)| get_generic_param(ev, "note"))
+            .collect();
+        assert_eq!(notes, vec![60.0, 63.0, 67.0, 70.0]);
+    }
+
+    #[test]
+    fn test_chord_selector_wraps() {
+        let expected = [60, 63, 67, 70, 72];
+        for (runs, note) in expected.into_iter().enumerate() {
+            let events = eval_with_runs("c4 note min7 chord [ 0 1 2 3 4 ] cycle cn .", runs);
+            assert_eq!(events.len(), 1, "runs={runs}");
+            let notes = get_midi_notes(&events);
+            assert_eq!(notes, vec![note], "runs={runs}");
+        }
+    }
+
+    #[test]
+    fn test_chord_selector_negative_wraps() {
+        let events = eval("c4 note min7 chord -1 cn .");
+        assert_eq!(events.len(), 1);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![58]);
+    }
+
+    #[test]
+    fn test_numeric_chord_alias_works() {
+        let events = eval("c4 note 6 chord .");
+        assert_eq!(events.len(), 4);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 64, 67, 69]);
+    }
+
+    #[test]
+    fn test_anchor_selects_nearest_inversion() {
+        let events = eval("c4 note maj7 chord g4 anchor .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![64, 67, 71, 72]);
+    }
+
+    #[test]
+    fn test_anchor_updates_sound_note_param() {
+        let events = eval("c4 note maj7 chord g4 anchor sine snd .");
+        let notes: Vec<f64> = events
+            .iter()
+            .filter_map(|(ev, _)| get_generic_param(ev, "note"))
+            .collect();
+        assert_eq!(notes, vec![64.0, 67.0, 71.0, 72.0]);
+    }
+
+    #[test]
+    fn test_anchor_and_cn_do_not_leak_to_sound_params() {
+        let events = eval("c4 note maj7 chord g4 anchor 1 cn sine snd .");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Generic(VariableValue::Map(args), ..) => {
+                assert!(!args.contains_key("anchor"));
+                assert!(!args.contains_key("cn"));
+            }
+            other => panic!("expected generic event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_anchor_cn_indexes_realized_voicing_low_to_high() {
+        let events = eval("c4 note maj7 chord g4 anchor 0 cn .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![64]);
+
+        let events = eval("c4 note maj7 chord g4 anchor 3 cn .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![72]);
+    }
+
+    #[test]
+    fn test_anchor_cn_keeps_octave_wrapping() {
+        let events = eval("c4 note maj7 chord g4 anchor 4 cn .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![76]);
+
+        let events = eval("c4 note maj7 chord g4 anchor -1 cn .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60]);
+    }
+
+    #[test]
+    fn test_anchor_keeps_extended_chord_tones() {
+        let events = eval("c4 note 9 chord g4 anchor .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes.len(), 5);
+    }
+
+    #[test]
+    fn test_chord_state_clears_after_emit() {
+        let events = eval("c4 note min7 chord . c4 note .");
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60, 63, 67, 70, 60]);
+    }
+
+    #[test]
+    fn test_note_without_chord_still_emits_single_note() {
+        let events = eval("c4 note .");
+        assert_eq!(events.len(), 1);
+        let notes = get_midi_notes(&events);
+        assert_eq!(notes, vec![60]);
+    }
+
+    #[test]
+    fn test_sample_n_param_is_unchanged() {
+        let events = eval("\"kick\" snd 3 n .");
+        assert_eq!(events.len(), 1);
+        assert_eq!(get_generic_param(&events[0].0, "n"), Some(3.0));
     }
 
     #[test]
@@ -2726,8 +3245,7 @@ mod tests {
 
     #[test]
     fn test_at_loop_with_cycle_notes() {
-        let events =
-            eval_with_runs("0 0.25 0.5 0.75 ( [ c4 e4 g4 b4 ] cycle note . ) at", 0);
+        let events = eval_with_runs("0 0.25 0.5 0.75 ( [ c4 e4 g4 b4 ] cycle note . ) at", 0);
         assert_eq!(events.len(), 4);
         let notes = get_midi_notes(&events);
         assert_eq!(notes, vec![60, 64, 67, 71]);
@@ -2769,8 +3287,7 @@ mod tests {
     #[test]
     fn test_at_loop_cycle_advances_across_runs() {
         for base_runs in 0..3 {
-            let events =
-                eval_with_runs("0 0.5 ( [ c4 e4 g4 ] cycle note . ) at", base_runs);
+            let events = eval_with_runs("0 0.5 ( [ c4 e4 g4 ] cycle note . ) at", base_runs);
             assert_eq!(events.len(), 2, "base_runs={base_runs}");
             let notes = get_midi_notes(&events);
             let expected_0 = [60, 64, 67][(base_runs * 2) % 3];

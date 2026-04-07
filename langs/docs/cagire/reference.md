@@ -153,7 +153,9 @@ clear                       ;; reset sound register
 
 | Word | Description |
 |------|-------------|
-| `note` | MIDI note number |
+| `note` | MIDI note number or chord root |
+| `anchor` | Chord voicing anchor note |
+| `cn` | Chord tone index selector |
 | `freq` | Frequency (Hz) |
 | `detune` | Detune amount |
 | `pw` | Pulse width |
@@ -443,46 +445,51 @@ Read-only words that push current execution state:
 
 ## Music Theory
 
-### Scales & Diatonic Harmony
+### Scales
 
-Set a tonal center with `key!`, then use a scale word followed by `triad` or `seventh` to build diatonic chords from scale degrees:
+Scales are runtime values built from tunings. Resolve them to frequency with `deg`:
 
 ```
-c4 key! 0 major triad note sine snd .    ;; C major triad
-c4 key! 4 minor seventh note sine snd .  ;; 5th degree minor seventh
+c4 major 0 deg      ;; 261.63...
+[ 0 2 4 5 7 9 11 ] 12 edo scale
+[ 90.225 204.090 294.135 408.000 498.045 588.090 702.000 ] 1200 tuning
 ```
 
 | Word | Stack | Description |
 |------|-------|-------------|
-| `key!` | `(root --)` | Set tonal center |
-| `triad` | `(degree -- n1 n2 n3)` | Diatonic triad from scale degree |
-| `seventh` | `(degree -- n1 n2 n3 n4)` | Diatonic seventh from scale degree |
-| `tp` | `(n --)` | Transpose all integers on stack by N semitones |
+| `edo` | `(n -- tuning)` | Equal divisions of 2/1 |
+| `tuning` | `([c1 c2 ...] period -- tuning)` | Build tuning from cents offsets |
+| `scale` | `([i1 i2 ...] tuning -- scale)` | Build scale from tuning step indices |
+| `mode` | `(n scale -- scale)` | Rotate scale degrees |
+| `deg` | `(root scale degree -- hz)` | Resolve scale degree to frequency |
 
-### Voicings
-
-| Word | Stack | Description |
-|------|-------|-------------|
-| `inv` | `(a b c.. -- b c.. a+12)` | Inversion: bottom note up an octave |
-| `dinv` | `(a b.. z -- z-12 a b..)` | Down inversion: top note down an octave |
-| `drop2` | `(a b c d -- b-12 a c d)` | Drop-2 voicing |
-| `drop3` | `(a b c d -- c-12 a b d)` | Drop-3 voicing |
+Built-in scale words push scale values: `major`, `minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`, `aeolian`, `locrian`, `pentatonic`, `minpent`, `blues`, `chromatic`, `wholetone`, `harmonicminor`, `melodicminor`, `bebop`, `bebopmaj`, `bebopmin`, `altered`, `lyddom`, `halfwhole`, `wholehalf`, `augmented`, `tritone`, `prometheus`, `dorianb2`, `lydianaug`, `mixb6`, `locrian2`.
 
 ### Chords
 
-Push a root note, then a chord word to expand into intervals:
+Chord qualities are values. `chord` stores the active quality, `note` supplies the root, `anchor` optionally picks the nearest inversion/register, and `cn` optionally selects one voice in the current voicing with octave-aware wrapping:
 
 ```
-c4 maj .            ;; C major: 60 64 67
-c4 min7 .           ;; C minor 7: 60 63 67 70
+c4 note min7 chord .                  ;; 60 63 67 70
+c4 note maj7 chord g4 anchor .        ;; voiced near G4
+c4 note [ 0 3 4 7 ] cycle cn min7 chord .   ;; 4 = root + 1 octave
+c4 note 6 chord .                     ;; maj6 alias
 ```
+
+Core words:
+
+| Word | Stack | Description |
+|------|-------|-------------|
+| `chord` | `(quality --)` | Set active chord quality |
+| `anchor` | `(v.. --)` | Set target note for chord voicing |
+| `cn` | `(v.. --)` | Select chord tone index with octave wrapping |
 
 Triads: `maj`, `m`, `dim`, `aug`, `sus2`, `sus4`, `pwr`.
-Sevenths: `maj7`, `min7`, `dom7`, `dim7`, `m7b5`, `minmaj7`, `aug7`, `augmaj7`, `7sus4`.
-Extended: `dom9`, `maj9`, `min9`, `dom11`, `maj11`, `min11`, `dom13`, `maj13`, `min13`, `9sus4`.
+Sevenths: `maj7`, `min7`, `dom7` / `7`, `dim7`, `m7b5`, `minmaj7`, `aug7`, `augmaj7`, `7sus4`.
+Extended: `dom9` / `9`, `maj9`, `min9`, `dom11` / `11`, `maj11`, `min11`, `dom13` / `13`, `maj13`, `min13`, `9sus4`.
 Added: `add9`, `add11`, `madd9`.
 Altered: `dom7b9`, `dom7s9`, `dom7b5`, `dom7s5`, `dom7s11`.
-Sixths: `maj6`, `min6`, `maj69`, `min69`.
+Sixths: `maj6` / `6`, `min6`, `maj69`, `min69`.
 
 ### Conversion
 

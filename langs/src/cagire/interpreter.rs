@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use sova_core::clock::{SyncTime, NEVER};
+use sova_core::clock::{NEVER, SyncTime};
 use sova_core::error::SovaError;
+use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::interpreter::{Annotation, CodePosition, Interpreter};
-use sova_core::vm::EvaluationContext;
 
 use super::compiler::Dictionary;
 use super::types::Span;

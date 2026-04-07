@@ -56,6 +56,7 @@ Four basic types of values can live on the stack:
 - **Quotations**: `( dup + )` (code as data)
 
 Floats can omit the leading zero: `.25` is the same as `0.25`, and `-.5` is `-0.5`.
+Ratio literals also compile to floats: `3/2` is `1.5`, and `18/4` is `4.5`.
 
 Any word that is not recognized as a built-in or a user definition becomes a string on the stack. This means `kick snd` and `"kick" snd` are equivalent. You only need quotes when the string contains spaces or conflicts with an existing word name.
 

@@ -15,6 +15,8 @@ pub(crate) use compile::compile_word;
 #[derive(Clone, Copy)]
 pub enum WordCompile {
     Simple,
+    BuiltinScale(&'static [usize]),
+    BuiltinChordQuality(&'static [i64]),
     Context(&'static str),
     Param,
     Probability(f64),
@@ -39,7 +41,7 @@ pub static WORDS: LazyLock<Vec<Word>> = LazyLock::new(|| {
     words.extend_from_slice(sound::WORDS);
     words.extend_from_slice(effects::WORDS);
     words.extend_from_slice(sequencing::WORDS);
-    words.extend_from_slice(music::WORDS);
+    words.extend_from_slice(music::WORDS.as_slice());
     words.extend_from_slice(midi::WORDS);
     words.extend_from_slice(osc::WORDS);
     words

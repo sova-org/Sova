@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use crate::cagire::ops::Op;
-use crate::cagire::theory;
 use crate::cagire::types::Span;
 
-use super::{WordCompile::*, lookup_word};
+use super::{lookup_word, WordCompile::*};
 
 pub(super) fn simple_op(name: &str) -> Option<Op> {
     Some(match name {
@@ -81,12 +80,12 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "coin" => Op::Coin(None),
         "mtof" => Op::Mtof,
         "ftom" => Op::Ftom,
-        "inv" => Op::Invert,
-        "dinv" => Op::DownInvert,
-        "drop2" => Op::VoiceDrop2,
-        "drop3" => Op::VoiceDrop3,
-        "tp" => Op::Transpose,
-        "key!" => Op::SetKey,
+        "edo" => Op::Edo,
+        "tuning" => Op::BuildTuning,
+        "scale" => Op::BuildScale,
+        "mode" => Op::Mode,
+        "deg" => Op::Deg,
+        "chord" => Op::SetChord,
         "all" => Op::EmitAll,
         "noall" => Op::ClearGlobal,
         "rec" => Op::Rec,
@@ -293,35 +292,6 @@ pub(crate) fn compile_word(
         _ => {}
     }
 
-    if (name == "triad" || name == "seventh")
-        && let Some(Op::Degree(pattern)) = ops.last()
-    {
-        let pattern = *pattern;
-        ops.pop();
-        spans.pop();
-        push(
-            ops,
-            spans,
-            if name == "triad" {
-                Op::DiatonicTriad(pattern)
-            } else {
-                Op::DiatonicSeventh(pattern)
-            },
-            span,
-        );
-        return;
-    }
-
-    if let Some(pattern) = theory::lookup(name) {
-        push(ops, spans, Op::Degree(pattern), span);
-        return;
-    }
-
-    if let Some(intervals) = theory::chords::lookup(name) {
-        push(ops, spans, Op::Chord(intervals), span);
-        return;
-    }
-
     if let Some(word) = lookup_word(name) {
         match &word.compile {
             Simple => {
@@ -329,6 +299,10 @@ pub(crate) fn compile_word(
                     op.attach_span(span);
                     push(ops, spans, op, span);
                 }
+            }
+            BuiltinScale(degrees) => push(ops, spans, Op::PushScale(degrees), span),
+            BuiltinChordQuality(intervals) => {
+                push(ops, spans, Op::PushChordQuality(intervals), span)
             }
             Context(ctx) => push(ops, spans, Op::GetContext(ctx), span),
             Param => push(ops, spans, Op::SetParam(word.name), span),

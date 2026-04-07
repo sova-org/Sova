@@ -1,7 +1,0 @@
-;; Drop 3 jazz voicing
-c3 maj7 drop2 note
-50 8000 0.2 lfo lpf
-saw snd 2 flanger
-0.2 flangerdepth
-0.01 2.5 0.0 0.8 adsr
-.

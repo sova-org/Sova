@@ -31,11 +31,34 @@ pub(super) fn compile_script(
     input: &str,
     dict: &mut Dictionary,
 ) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
-    let tokens = tokenize(input);
+    let tokens = tokenize(input)?;
     compile(&tokens, dict)
 }
 
-fn tokenize(input: &str) -> Vec<Token> {
+fn parse_ratio_literal(word: &str, span: Span) -> Result<Option<f64>, CagireError> {
+    let Some((num, den)) = word.split_once('/') else {
+        return Ok(None);
+    };
+
+    if num.is_empty() || den.is_empty() || den.contains('/') {
+        return Ok(None);
+    }
+
+    let Ok(num) = num.parse::<i64>() else {
+        return Ok(None);
+    };
+    let Ok(den) = den.parse::<i64>() else {
+        return Ok(None);
+    };
+
+    if den == 0 {
+        return Err(err("ratio denominator cannot be zero", span));
+    }
+
+    Ok(Some(num as f64 / den as f64))
+}
+
+fn tokenize(input: &str) -> Result<Vec<Token>, CagireError> {
     let mut tokens = Vec::new();
     let mut chars = input.char_indices().peekable();
 
@@ -131,6 +154,11 @@ fn tokenize(input: &str) -> Vec<Token> {
                 kind: TokenKind::Float(f),
                 span,
             });
+        } else if let Some(ratio) = parse_ratio_literal(&word, span)? {
+            tokens.push(Token {
+                kind: TokenKind::Float(ratio),
+                span,
+            });
         } else {
             tokens.push(Token {
                 kind: TokenKind::Word(word),
@@ -139,7 +167,7 @@ fn tokenize(input: &str) -> Vec<Token> {
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
 fn push(ops: &mut Vec<Op>, spans: &mut Vec<Span>, op: Op, span: Span) {
@@ -451,13 +479,13 @@ mod tests {
 
     #[test]
     fn test_tokenize_basic() {
-        let tokens = tokenize("3 4 +");
+        let tokens = tokenize("3 4 +").unwrap();
         assert_eq!(tokens.len(), 3);
     }
 
     #[test]
     fn test_tokenize_spans() {
-        let tokens = tokenize("3 4 +");
+        let tokens = tokenize("3 4 +").unwrap();
         assert_eq!(tokens[0].span, Span { start: 0, end: 1 });
         assert_eq!(tokens[1].span, Span { start: 2, end: 3 });
         assert_eq!(tokens[2].span, Span { start: 4, end: 5 });
@@ -465,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_string_span() {
-        let tokens = tokenize("\"kick\" sound");
+        let tokens = tokenize("\"kick\" sound").unwrap();
         assert_eq!(tokens[0].span, Span { start: 0, end: 6 });
         assert_eq!(tokens[1].span, Span { start: 7, end: 12 });
     }
@@ -494,16 +522,32 @@ mod tests {
 
     #[test]
     fn test_shorthand_float() {
-        let tokens = tokenize(".25 -.5");
+        let tokens = tokenize(".25 -.5").unwrap();
         assert!(matches!(tokens[0].kind, TokenKind::Float(f) if (f - 0.25).abs() < f64::EPSILON));
         assert!(matches!(tokens[1].kind, TokenKind::Float(f) if (f + 0.5).abs() < f64::EPSILON));
     }
 
     #[test]
     fn test_curly_braces_ignored() {
-        let tokens = tokenize("{hello world} 5");
+        let tokens = tokenize("{hello world} 5").unwrap();
         assert_eq!(tokens.len(), 3);
         assert!(matches!(&tokens[2].kind, TokenKind::Int(5)));
+    }
+
+    #[test]
+    fn test_ratio_literal() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script("3/2 18/4", &mut dict).unwrap();
+        assert!(matches!(ops[0], Op::PushFloat(f) if (f - 1.5).abs() < f64::EPSILON));
+        assert!(matches!(ops[1], Op::PushFloat(f) if (f - 4.5).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_ratio_zero_denominator_errors() {
+        let mut dict = Dictionary::new();
+        let e = compile_script("3/0", &mut dict).unwrap_err();
+        assert_eq!(e.span, Span { start: 0, end: 3 });
+        assert!(e.message.contains("denominator"));
     }
 
     #[test]
@@ -568,6 +612,39 @@ mod tests {
         assert!(matches!(ops[7], Op::PushInt(60))); // ut4 = C4
         assert!(matches!(ops[8], Op::PushInt(57))); // la3 = A3
         assert!(matches!(ops[9], Op::PushInt(77))); // fa5 = F5
+    }
+
+    #[test]
+    fn test_builtin_scale_word() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script("major", &mut dict).unwrap();
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushScale(_)));
+    }
+
+    #[test]
+    fn test_builtin_chord_quality_word() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script("min7", &mut dict).unwrap();
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushChordQuality(_)));
+    }
+
+    #[test]
+    fn test_chord_and_cn_words() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script("min7 chord 0 cn .", &mut dict).unwrap();
+        assert!(matches!(ops[0], Op::PushChordQuality(_)));
+        assert!(matches!(ops[1], Op::SetChord));
+        assert!(matches!(ops[3], Op::SetParam("cn")));
+    }
+
+    #[test]
+    fn test_anchor_word() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script("g4 anchor .", &mut dict).unwrap();
+        assert!(matches!(ops[0], Op::PushInt(67)));
+        assert!(matches!(ops[1], Op::SetParam("anchor")));
     }
 
     #[test]
