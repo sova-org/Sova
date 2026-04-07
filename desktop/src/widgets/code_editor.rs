@@ -356,10 +356,12 @@ impl CodeEditor {
             }
             if consumed_tab && !state.entries.is_empty() {
                 let label = state.entries[state.selected].label.clone();
-                let start_byte = char_to_byte(text, state.prefix_start);
-                let end_byte = char_to_byte(text, cursor_char.unwrap_or(0));
+                let cc = cursor_char.unwrap_or(prefix_start);
+                let anchor = prefix_start.min(cc);
+                let start_byte = char_to_byte(text, anchor);
+                let end_byte = char_to_byte(text, cc);
                 text.replace_range(start_byte..end_byte, &label);
-                let new_cursor_char = state.prefix_start + label.chars().count();
+                let new_cursor_char = anchor + label.chars().count();
                 let mut te_state = edit_output.state.clone();
                 te_state
                     .cursor

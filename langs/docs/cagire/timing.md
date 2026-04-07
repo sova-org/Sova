@@ -23,6 +23,31 @@ If you want to run side-effects per delta without emitting sound, just leave `.`
 0 0.5 ( !x ) at   ;; set variable at two time points, no emit
 ```
 
+## Nesting at
+
+`at` is composable: you can put another `at` inside its quotation. The inner `at` subdivides the outer's slot, so timings compose multiplicatively rather than overwriting each other.
+
+```forth
+0 0.5 ( 0 0.5 ( hat snd . ) at ) at   ;; 4 hats at 0, 0.25, 0.5, 0.75
+```
+
+The outer `at` splits the frame into two halves; the inner `at` then splits each half into two halves again. Three levels of binary nesting give eight evenly-spaced hits, and so on. The same rule applies to pattern-mode `at` — each pattern hit owns a slice whose width is its gate, and a nested `at` subdivides that exact slice. You can also mix the two modes freely:
+
+```forth
+0 0.5 ( "x.x." ( hat snd . ) at ) at  ;; pattern inside float
+"x.x." ( 0 0.5 ( hat snd . ) at ) at  ;; float inside pattern
+```
+
+Random and cycling state still re-rolls per leaf iteration: each subdivision gets its own fresh draw, no matter how deeply you nest.
+
+State you set *before* an `at` survives the whole loop and is visible to every subdivision. This means common setup can live outside the quotation:
+
+```forth
+"sine" sound 0 0.5 ( 60 note . ) at   ;; sine on both hits
+```
+
+And state set inside one iteration of an outer `at` survives any inner `at` it runs, so the outer body's trailing emits still see what the body set up earlier.
+
 ## Polyphony Inside at
 
 CycleLists inside `at` quotations work as usual — each delta iteration expands polyphonically:

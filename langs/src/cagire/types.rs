@@ -302,6 +302,16 @@ pub(super) fn float_to_value(result: f64) -> Value {
     }
 }
 
+/// A frozen copy of the cmd register's per-event state. See
+/// `CmdRegister::snapshot_state` for the rationale.
+#[derive(Clone, Debug, Default)]
+pub(super) struct CmdState {
+    sound: Option<Value>,
+    chord: Option<Value>,
+    params: Vec<(&'static str, Value)>,
+    delta_secs: Option<f64>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct CmdRegister {
     sound: Option<Value>,
@@ -392,24 +402,33 @@ impl CmdRegister {
         std::mem::take(&mut self.global_params)
     }
 
-    pub(super) fn set_delta_secs(&mut self, secs: f64) {
-        self.delta_secs = Some(secs);
+    /// Capture the per-event state (sound, chord, params, delta_secs) so it
+    /// can be restored later. Used by `at` to give every subdivision a fresh
+    /// copy of the outer scope's state and to leave the cmd register
+    /// untouched after the loop completes. `global_params` is intentionally
+    /// excluded — globals are scoped per-frame, not per-event.
+    pub(super) fn snapshot_state(&self) -> CmdState {
+        CmdState {
+            sound: self.sound.clone(),
+            chord: self.chord.clone(),
+            params: self.params.clone(),
+            delta_secs: self.delta_secs,
+        }
+    }
+
+    pub(super) fn restore_state(&mut self, snap: &CmdState) {
+        self.sound.clone_from(&snap.sound);
+        self.chord.clone_from(&snap.chord);
+        self.params.clone_from(&snap.params);
+        self.delta_secs = snap.delta_secs;
     }
 
     pub(super) fn take_delta_secs(&mut self) -> Option<f64> {
         self.delta_secs.take()
     }
 
-    pub(super) fn clear_sound(&mut self) {
-        self.sound = None;
-    }
-
     pub(super) fn clear_chord(&mut self) {
         self.chord = None;
-    }
-
-    pub(super) fn clear_params(&mut self) {
-        self.params.clear();
     }
 
     pub(super) fn clear(&mut self) {

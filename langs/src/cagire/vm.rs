@@ -32,6 +32,7 @@ static TWELVE_EDO_TUNING: LazyLock<Arc<Tuning>> = LazyLock::new(|| {
     })
 });
 
+#[derive(Copy, Clone)]
 pub(super) struct StepContext {
     pub step: usize,
     pub beat: f64,
@@ -1168,7 +1169,7 @@ impl CagireVM {
                     at!(stack.ensure(2))?;
                     let quot = at!(stack.pop())?;
                     let (body_ops, body_spans) = match &quot {
-                        Value::Quotation(ops, spans) => (ops.clone(), spans.clone()),
+                        Value::Quotation(ops, spans) => (Arc::clone(ops), Arc::clone(spans)),
                         _ => {
                             return Err(CagireError::new(
                                 "at expects a quotation on top of stack",
@@ -1179,85 +1180,82 @@ impl CagireVM {
                     let values = std::mem::take(&mut stack.values);
                     let origins = std::mem::take(&mut stack.origins);
 
-                    // Single string → pattern mode (with gates + alternation)
-                    if values.len() == 1 {
-                        if let Value::Str(ref s) = values[0] {
-                            let hits = at!(pattern::parse_pattern_annotated(s))?;
-                            let origin = origins.first().copied().unwrap_or_default();
-                            let n = hits.len();
-                            for (i, hit) in hits.iter().enumerate() {
-                                if let Some(alt) = &hit.alt {
-                                    if ctx.runs % alt.count as usize != alt.index as usize {
-                                        continue;
-                                    }
-                                }
-                                let delta_secs = ctx.nudge_secs + hit.position * ctx.step_duration;
+                    // Capture outer cmd state. Each subdivision starts from this
+                    // baseline (so iterations are independent), and we restore it
+                    // again after the loop so the enclosing scope sees the cmd
+                    // register exactly as it was before `at` ran. This is what
+                    // makes nested `at` compose correctly: an inner `at` can't
+                    // accidentally clobber state set up by the outer body.
+                    let outer_state = cmd.snapshot_state();
 
-                                let iter_ctx = StepContext {
-                                    step: ctx.step,
-                                    beat: ctx.beat,
-                                    tempo: ctx.tempo,
-                                    phase: ctx.phase,
-                                    slot: ctx.slot,
-                                    runs: ctx.runs * n + i,
-                                    iter: ctx.iter,
-                                    speed: ctx.speed,
-                                    step_duration: ctx.step_duration,
-                                    frame_index: ctx.frame_index,
-                                    nudge_secs: ctx.nudge_secs,
-                                    default_device: ctx.default_device,
-                                };
-
-                                cmd.set_delta_secs(delta_secs);
-                                cmd.set_param("gate", Value::Float(hit.gate * ctx.step_duration));
-                                let highlight_span =
-                                    self.pattern_hit_span(origin, hit.start, hit.end);
-                                if let Some(span) = highlight_span {
-                                    self.active_emit_annotations.push(span);
-                                }
-                                self.execute_ops(
-                                    &body_ops,
-                                    &body_spans,
-                                    &iter_ctx,
-                                    eval_ctx,
-                                    stack,
-                                    events,
-                                    cmd,
-                                )?;
-                                if highlight_span.is_some() {
-                                    self.active_emit_annotations.pop();
-                                }
-                                cmd.clear_params();
-                                cmd.clear_sound();
+                    // Pattern mode: single string drains, with gate width and
+                    // alternation filtering.
+                    if values.len() == 1
+                        && let Value::Str(ref s) = values[0]
+                    {
+                        let hits = at!(pattern::parse_pattern_annotated(s))?;
+                        let origin = origins.first().copied().unwrap_or_default();
+                        let n = hits.len();
+                        for (i, hit) in hits.iter().enumerate() {
+                            if let Some(alt) = &hit.alt
+                                && ctx.runs % alt.count as usize != alt.index as usize
+                            {
+                                continue;
                             }
+                            // Each pattern hit owns a slice of the outer
+                            // step whose width is `hit.gate * outer_step` —
+                            // this preserves elongation (`x--`) and lets a
+                            // nested `at` subdivide that exact slice.
+                            let inner_step_duration = hit.gate * ctx.step_duration;
+                            let iter_ctx = StepContext {
+                                runs: ctx.runs * n + i,
+                                nudge_secs: ctx.nudge_secs + hit.position * ctx.step_duration,
+                                step_duration: inner_step_duration,
+                                ..*ctx
+                            };
 
-                            pc += 1;
-                            continue;
+                            cmd.restore_state(&outer_state);
+                            cmd.set_param("gate", Value::Float(inner_step_duration));
+                            let highlight_span =
+                                self.pattern_hit_span(origin, hit.start, hit.end);
+                            if let Some(span) = highlight_span {
+                                self.active_emit_annotations.push(span);
+                            }
+                            self.execute_ops(
+                                &body_ops,
+                                &body_spans,
+                                &iter_ctx,
+                                eval_ctx,
+                                stack,
+                                events,
+                                cmd,
+                            )?;
+                            if highlight_span.is_some() {
+                                self.active_emit_annotations.pop();
+                            }
                         }
+
+                        cmd.restore_state(&outer_state);
+                        pc += 1;
+                        continue;
                     }
 
-                    // Float mode
+                    // Float mode: every value on the stack is a fractional
+                    // offset within the outer step. Each delta opens a sub-slot
+                    // of width `outer_step / n`; nesting threads through the
+                    // narrowed step_duration so an inner `at` correctly
+                    // subdivides the outer's slot.
                     let n = values.len();
                     for (i, delta_val) in values.iter().enumerate() {
                         let frac = at!(delta_val.as_float())?;
-                        let delta_secs = ctx.nudge_secs + frac * ctx.step_duration;
-
                         let iter_ctx = StepContext {
-                            step: ctx.step,
-                            beat: ctx.beat,
-                            tempo: ctx.tempo,
-                            phase: ctx.phase,
-                            slot: ctx.slot,
                             runs: ctx.runs * n + i,
-                            iter: ctx.iter,
-                            speed: ctx.speed,
-                            step_duration: ctx.step_duration,
-                            frame_index: ctx.frame_index,
-                            nudge_secs: ctx.nudge_secs,
-                            default_device: ctx.default_device,
+                            nudge_secs: ctx.nudge_secs + frac * ctx.step_duration,
+                            step_duration: ctx.step_duration / n as f64,
+                            ..*ctx
                         };
 
-                        cmd.set_delta_secs(delta_secs);
+                        cmd.restore_state(&outer_state);
                         self.execute_ops(
                             &body_ops,
                             &body_spans,
@@ -1267,9 +1265,8 @@ impl CagireVM {
                             events,
                             cmd,
                         )?;
-                        cmd.clear_params();
-                        cmd.clear_sound();
                     }
+                    cmd.restore_state(&outer_state);
                 }
 
                 Op::PatPush => {
@@ -3354,5 +3351,163 @@ mod tests {
                 vec![Span { start: 9, end: 10 }],
             ],
         );
+    }
+
+    // ===== `at` timing & nesting =====
+    //
+    // TestCtx defaults to tempo=120, frame_len=1.0, so step_duration is
+    // exactly 0.5 seconds = 500_000 micros. Every fraction used below is a
+    // power-of-two division of that, so the float→micros conversion is exact
+    // and we can assert with `assert_eq!`.
+
+    fn get_generic_sound(ev: &ConcreteEvent) -> Option<String> {
+        match ev {
+            ConcreteEvent::Generic(VariableValue::Map(args), ..) => {
+                args.get("sound").and_then(|v| match v {
+                    VariableValue::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn test_at_float_precise_timings() {
+        // Four evenly-spaced subdivisions of a 500_000-micro step.
+        let events = eval("0 0.25 0.5 0.75 ( 60 note . ) at");
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            get_event_times(&events),
+            vec![0, 125_000, 250_000, 375_000],
+        );
+    }
+
+    #[test]
+    fn test_at_pattern_precise_timings() {
+        // "x.x." → 4 slots, hits at slots 0 and 2 → positions 0 and 0.5,
+        // step_duration = 0.5 sec → events at 0 and 250_000 micros.
+        let events = eval("\"x.x.\" ( 60 note . ) at");
+        assert_eq!(events.len(), 2);
+        assert_eq!(get_event_times(&events), vec![0, 250_000]);
+    }
+
+    #[test]
+    fn test_at_pattern_gate_param_set_in_seconds() {
+        // The pattern arm of `at` sets the `gate` param so the emitted
+        // event carries the correct slot duration. The Generic emit path
+        // (`emit_single` line 2020) reads gate as seconds, so for "x.x."
+        // (gate fraction 0.25) on a 0.5-sec step we expect 0.125 sec.
+        let events = eval("\"x.x.\" ( \"sine\" sound 60 note . ) at");
+        assert_eq!(events.len(), 2);
+        let gates: Vec<f64> = events
+            .iter()
+            .filter_map(|(ev, _)| get_generic_param(ev, "gate"))
+            .collect();
+        assert_eq!(gates, vec![0.125, 0.125]);
+    }
+
+    #[test]
+    fn test_at_pattern_with_silence_precise_timings() {
+        // "x..x" → hits at positions 0 and 0.75.
+        let events = eval("\"x..x\" ( 60 note . ) at");
+        assert_eq!(events.len(), 2);
+        assert_eq!(get_event_times(&events), vec![0, 375_000]);
+    }
+
+    #[test]
+    fn test_at_nested_subdivides_float() {
+        // Regression test: nested float `at` should compose by subdivision.
+        // Before the fix, this produced {0, 250_000, 0, 250_000} (the inner
+        // at clobbered the outer offset). With subdivision semantics, the
+        // outer step is split in two and each half is split again, giving
+        // four evenly-spaced events.
+        let events = eval("0 0.5 ( 0 0.5 ( 60 note . ) at ) at");
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            get_event_times(&events),
+            vec![0, 125_000, 250_000, 375_000],
+        );
+    }
+
+    #[test]
+    fn test_at_nested_three_levels() {
+        // Three levels of binary subdivision = 8 evenly-spaced events at
+        // multiples of 62_500 micros (= step_duration / 8).
+        let events = eval("0 0.5 ( 0 0.5 ( 0 0.5 ( 60 note . ) at ) at ) at");
+        assert_eq!(events.len(), 8);
+        let times = get_event_times(&events);
+        let expected: Vec<SyncTime> = (0..8).map(|i| i * 62_500).collect();
+        assert_eq!(times, expected);
+    }
+
+    #[test]
+    fn test_at_nested_pattern_inside_float() {
+        // Outer float splits the step into 2 sub-steps of width 0.25 sec.
+        // Each sub-step then plays "x.x." → hits at start and middle of the
+        // sub-step. Result: events at 0, 125_000, 250_000, 375_000.
+        let events = eval("0 0.5 ( \"x.x.\" ( 60 note . ) at ) at");
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            get_event_times(&events),
+            vec![0, 125_000, 250_000, 375_000],
+        );
+    }
+
+    #[test]
+    fn test_at_nested_float_inside_pattern() {
+        // Outer pattern "x.x." owns slots of width 0.25 sec at positions 0
+        // and 0.5. Each owned slot is then split into halves of 0.125 sec by
+        // the inner `0 0.5` float. The inner hits land at 0 and 0.0625 sec
+        // within each slot, giving the irregular sequence
+        // {0, 62_500, 250_000, 312_500}. This is intentionally different
+        // from the float-outer / pattern-inner case because the pattern's
+        // gate (= 1/total_slots, not 1/hits.len()) determines the inner
+        // step_duration.
+        let events = eval("\"x.x.\" ( 0 0.5 ( 60 note . ) at ) at");
+        assert_eq!(events.len(), 4);
+        assert_eq!(
+            get_event_times(&events),
+            vec![0, 62_500, 250_000, 312_500],
+        );
+    }
+
+    #[test]
+    fn test_at_outer_sound_persists_across_subdivisions() {
+        // Sound is set BEFORE the at. Each subdivision should still see it
+        // — i.e. an at no longer wipes per-event state set in the enclosing
+        // scope. This is the regression test for the cleanup-leak bug where
+        // `clear_sound` ran between iterations and erased the outer's setup.
+        let events = eval("\"sine\" sound 0 0.5 ( . ) at");
+        assert_eq!(events.len(), 2);
+        for (ev, _) in &events {
+            assert_eq!(get_generic_sound(ev).as_deref(), Some("sine"));
+        }
+        assert_eq!(get_event_times(&events), vec![0, 250_000]);
+    }
+
+    #[test]
+    fn test_at_outer_state_survives_inner_at() {
+        // The outer body sets sound=sine, runs an inner `at`, then emits
+        // its own event with the SAME sound. The inner at must leave the
+        // outer's sound intact so the trailing emit picks it up.
+        let events = eval("0 ( \"sine\" sound 0 0.5 ( . ) at . ) at");
+        // 2 events from inner at + 1 from outer body = 3 sine events.
+        assert_eq!(events.len(), 3);
+        for (ev, _) in &events {
+            assert_eq!(get_generic_sound(ev).as_deref(), Some("sine"));
+        }
+    }
+
+    #[test]
+    fn test_at_nested_runs_counter_is_flattened() {
+        // Nested at with cycle: the runs counter should advance as a single
+        // flattened sequence so each leaf iteration picks the next cycle
+        // element. Outer 2 deltas × inner 2 deltas = 4 leaves; cycling
+        // through 4 notes should produce them in order.
+        let events =
+            eval("0 0.5 ( 0 0.5 ( [ c4 d4 e4 f4 ] cycle note . ) at ) at");
+        assert_eq!(events.len(), 4);
+        assert_eq!(get_midi_notes(&events), vec![60, 62, 64, 65]);
     }
 }
