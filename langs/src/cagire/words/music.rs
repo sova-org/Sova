@@ -91,9 +91,7 @@ const BASE_WORDS: &[Word] = &[
 ];
 
 pub(super) static WORDS: LazyLock<Vec<Word>> = LazyLock::new(|| {
-    let mut words = Vec::with_capacity(
-        BASE_WORDS.len() + theory::scales::SCALES.len() + theory::chords::CHORDS.len(),
-    );
+    let mut words = Vec::with_capacity(BASE_WORDS.len() + theory::scales::SCALES.len());
     words.extend_from_slice(BASE_WORDS);
     for scale in theory::scales::SCALES {
         words.push(Word {
@@ -104,18 +102,6 @@ pub(super) static WORDS: LazyLock<Vec<Word>> = LazyLock::new(|| {
             desc: "Built-in 12-EDO scale",
             example: SCALE_EXAMPLE,
             compile: BuiltinScale(scale.degrees),
-            varargs: false,
-        });
-    }
-    for chord in theory::chords::CHORDS {
-        words.push(Word {
-            name: chord.name,
-            aliases: &[],
-            category: "Chord",
-            stack: "(-- quality)",
-            desc: chord.desc,
-            example: CHORD_EXAMPLE,
-            compile: BuiltinChordQuality(chord.intervals),
             varargs: false,
         });
     }

@@ -35,7 +35,7 @@ impl Language for CagireInterpreterFactory {
         let mut doc = LanguageDocumentation::default();
 
         doc.articles.push((
-            "Getting Started".into(),
+            "Hello!".into(),
             include_str!("../../docs/cagire/intro.md").into(),
         ));
         doc.articles.push((
@@ -51,16 +51,28 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/definitions.md").into(),
         ));
         doc.articles.push((
-            "Brackets".into(),
-            include_str!("../../docs/cagire/brackets.md").into(),
+            "Quotations".into(),
+            include_str!("../../docs/cagire/quotations.md").into(),
+        ));
+        doc.articles.push((
+            "Lists".into(),
+            include_str!("../../docs/cagire/lists.md").into(),
         ));
         doc.articles.push((
             "Variables".into(),
             include_str!("../../docs/cagire/variables.md").into(),
         ));
         doc.articles.push((
-            "Notes & Harmony".into(),
-            include_str!("../../docs/cagire/harmony.md").into(),
+            "Notes".into(),
+            include_str!("../../docs/cagire/notes.md").into(),
+        ));
+        doc.articles.push((
+            "Chords".into(),
+            include_str!("../../docs/cagire/chords.md").into(),
+        ));
+        doc.articles.push((
+            "Scales & Tunings".into(),
+            include_str!("../../docs/cagire/scales.md").into(),
         ));
         doc.articles.push((
             "Generators".into(),
@@ -69,6 +81,14 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push((
             "Randomness".into(),
             include_str!("../../docs/cagire/randomness.md").into(),
+        ));
+        doc.articles.push((
+            "Cycling".into(),
+            include_str!("../../docs/cagire/cycling.md").into(),
+        ));
+        doc.articles.push((
+            "Periodic Execution".into(),
+            include_str!("../../docs/cagire/periodic.md").into(),
         ));
         doc.articles.push((
             "Timing".into(),
@@ -178,6 +198,10 @@ impl Language for CagireInterpreterFactory {
             SyntaxRule::new(String, r#""[^"]*""#),
             SyntaxRule::new(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
             SyntaxRule::new(String, r"\b(?:sol|do|r[eé]|mi|fa|la|si|ti|ut)[#b]?[0-9]\b"),
+            SyntaxRule::new(
+                String,
+                r"\b(?:unison|aug11|aug4|dim5|M1[034]|m1[034]|M[23679]|m[23679]|P1[125]|P[1458])\b",
+            ),
             SyntaxRule::new(Number, r"-?(?:\d+/-?\d+|\.?\d+(?:\.\d+)?)"),
             SyntaxRule::new(Special, r"\."),
             SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
@@ -284,6 +308,32 @@ mod tests {
                 ("18/4".to_owned(), Number),
             ]
         );
+    }
+
+    #[test]
+    fn syntax_intervals_are_strings() {
+        use TokenCategory::*;
+        let tokens = categories_for(
+            "P1 unison m2 M2 m3 M3 P4 aug4 dim5 P5 m6 M6 m7 M7 P8 m9 M9 m10 M10 P11 aug11 P12 m13 M13 m14 M14 P15",
+        );
+        let interval_names = [
+            "P1", "unison", "m2", "M2", "m3", "M3", "P4", "aug4", "dim5", "P5", "m6", "M6", "m7",
+            "M7", "P8", "m9", "M9", "m10", "M10", "P11", "aug11", "P12", "m13", "M13", "m14",
+            "M14", "P15",
+        ];
+        for name in interval_names {
+            let found = tokens.iter().find(|(t, _)| t == name);
+            assert!(
+                found.is_some(),
+                "interval {name} should be highlighted as a single token"
+            );
+            assert_eq!(
+                found.unwrap().1,
+                String,
+                "interval {name} should be String (green), got {:?}",
+                found.unwrap().1
+            );
+        }
     }
 
     #[test]

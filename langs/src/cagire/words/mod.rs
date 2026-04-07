@@ -16,7 +16,6 @@ pub(crate) use compile::compile_word;
 pub enum WordCompile {
     Simple,
     BuiltinScale(&'static [usize]),
-    BuiltinChordQuality(&'static [i64]),
     Context(&'static str),
     Param,
     Probability(f64),

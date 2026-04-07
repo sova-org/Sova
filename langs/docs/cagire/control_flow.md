@@ -1,6 +1,6 @@
 # Control Flow
 
-Sometimes a frame should behave differently depending on context — a coin flip, which iteration of the line is playing. Control flow words let you branch, choose, and repeat inside a frame's script.
+Sometimes a frame should behave differently depending on context: a coin flip, which iteration of the line is playing. Control flow words let you branch, choose, and repeat inside a frame's script.
 
 ## if / else / then
 
@@ -31,7 +31,7 @@ When you already have a quotation, `?` executes it if the condition is truthy:
 saw snd c4 note 0.5 gain .    ;; reverb on half the hits
 ```
 
-`!?` is the opposite — executes when falsy:
+`!?` is the opposite. Executes when falsy:
 
 ```forth
 ( 0.2 gain ) coin !?
@@ -98,7 +98,7 @@ saw snd 0.6 gain 800 lpf .
 
 A different root note each time the line loops.
 
-The last line before `endcase` is the default — it runs when no `of` matched:
+The last line before `endcase` is the default. It runs when no `of` matched:
 
 ```forth
 iter 3 mod case
@@ -114,7 +114,7 @@ Repeat a quotation n times. The variable `@i` is automatically set to the curren
 
 ```forth
 3 ( c4 @i 4 * + note ) times
-sine snd 0.4 gain 0.5 verb .      ;; c4, e4, g#4 — a chord
+sine snd 0.4 gain 0.5 verb .      ;; c4, e4, g#4, a chord
 ```
 
 Subdivide with `at`:

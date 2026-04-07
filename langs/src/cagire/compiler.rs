@@ -623,18 +623,20 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_chord_quality_word() {
+    fn test_chord_quality_as_string() {
+        // Bare chord names fall through to "unknown words become strings",
+        // and `chord` resolves them at runtime via chords::lookup.
         let mut dict = Dictionary::new();
         let (ops, _) = compile_script("min7", &mut dict).unwrap();
         assert_eq!(ops.len(), 1);
-        assert!(matches!(ops[0], Op::PushChordQuality(_)));
+        assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "min7"));
     }
 
     #[test]
     fn test_chord_and_cn_words() {
         let mut dict = Dictionary::new();
         let (ops, _) = compile_script("min7 chord 0 cn .", &mut dict).unwrap();
-        assert!(matches!(ops[0], Op::PushChordQuality(_)));
+        assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "min7"));
         assert!(matches!(ops[1], Op::SetChord));
         assert!(matches!(ops[3], Op::SetParam("cn")));
     }

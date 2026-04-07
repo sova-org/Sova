@@ -126,7 +126,7 @@ Useful for computing averages or accumulating values:
 c4 4 dupn         ;; c4 c4 c4 c4
 ```
 
-Build a drone chord — same note, different octaves:
+Build a drone chord. Same note, different octaves:
 
 ```forth
 c3 note 0.5 gain sine snd .

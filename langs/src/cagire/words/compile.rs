@@ -108,7 +108,6 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "expmap" => Op::ExpMap,
         "map" => Op::Map,
         "loop" => Op::Loop,
-        "oct" => Op::Oct,
         "clear" => Op::ClearCmd,
         ".." => Op::IntRange,
         ".," => Op::StepRange,
@@ -301,9 +300,6 @@ pub(crate) fn compile_word(
                 }
             }
             BuiltinScale(degrees) => push(ops, spans, Op::PushScale(degrees), span),
-            BuiltinChordQuality(intervals) => {
-                push(ops, spans, Op::PushChordQuality(intervals), span)
-            }
             Context(ctx) => push(ops, spans, Op::GetContext(ctx), span),
             Param => push(ops, spans, Op::SetParam(word.name), span),
             Probability(p) => {

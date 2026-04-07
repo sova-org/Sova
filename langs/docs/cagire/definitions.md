@@ -1,4 +1,14 @@
-# Creating Words
+# Words
+
+## What Is a Word?
+
+In Forth, a *word* is the basic unit of execution: the rough equivalent of a function, command, or identifier in other languages. A Cagire script is, at heart, just a sequence of words separated by whitespace. Numbers, strings, builtins like `dup`, `+`, and `snd`, and anything you define yourself are all words.
+
+Words live in a structure called the *dictionary*. When the interpreter reads a token, it looks it up in the dictionary and runs whatever is bound to that name. Numbers and strings are the one special case: rather than being looked up, they push themselves onto the stack.
+
+What makes this arrangement powerful is its uniformity. Defining a new word adds an entry to the same dictionary the builtins live in, so user code and builtin code are indistinguishable at the call site. Once you have written a word, it behaves exactly like the ones that came with the language. The rest of this article is about how to create such words.
+
+## Creating Words
 
 One of Forth's most powerful features is the ability to define new words. A word definition gives a name to a sequence of operations. Once defined, you can use the new word just like any built-in word.
 

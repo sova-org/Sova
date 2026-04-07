@@ -7,9 +7,9 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 - **Integer**: `42`, `-10`, `0`
 - **Float**: `3.14`, `-0.5`, `0.25` (leading zero optional: `.25`)
 - **String**: `"kick"`, `"sine"`, `"hello"`
-- **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58) — pushes MIDI number. French solfège: `do4` (60), `mib3` (58), `sol#3` (56). Names: do/ut, ré/re, mi, fa, sol, la, si/ti
-- **Interval**: `P5` (7), `M3` (4), `m7` (10) — adds semitones to top of stack
-- **Quotation**: `( ... )` — deferred code block, first-class value
+- **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58). Pushes MIDI number. French solfège: `do4` (60), `mib3` (58), `sol#3` (56). Names: do/ut, ré/re, mi, fa, sol, la, si/ti
+- **Interval**: `P5` (7), `M3` (4), `m7` (10). Adds semitones to top of stack
+- **Quotation**: `( ... )`. Deferred code block, first-class value
 
 ## Stack Operations
 
@@ -467,29 +467,24 @@ Built-in scale words push scale values: `major`, `minor`, `dorian`, `phrygian`, 
 
 ### Chords
 
-Chord qualities are values. `chord` stores the active quality, `note` supplies the root, `anchor` optionally picks the nearest inversion/register, and `cn` optionally selects one voice in the current voicing with octave-aware wrapping:
+Chord qualities are looked up by name from a string (or by integer for the numeric shortcuts). `chord` stores the active quality, `note` supplies the root, `anchor` optionally picks the nearest inversion/register, and `cn` optionally selects one voice in the current voicing with octave-aware wrapping:
 
 ```
-c4 note min7 chord .                  ;; 60 63 67 70
-c4 note maj7 chord g4 anchor .        ;; voiced near G4
+c4 note min7 chord .                    ;; 60 63 67 70
+c4 note maj7 chord g4 anchor .          ;; voiced near G4
 c4 note [ 0 3 4 7 ] cycle cn min7 chord .   ;; 4 = root + 1 octave
-c4 note 6 chord .                     ;; maj6 alias
+c4 note 6 chord .                       ;; maj6 numeric alias
 ```
 
 Core words:
 
 | Word | Stack | Description |
 |------|-------|-------------|
-| `chord` | `(quality --)` | Set active chord quality |
+| `chord` | `(quality --)` | Set active chord quality (string or numeric alias) |
 | `anchor` | `(v.. --)` | Set target note for chord voicing |
 | `cn` | `(v.. --)` | Select chord tone index with octave wrapping |
 
-Triads: `maj`, `m`, `dim`, `aug`, `sus2`, `sus4`, `pwr`.
-Sevenths: `maj7`, `min7`, `dom7` / `7`, `dim7`, `m7b5`, `minmaj7`, `aug7`, `augmaj7`, `7sus4`.
-Extended: `dom9` / `9`, `maj9`, `min9`, `dom11` / `11`, `maj11`, `min11`, `dom13` / `13`, `maj13`, `min13`, `9sus4`.
-Added: `add9`, `add11`, `madd9`.
-Altered: `dom7b9`, `dom7s9`, `dom7b5`, `dom7s5`, `dom7s11`.
-Sixths: `maj6` / `6`, `min6`, `maj69`, `min69`.
+Numeric aliases: `5` → `pwr`, `6` → `maj6`, `7` → `dom7`, `9` → `dom9`, `11` → `dom11`, `13` → `dom13`. See the **Chords** article for the full quality catalog and aliases.
 
 ### Conversion
 
@@ -516,9 +511,9 @@ kick                ;; call defined word
 Variables are Instance-scoped by default (local to the script). Use prefixes to share data across scripts:
 
 ```
-!G.x  @G.x  ,G.x   ;; Global — all scripts in the session
-!L.x  @L.x  ,L.x   ;; Line — all frames in the same line
-!F.x  @F.x  ,F.x   ;; Frame — persists across runs of this frame
+!G.x  @G.x  ,G.x   ;; Global, all scripts in the session
+!L.x  @L.x  ,L.x   ;; Line, all frames in the same line
+!F.x  @F.x  ,F.x   ;; Frame, persists across runs of this frame
 ```
 
 See the **Variables** article for details.

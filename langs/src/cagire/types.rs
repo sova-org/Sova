@@ -79,9 +79,6 @@ pub enum Value {
         tuning: Arc<Tuning>,
         degrees: Arc<[usize]>,
     },
-    ChordQuality {
-        intervals: Arc<[i64]>,
-    },
 }
 
 impl Value {
@@ -138,7 +135,7 @@ impl Value {
             Value::Str(s) => !s.is_empty(),
             Value::Quotation(..) => true,
             Value::CycleList(items) => !items.is_empty(),
-            Value::Tuning { .. } | Value::Scale { .. } | Value::ChordQuality { .. } => true,
+            Value::Tuning { .. } | Value::Scale { .. } => true,
         }
     }
 
@@ -150,7 +147,6 @@ impl Value {
             Value::Quotation(..) | Value::CycleList(_) => String::new(),
             Value::Tuning { .. } => "<tuning>".into(),
             Value::Scale { .. } => "<scale>".into(),
-            Value::ChordQuality { .. } => "<chord>".into(),
         }
     }
 
@@ -162,8 +158,7 @@ impl Value {
             Value::Quotation(..)
             | Value::CycleList(_)
             | Value::Tuning { .. }
-            | Value::Scale { .. }
-            | Value::ChordQuality { .. } => None,
+            | Value::Scale { .. } => None,
         }
     }
 

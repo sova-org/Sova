@@ -1,6 +1,6 @@
 # Timing
 
-Every frame has a duration. By default, sounds emit at the very start of that duration. `at` changes *when* within the frame sounds fire — giving you sub-frame rhythmic control without adding more frames.
+Every frame has a duration. By default, sounds emit at the very start of that duration. `at` changes *when* within the frame sounds fire, giving you sub-frame rhythmic control without adding more frames.
 
 ## The Basics
 
@@ -11,7 +11,7 @@ Every frame has a duration. By default, sounds emit at the very start of that du
 0 0.25 0.5 0.75 ( hat snd . ) at  ;; four hats, evenly spaced
 ```
 
-Each iteration gets its own independent state — nondeterministic ops (rand, choose, coin) roll fresh values per delta:
+Each iteration gets its own independent state. Nondeterministic ops (rand, choose, coin) roll fresh values per delta:
 
 ```forth
 0 0.5 ( kick snd 1 4 rand n . ) at   ;; different random sample each hit
@@ -31,7 +31,7 @@ If you want to run side-effects per delta without emitting sound, just leave `.`
 0 0.5 ( 0 0.5 ( hat snd . ) at ) at   ;; 4 hats at 0, 0.25, 0.5, 0.75
 ```
 
-The outer `at` splits the frame into two halves; the inner `at` then splits each half into two halves again. Three levels of binary nesting give eight evenly-spaced hits, and so on. The same rule applies to pattern-mode `at` — each pattern hit owns a slice whose width is its gate, and a nested `at` subdivides that exact slice. You can also mix the two modes freely:
+The outer `at` splits the frame into two halves; the inner `at` then splits each half into two halves again. Three levels of binary nesting give eight evenly-spaced hits, and so on. The same rule applies to pattern-mode `at`: each pattern hit owns a slice whose width is its gate, and a nested `at` subdivides that exact slice. You can also mix the two modes freely:
 
 ```forth
 0 0.5 ( "x.x." ( hat snd . ) at ) at  ;; pattern inside float
@@ -50,7 +50,7 @@ And state set inside one iteration of an outer `at` survives any inner `at` it r
 
 ## Polyphony Inside at
 
-CycleLists inside `at` quotations work as usual — each delta iteration expands polyphonically:
+Cycling lists inside `at` quotations work as usual. Each delta iteration expands polyphonically:
 
 ```forth
 0 0.5 ( [c4 e4 g4] note sine snd . ) at   ;; chord at 0, chord at 0.5
@@ -94,7 +94,7 @@ Wrap the whole expression in quotations for conditional timing:
 ( 0 0.5 ( kick snd . ) at ) 0.5 chance           ;; 50% chance of double-hit
 ```
 
-When the quotation doesn't execute, no deltas are set — you get no emit from that expression.
+When the quotation doesn't execute, no deltas are set: you get no emit from that expression.
 
 ## Fitting Samples to Beats
 

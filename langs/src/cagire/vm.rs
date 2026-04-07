@@ -1094,21 +1094,6 @@ impl CagireVM {
                         span!(),
                     );
                 }
-                Op::PushChordQuality(intervals) => {
-                    stack.push(
-                        Value::ChordQuality {
-                            intervals: Arc::from(*intervals),
-                        },
-                        span!(),
-                    );
-                }
-
-                Op::Oct => {
-                    let shift = at!(stack.pop())?;
-                    let note = at!(stack.pop())?;
-                    stack.push(at!(lift_binary(note, shift, |n, s| n + s * 12.0))?, span!());
-                }
-
                 Op::SetTempo => {
                     let tempo = at!(stack.pop_float())?;
                     let clamped = tempo.clamp(20.0, 300.0);
@@ -2168,9 +2153,8 @@ fn hz_to_midi(freq: f64) -> f64 {
     69.0 + 12.0 * (freq / 440.0).log2()
 }
 
-fn resolve_chord_intervals(chord: &Value) -> Result<&[i64], String> {
+fn resolve_chord_intervals(chord: &Value) -> Result<&'static [i64], String> {
     match chord {
-        Value::ChordQuality { intervals } => Ok(intervals),
         Value::Int(alias) => chords::lookup_numeric(*alias)
             .map(|quality| quality.intervals)
             .ok_or_else(|| format!("unknown chord quality alias: {alias}")),

@@ -1,6 +1,6 @@
 # Getting Started with Cagire
 
-Cagire is a stack-based, Forth-like language for live coding music inside Sova. It is a DSL — a Domain Specific Language — specialized in making live music. Values are pushed onto a stack; words consume and produce stack values. It favors brevity and directness: build sounds by stacking parameters, then emit with `.`.
+Cagire is a stack-based, Forth-like language for live coding music inside Sova. It is a DSL (a Domain Specific Language) specialized in making live music. Values are pushed onto a stack; words consume and produce stack values. It favors brevity and directness: build sounds by stacking parameters, then emit with `.`.
 
 ## Why Forth?
 
@@ -60,7 +60,7 @@ Ratio literals also compile to floats: `3/2` is `1.5`, and `18/4` is `4.5`.
 
 Any word that is not recognized as a built-in or a user definition becomes a string on the stack. This means `kick snd` and `"kick" snd` are equivalent. You only need quotes when the string contains spaces or conflicts with an existing word name.
 
-Quotations are special. They let you pass code around as a value. This is how conditionals and loops work. Don't worry about them for now — you'll learn how to use them later.
+Quotations are special. They let you pass code around as a value. This is how conditionals and loops work. Don't worry about them for now. You'll learn how to use them later.
 
 ## The Command Register
 
@@ -118,9 +118,9 @@ noall
 
 Sova organizes music into a **Scene** made of parallel **Lines**, each containing a sequence of **Frames**. Each frame holds a script and a duration in beats.
 
-When the sequencer reaches a frame, it runs the associated script. A script can do whatever it is programmed to do: play a note, trigger a sample, apply effects, generate randomness, or all of the above. Scripts can share code and data with each other. Lines play in parallel, frames play in sequence — the sequencer advances to the next frame in a line when the current frame's duration elapses.
+When the sequencer reaches a frame, it runs the associated script. A script can do whatever it is programmed to do: play a note, trigger a sample, apply effects, generate randomness, or all of the above. Scripts can share code and data with each other. Lines play in parallel, frames play in sequence: the sequencer advances to the next frame in a line when the current frame's duration elapses.
 
-Using Cagire doesn't feel like programming at all. It feels more like juggling with words and numbers. The core loop: you hear a line playing, open a frame, change a word, and immediately hear the difference. Forth's brevity helps — swapping `sine` for `saw` or adding `0.3 verb` at the end is a single edit that reshapes the sound.
+Using Cagire doesn't feel like programming at all. It feels more like juggling with words and numbers. The core loop: you hear a line playing, open a frame, change a word, and immediately hear the difference. Forth's brevity helps: swapping `sine` for `saw` or adding `0.3 verb` at the end is a single edit that reshapes the sound.
 
 ## Your First Sounds
 
@@ -150,4 +150,4 @@ Chain multiple events:
 
 ## Next Steps
 
-See the **The Stack** article to understand how data flows through your programs, then explore the other articles for control flow, brackets, variables, harmony, and more. Variables have scoped variants (`G.`, `L.`, `F.` prefixes) — see the **Variables** article. The **Language Reference** has complete documentation of all words.
+See the **The Stack** article to understand how data flows through your programs, then explore the other articles for control flow, brackets, variables, harmony, and more. Variables have scoped variants (`G.`, `L.`, `F.` prefixes); see the **Variables** article. The **Language Reference** has complete documentation of all words.

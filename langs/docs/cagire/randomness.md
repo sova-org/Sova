@@ -1,6 +1,6 @@
 # Randomness
 
-Music needs surprise. A line that plays identically every time gets boring fast. Cagire has a rich set of words for injecting randomness and controlled variation into your sequences.
+Music needs surprise. A line that plays identically every time gets boring fast. This article covers Cagire's words for *non-deterministic* variation: random number generation, probabilistic execution, weighted selection, and seeding. For *deterministic* stepping through a list of values, see the [Cycling](#) article. For deterministic firing on certain iterations, see [Periodic Execution](#).
 
 ## Random Numbers
 
@@ -17,25 +17,31 @@ coin note sine snd .    ;; either 0 or 1 as the note
 0.3 0.9 rand gain sine snd .     ;; random gain between 0.3 and 0.9
 ```
 
-`exprand` and `logrand` give you weighted distributions. `exprand` is biased toward the low end, `logrand` toward the high end:
+`exprand` and `logrand` give you weighted distributions over a range. `exprand` is biased toward the low end, `logrand` toward the high end:
 
 ```forth
 200.0 8000.0 exprand freq sine snd .   ;; mostly low frequencies
 200.0 8000.0 logrand freq sine snd .   ;; mostly high frequencies
 ```
 
-These are useful for parameters where perception is logarithmic, like frequency and duration.
+These are useful for parameters where perception is logarithmic (frequency, duration, gain), because a uniform `rand` over the same range will spend most of its values in the upper octave.
+
+Each fresh draw of any of these words is independent. Inside an `at` quotation they re-roll on every subdivision (see [Timing](#) for the rule).
 
 ## Conditional Execution
 
-The probability words take a quotation and execute it with some chance. `chance` takes a float from 0.0 to 1.0, `prob` takes a percentage from 0 to 100:
+Probability words take a quotation and execute it with some chance. `chance` takes a float from 0.0 to 1.0; `prob` takes a percentage from 0 to 100:
 
 ```forth
 ( hat snd . ) 0.25 chance    ;; 25% chance
 ( hat snd . ) 75 prob        ;; 75% chance
 ```
 
-Named probability words save you from remembering numbers:
+Stack effect: `(quot prob --)` for both. The quotation is the deeper item, the probability sits on top.
+
+### Named probabilities
+
+Named probability words are syntactic sugar for the most common cases. They save you from typing `0.5 chance` when `sometimes` reads better:
 
 | Word | Probability |
 |------|------------|
@@ -53,149 +59,67 @@ Named probability words save you from remembering numbers:
 ( clap snd . ) rarely        ;; 25%
 ```
 
-`always` and `never` are useful when you want to temporarily mute or unmute a voice without deleting code. Change `sometimes` to `never` to silence it, `always` to bring it back.
+`always` and `never` look pointless at first glance, but they earn their keep as live-coding mute switches: write a voice with `always`, change it to `never` to silence the voice without deleting the line, then change it back when you want it.
 
-Use `?` and `!?` with `coin` for quick coin-flip decisions:
+### Coin-flip shorthand
+
+`coin` plus `?` or `!?` gives a quick coin-flip control flow:
 
 ```forth
 ( hat snd . ) coin ?     ;; execute if coin is 1
 ( rim snd . ) coin !?    ;; execute if coin is 0
 ```
 
-## Selection
+`?` runs its quotation when the boolean above it is truthy; `!?` runs it when falsy. They're general-purpose conditionals (see [Control Flow](#)) but pair very naturally with `coin` for one-line variation.
 
-`choose` picks randomly from n items on the stack:
+## Random Selection
+
+`choose` picks one item randomly from `n` items on the stack:
 
 ```forth
-kick snare hat 3 choose snd .    ;; random drum hit
-60 64 67 72 4 choose note sine snd .    ;; random note from a set
+kick snare hat 3 choose snd .          ;; random drum hit
+60 64 67 72 4 choose note sine snd .   ;; random note from a set
 ```
 
-When a chosen item is a quotation, it gets executed:
+Stack effect: `(v1..vn n -- selected)`. As with `cycle`, when the chosen item is a quotation it gets executed instead of being left on the stack:
 
 ```forth
 ( 0.1 decay ) ( 0.5 decay ) ( 0.9 decay ) 3 choose
 sine snd .
 ```
 
-`wchoose` lets you assign weights to each option. Push value/weight pairs:
+This is the standard idiom for "pick one of several alternative phrases."
+
+`wchoose` lets you assign weights to each option. Push value/weight pairs and the count of *pairs*:
 
 ```forth
 kick 0.5  snare 0.3  hat 0.2  3 wchoose snd .
 ```
 
-Kick plays 50% of the time, snare 30%, hat 20%. Weights don't need to sum to 1 — they're normalized automatically.
+Kick plays 50% of the time, snare 30%, hat 20%. Weights don't have to sum to 1, they're normalized automatically. Stack effect: `(v1 w1 v2 w2 ... n -- selected)`.
 
-`shuffle` randomizes the order of n items on the stack:
-
-```forth
-60 64 67 72 4 shuffle    ;; stack now has the same 4 values in random order
-```
-
-Combined with `note`, this gives you a random permutation of a chord every time the frame runs.
-
-## Cycling
-
-Cycling steps through values deterministically. No randomness — pure rotation.
-
-`cycle` selects based on how many times this frame has triggered (its `runs` count):
+`shuffle` randomizes the order of `n` items on the stack in place:
 
 ```forth
-60 64 67 3 cycle note sine snd .    ;; 60, 64, 67, 60, 64, 67, ...
+60 64 67 72 4 shuffle    ;; same 4 values, random order
 ```
 
-`pcycle` selects based on the line iteration count (`iter`):
-
-```forth
-kick snare 2 pcycle snd .    ;; kick on even iterations, snare on odd
-```
-
-The difference matters when lines have different lengths. `cycle` counts per frame, `pcycle` counts per line.
-
-Quotations work here too:
-
-```forth
-( c4 note ) ( e4 note ) ( g4 note ) 3 cycle
-sine snd .
-```
-
-`bounce` ping-pongs instead of wrapping around:
-
-```forth
-60 64 67 72 4 bounce note sine snd .    ;; 60, 64, 67, 72, 67, 64, 60, 64, ...
-```
-
-`pbounce` is to `bounce` what `pcycle` is to `cycle` — it counts by line iterations instead of frame triggers:
-
-```forth
-60 64 67 72 4 pbounce note sine snd .   ;; ping-pong by line iteration
-```
-
-`index` selects by an explicit index instead of an internal counter. The index wraps with modulo, so it never goes out of bounds:
-
-```forth
-[ c4 e4 g4 ] step index note sine snd .    ;; frame index picks the note
-[ c4 e4 g4 ] iter index note sine snd .    ;; line iteration picks the note
-```
-
-## Periodic Execution
-
-`every` runs a quotation once every n line iterations:
-
-```forth
-( crash snd . ) 4 every    ;; crash cymbal every 4th iteration
-```
-
-`except` is the inverse — it runs a quotation on all iterations *except* every nth:
-
-```forth
-( 2 distort ) 4 except    ;; distort on all iterations except every 4th
-```
-
-`every+` and `except+` take an extra offset argument to shift the phase:
-
-```forth
-( snare snd . ) 4 2 every+     ;; fires at iter 2, 6, 10, 14...
-( snare snd . ) 4 2 except+    ;; skips at iter 2, 6, 10, 14...
-```
-
-Without the offset, `every` fires at 0, 4, 8... The offset shifts that by 2, so it fires at 2, 6, 10... This lets you interleave patterns that share the same period:
-
-```forth
-( kick snd . ) 4 every         ;; kick at 0, 4, 8...
-( snare snd . ) 4 2 every+     ;; snare at 2, 6, 10...
-```
-
-`bjork` and `pbjork` use Bjorklund's algorithm to distribute k hits across n positions as evenly as possible. Classic Euclidean rhythms:
-
-```forth
-( hat snd . ) 3 8 bjork     ;; tresillo: x..x..x. (by frame triggers)
-( hat snd . ) 5 8 pbjork    ;; cinquillo: x.xx.xx. (by line iterations)
-```
-
-`bjork` counts by frame triggers (how many times this particular frame has triggered). `pbjork` counts by line iterations. Some classic patterns:
-
-| k | n | Name |
-|---|---|------|
-| 3 | 8 | tresillo |
-| 5 | 8 | cinquillo |
-| 5 | 16 | bossa nova |
-| 7 | 16 | samba |
+Combined with `note`, this gives you a random permutation of a chord every time the frame runs. Useful for arpeggiations that should never settle into a recognizable pattern.
 
 ## Seeding
 
-By default, every run produces different random values. Use `seed` to make randomness reproducible:
+By default every run produces fresh random values, so a `rand` call gives a different number each time the frame triggers. Use `seed` to make randomness reproducible:
 
 ```forth
 42 seed
 60 72 rand note sine snd .    ;; always the same "random" note
 ```
 
-The seed is set at the start of the script. Same seed, same sequence. Useful when you want a specific random pattern to repeat.
+The seed is set at the start of the script. Same seed, same sequence. Useful when you've stumbled into a random pattern you like and want to lock it in, or when you're debugging a section that depends on a specific draw.
 
 ## Combining Words
 
-The real power comes from mixing techniques. A hi-hat pattern with ghost notes:
+Most interesting things happen when you mix randomness with cycling, periodic firing, and probability gates. A hi-hat with ghost notes:
 
 ```forth
 hat snd
@@ -203,15 +127,7 @@ hat snd
 .
 ```
 
-Full volume on even triggers, random quiet on odd triggers.
-
-A bass line that changes every 4 bars:
-
-```forth
-( c2 note ) ( e2 note ) ( g2 note ) ( a2 note ) 4 pcycle
-( 0.5 decay ) often
-sine snd .
-```
+Full volume on even triggers, random quiet on odd triggers. `cycle` does the alternation, `rand` provides the variation within one of the slots.
 
 Layered percussion with different densities:
 
@@ -222,6 +138,8 @@ Layered percussion with different densities:
 ( rim snd . ) rarely
 ```
 
+Each line has its own firing rule: deterministic for kick/snare/hat, random for rim. See the [Periodic Execution](#) article for `every` and `bjork`.
+
 A melodic frame with weighted note selection and random timbre:
 
 ```forth
@@ -231,4 +149,4 @@ c4 0.4  e4 0.3  g4 0.2  b4 0.1  4 wchoose note
 modal snd .
 ```
 
-The root note plays most often. Higher chord tones are rarer. Decay and harmonics vary continuously.
+The root plays most often. Higher chord tones are rarer. Decay and harmonics vary continuously, with `exprand` keeping `harmonics` mostly low.

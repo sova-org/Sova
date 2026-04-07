@@ -8,7 +8,7 @@ Sova provides 16 device slots, numbered `1` through `16`. Each slot can connect 
 
 ## Sending MIDI
 
-The `.` word emits both audio and MIDI messages — the system determines what to send based on the parameters you've set and the device configuration. Build up parameters on the stack, then emit:
+The `.` word emits both audio and MIDI messages. The system determines what to send based on the parameters you've set and the device configuration. Build up parameters on the stack, then emit:
 
 ```forth
 60 note 100 velocity .   ;; MIDI note: middle C, velocity 100

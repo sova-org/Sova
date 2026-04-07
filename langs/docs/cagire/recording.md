@@ -10,7 +10,7 @@ Live recording captures audio output into a sample. One word to start, the same 
 "drums" rec     ;; start recording
 ```
 
-Play something — a line, a live input, anything that makes sound. When you're done:
+Play something. A line, a live input, anything that makes sound. When you're done:
 
 ```forth
 "drums" rec     ;; stop recording, register sample
