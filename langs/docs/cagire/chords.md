@@ -3,7 +3,13 @@
 A chord in Cagire is a *quality* (a set of intervals like `[0 4 7]` for a major triad) looked up by name when you call `chord`. You write the name as a plain word and `chord` resolves it at emit time:
 
 ```forth
-c4 note maj7 chord sine snd .
+c4 note
+maj7 chord
+sine snd 
+.5 decay
+.3 verb
+2 fm 0.99 fmh
+.
 ```
 
 This emits `[60 64 67 71]` polyphonically. Every chord tone goes out on its own voice. `maj7` is just a string value, which means qualities are first-class data: you can put them in lists, choose between them, and stash them in variables.
@@ -13,7 +19,11 @@ This emits `[60 64 67 71]` polyphonically. Every chord tone goes out on its own 
 Cagire tries to interpret each token in order: number, defined word, variable, note name, interval, and finally, *unknown words become strings*. Chord names take advantage of that last step. They aren't dictionary words, they fall through to strings, and `chord` looks the string up in the chord table at runtime. You can also write the name explicitly as a string literal whenever you want to be unambiguous:
 
 ```forth
-c4 note "maj7" chord sine snd .   ;; same as `maj7 chord` above
+;; same as `maj7 chord` above
+c4 note
+"maj7" chord
+sine snd
+.
 ```
 
 The string form is only **required** when the bare token would mean something else:
@@ -163,9 +173,18 @@ Every alias listed below is interchangeable with its canonical name. Aliases tha
 By default, a chord is voiced from the root upward in close position. Add `anchor` to ask Cagire for the inversion *and* register that places one of the chord tones closest to a target pitch. The anchor parameter takes a MIDI note:
 
 ```forth
+;; First example with anchor on g4
 c4 note
 maj7 chord
 g4 anchor
+sine snd .
+```
+
+```forth
+;; Another one now with anchor on d5
+c4 note
+maj7 chord
+d5 anchor
 sine snd .
 ```
 
@@ -220,8 +239,10 @@ c4 note @my_chord chord sine snd .
 A I-IV-V-I progression cycling per line iteration:
 
 ```forth
-( c3 note maj7 chord . ) ( f3 note maj7 chord . )
-( g3 note 7    chord . ) ( c3 note maj7 chord . ) 4 pcycle
+( c3 note maj7 ) ( f3 note maj7 )
+( g3 note 7 ) ( c3 note maj7 ) 4 pcycle chord
+sine snd
+.5 decay .3 chorus . 
 ```
 
 Arpeggiating a min7 chord across the frame using `at`:
@@ -237,17 +258,14 @@ Arpeggiating a min7 chord across the frame using `at`:
 A jazz vamp with smooth voice leading via `anchor`:
 
 ```forth
-( c4 note maj9 chord g4 anchor . )
-( a3 note min9 chord g4 anchor . )
-( d4 note min7 chord g4 anchor . )
-( g3 note 13   chord g4 anchor . )
+( c4 note maj9 chord )
+( a3 note min9 chord )
+( d4 note min7 chord )
+( g3 note 7   chord )
 4 pcycle
-```
-
-Random inversion of a fixed quality:
-
-```forth
-e3 min9 chord
-( ) ( 12 + ) 2 choose
-note modal snd .
+g4 anchor
+sine snd
+.2 chorus
+1 decay
+.
 ```

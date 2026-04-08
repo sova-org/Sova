@@ -78,9 +78,11 @@ Be careful with this. Numeric definitions are shared across frames just like any
 
 ```forth
 : double dup + ;
-3 double           ;; 6
+;; 6
+3 double
 "double" forget
-3 double           ;; double is gone, this just leaves the string "double" on the stack
+;; double is gone, this just leaves the string "double" on the stack
+3 double
 ```
 
 Once forgotten, the word is also removed from every other frame on their next evaluation. So you can clean up a temporary definition from one frame and the rest of your session stops seeing it.
@@ -88,7 +90,10 @@ Once forgotten, the word is also removed from every other frame on their next ev
 A common idiom is to wrap a one-shot definition in a frame that defines, uses, and forgets it in a single line:
 
 ```forth
-: tmp kick snd . ; tmp "tmp" forget
+: tmp kick snd . ;
+tmp
+...
+"tmp" forget
 ```
 
 `tmp` runs once, then is removed before the frame finishes, so it never leaks to other frames.
@@ -103,7 +108,12 @@ Two limits to know about:
 **Synth definitions** save you from repeating sound design:
 
 ```forth
-: pad "sine" snd 0.3 gain 2 attack 0.5 verb ;
+: pad 
+sine snd
+0.8 gain
+.2 chorus
+2 attack 0.5 verb 
+;
 ```
 
 **Transpositions** and musical helpers:
@@ -118,14 +128,14 @@ Two limits to know about:
 A word can contain `.` to emit sounds directly:
 
 ```forth
-: kick "kick" snd . ;
-: hat "hat" snd 0.4 gain . ;
+: boom "kick" snd . ;
+: bap "hat" snd 0.4 gain . ;
 ```
 
 Then a frame becomes trivial:
 
 ```forth
-kick hat
+boom bap
 ```
 
 Two sounds, two words, no clutter.

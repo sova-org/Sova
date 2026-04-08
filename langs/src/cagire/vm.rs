@@ -1371,12 +1371,13 @@ impl CagireVM {
                     if step == 0.0 {
                         return Err(CagireError::new("step cannot be zero", span!()));
                     }
-                    let ascending = step > 0.0;
+                    let step = step.abs();
+                    let descending = start > end;
                     let mut val = start;
                     let mut count = 0u32;
                     let sp = span!();
                     loop {
-                        if (ascending && val > end) || (!ascending && val < end) {
+                        if (descending && val < end) || (!descending && val > end) {
                             break;
                         }
                         count += 1;
@@ -1384,7 +1385,11 @@ impl CagireVM {
                             return Err(CagireError::new("range too large (max 10000)", span!()));
                         }
                         stack.push(float_to_value(val), sp);
-                        val += step;
+                        if descending {
+                            val -= step;
+                        } else {
+                            val += step;
+                        }
                     }
                 }
 
@@ -3463,5 +3468,83 @@ mod tests {
             eval("0 0.5 ( 0 0.5 ( [ c4 d4 e4 f4 ] cycle note . ) at ) at");
         assert_eq!(events.len(), 4);
         assert_eq!(get_midi_notes(&events), vec![60, 62, 64, 65]);
+    }
+
+    #[test]
+    fn step_range_ascending_float() {
+        assert_eq!(
+            eval_stack("0 1 0.25 .,"),
+            vec![
+                Value::Int(0),
+                Value::Float(0.25),
+                Value::Float(0.5),
+                Value::Float(0.75),
+                Value::Int(1),
+            ],
+        );
+    }
+
+    #[test]
+    fn step_range_ascending_int_step() {
+        assert_eq!(
+            eval_stack("0 10 2 .,"),
+            vec![
+                Value::Int(0),
+                Value::Int(2),
+                Value::Int(4),
+                Value::Int(6),
+                Value::Int(8),
+                Value::Int(10),
+            ],
+        );
+    }
+
+    #[test]
+    fn step_range_descending_simple() {
+        // The doc's own descending example. Previously produced an empty
+        // range because StepRange inferred direction from the sign of step.
+        assert_eq!(
+            eval_stack("1 0 0.5 .,"),
+            vec![Value::Int(1), Value::Float(0.5), Value::Int(0)],
+        );
+    }
+
+    #[test]
+    fn step_range_descending_fine() {
+        // 0.25 is exactly representable, so the 9 steps land on clean values.
+        assert_eq!(
+            eval_stack("2 0 0.25 .,"),
+            vec![
+                Value::Int(2),
+                Value::Float(1.75),
+                Value::Float(1.5),
+                Value::Float(1.25),
+                Value::Int(1),
+                Value::Float(0.75),
+                Value::Float(0.5),
+                Value::Float(0.25),
+                Value::Int(0),
+            ],
+        );
+    }
+
+    #[test]
+    fn step_range_single_point() {
+        assert_eq!(eval_stack("5 5 1 .,"), vec![Value::Int(5)]);
+    }
+
+    #[test]
+    fn step_range_zero_step_errors() {
+        assert!(eval_stack_result("0 1 0 .,").is_err());
+    }
+
+    #[test]
+    fn step_range_negative_step_is_abs() {
+        // A negative step is coerced via step.abs(); direction is always
+        // inferred from start vs end. So this is identical to 1 0 0.5 .,.
+        assert_eq!(
+            eval_stack("1 0 -0.5 .,"),
+            vec![Value::Int(1), Value::Float(0.5), Value::Int(0)],
+        );
     }
 }

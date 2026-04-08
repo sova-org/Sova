@@ -1,10 +1,7 @@
-# Tunings
+A *tuning* is a set of pitch positions inside a repeating period, measured in cents.
+It describes how a single repeating "octave" is divided, but says nothing yet about which of those positions you actually play. That's the job of a [scale](scales.md), built on top of a tuning.
 
-A *tuning* is a set of pitch positions inside a repeating period, measured in cents. It describes how a single repeating "octave" is divided, but says nothing yet about which of those positions you actually play. That's the job of a scale, built on top of a tuning.
-
-This separation lets you write microtonal music (19-EDO, just intonation, custom temperaments) using the same scale words as standard 12-tone material.
-
-Cagire ships with one tuning constructor for the common case (`edo`) and one for arbitrary intervals (`tuning`).
+This separation lets you write microtonal music (19-EDO, just intonation, custom temperaments) using the same scale words as standard 12-tone material. Cagire ships with one tuning constructor for the common case (`edo`) and one for arbitrary intervals (`tuning`).
 
 ## Equal divisions
 
@@ -16,9 +13,7 @@ Cagire ships with one tuning constructor for the common case (`edo`) and one for
 24 edo              ;; quarter-tones
 ```
 
-Stack effect: `(n -- tuning)`. The result is a tuning value with `n` evenly spaced steps from 0 to (but not including) 1200 cents.
-
-`12 edo` is the implicit tuning used by every built-in scale name like `major`, so you only need to call it explicitly when you want a non-12 division.
+Stack effect: `(n -- tuning)`. The result is a tuning value with `n` evenly spaced steps from 0 to (but not including) 1200 cents. `12 edo` is the implicit tuning used by every built-in scale name like [`major`](scales.md), so you only need to call it explicitly when you want a non-12 division.
 
 ## Custom tunings
 
@@ -49,3 +44,20 @@ Bohlen-Pierce divides a 3/1 "tritave" (1902 cents) into 13 equal steps instead o
 ```
 
 Anything that consumes a tuning (like `scale`) treats this exactly like 12-EDO. The period just happens to be 1902 cents instead of 1200, so degrees wrap every 13 steps instead of every 12.
+
+Build the tuning, pick a six-degree scale out of it, walk those degrees as a melody:
+
+```forth
+[ 146.3 292.6 438.9 585.2 731.5 877.8 1024.1 1170.4 1316.7
+  1463.0 1609.3 1755.6 ] 1902 tuning
+[ 0 2 4 6 8 10 ] swap scale
+c4 swap 0 1 2 3 4 5 6 cycle deg freq sine snd .
+```
+
+Same shape as any 12-EDO melody, just with a 13-step period under the hood.
+
+## See also
+
+- [Scales](scales.md): pick degrees out of a tuning and resolve them to frequencies with `deg`.
+- [Notes](notes.md): MIDI note literals, intervals, and `mtof` / `ftom` for moving between MIDI and Hz.
+- [Chords](chords.md): stack tuning-aware pitches into voicings.

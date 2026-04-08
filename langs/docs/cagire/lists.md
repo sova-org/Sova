@@ -1,5 +1,3 @@
-# Lists
-
 Square brackets collect values and push their count. `[ 60 64 67 ]` is exactly the same as typing `60 64 67 3`. Most variable arity words in Cagire expect that count on top of the stack, so brackets save you from counting items by hand.
 
 ```forth
@@ -14,25 +12,34 @@ Whitespace around `[` and `]` is required, same as for quotations.
 Numbers, note names, intervals, variables, arithmetic, nested brackets, even quotations.
 
 ```forth
-[ c4 c4 m3 + c4 P5 + ] note sine snd .   ;; minor triad via interval words
-[ @low @high rand ] note sine snd .       ;; one random note in a range
+;; minor triad via interval words
+[ c4 c4 m3 + c4 P5 + ] note
+sine snd .5 decay
+.
 ```
 
-The brackets compile and run their contents normally. Whatever ends up on the stack between `[` and `]` is what gets counted.
+```forth
+20 !low
+80 !high
+
+;; one random note in a range
+[ @low @high rand 60 ] cycle note 
+sine snd
+.
+```
+
+The brackets compile and run their contents normally.
+Whatever ends up on the stack between `[` and `]` is what gets counted.
 
 ## Words that pair with `[ ]`
 
 Any word with a stack signature like `(v1..vn n -- ...)` is happy to receive a bracketed list.
 
-| Group | Words | One liner |
-|---|---|---|
-| Cycling | `cycle`, `pcycle`, `bounce`, `pbounce`, `index` | `[ c4 e4 g4 ] cycle note sine snd .` |
-| Random selection | `choose`, `shuffle` | `[ kick snare hat ] choose snd .` |
-| Sub frame timing | `at` | `[ 0 0.25 0.5 0.75 ] ( hat snd . ) at` |
-| Polyphonic params | `note`, `freq`, `gain`, `n`, etc. | `[ 60 64 67 ] note sine snd .` |
-| Stack utilities | `dupn`, `rev`, `sort`, `rsort`, `sum`, `prod` | `[ 5 2 9 1 ] sort` |
-
-The polyphonic case is worth highlighting: if you give a parameter word more than one value, the next emit fans out into one event per value. So `[ 60 64 67 ] note sine snd .` plays a three note chord with no chord quality system involved at all.
+* **Cycling.** `cycle`, `pcycle`, `bounce`, `pbounce`, `index`. Example: `[ c4 e4 g4 ] cycle note sine snd .`
+* **Random selection.** `choose`, `shuffle`. Example: `[ kick snare hat ] choose snd .`
+* **Sub frame timing.** `at`. Example: `[ 0 0.25 0.5 0.75 ] ( hat snd . ) at`
+* **Polyphonic params.** `note`, `freq`, `gain`, `n`, etc. Example: `[ 60 64 67 ] note sine snd .`
+* **Stack utilities.** `dupn`, `rev`, `sort`, `rsort`, `sum`, `prod`. Example: `[ 5 2 9 1 ] sort`
 
 For the full picker family see *Cycling* and *Randomness*. For `at` deltas see *Timing*.
 
@@ -54,12 +61,3 @@ Brackets nest. Each pair produces its own count, independent of the others.
 
 The inner cycles each pick one item per frame. The outer brackets then choose between the two picked values.
 
-## Curly braces
-
-There is one more bracket form: `{ }`. It is stripped before compilation and produces no code at all. Pure visual grouping for dense lines:
-
-```forth
-{ kick snd } { 0.5 gain } { 0.3 verb } .
-```
-
-That compiles to exactly `kick snd 0.5 gain 0.3 verb .`. Use it when a long parameter chain is hard to read at a glance.

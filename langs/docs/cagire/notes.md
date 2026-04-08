@@ -63,12 +63,12 @@ A bare note literal sits on the stack as an integer. To make a sound use it as t
 An interval word duplicates the top of the stack and adds semitones. This is the canonical way to build chords and voicings without typing out raw MIDI numbers:
 
 ```forth
-c4 M3 P5       ;; stack: 60 64 67  (C major triad)
-c4 m3 P5       ;; stack: 60 63 67  (C minor triad)
+c4 M3 m3       ;; stack: 60 64 67  (C major triad)
+c4 m3 M3       ;; stack: 60 63 67  (C minor triad)
 a3 P5          ;; stack: 57 64     (A plus a fifth above)
 ```
 
-`M3` is exactly `dup 4 +`. So `c4 M3 P5` desugars to `60 dup 4 + dup 7 +`, which leaves the three triad notes on the stack in ascending order. To turn a stack of MIDI numbers into a polyphonic emit, see the [Chords](#) article. The short version is "use as many `note` calls as you want or use `chord`."
+`M3` is exactly `dup 4 +`. Each interval adds its semitone count to the *top* of the stack, not to the original root. So chords are built by stacking thirds (or any other intervals), listing the gap from each note to the next. `c4 M3 m3` desugars to `60 dup 4 + dup 3 +`, which leaves `60 64 67` on the stack. To turn a stack of MIDI numbers into a polyphonic emit, see the [Chords](#) article. The short version is "use as many `note` calls as you want or use `chord`."
 
 Simple intervals (within one octave):
 
@@ -140,7 +140,7 @@ This is also the bridge between [Scales](#) (which return Hz from `deg`) and osc
 Stacked intervals for a custom voicing:
 
 ```forth
-c3 P5 P8 M10    ;; C3, G3, C4, E4
+c3 P5 P4 M3    ;; C3, G3, C4, E4
 note sine snd .
 ```
 
@@ -151,9 +151,9 @@ c3 12 - 0 2 4 5 7 5 4 2 8 cycle + note
 sine snd .
 ```
 
-A simple two-octave arpeggio:
+A two-octave major arpeggio:
 
 ```forth
-c4 M3 P5 P8 M10 P12 P15
+c4 M3 m3 P4 M3 m3 P4
 note modal snd .
 ```

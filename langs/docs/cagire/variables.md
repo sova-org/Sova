@@ -112,7 +112,7 @@ Store a sound name in a variable, reuse it across frames:
 
 ```forth
 ;; frame A: choose the sound
-"sine" !L.synth
+sine !L.synth
 
 ;; frame B, C, D...
 c4 note @L.synth snd .

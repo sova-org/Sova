@@ -8,6 +8,7 @@ use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, Referen
 
 use super::compiler::Dictionary;
 use super::interpreter::CagireInterpreter;
+use super::theory::chords::CHORDS;
 use super::words::WORDS;
 
 pub struct CagireInterpreterFactory {
@@ -201,6 +202,43 @@ impl Language for CagireInterpreterFactory {
                 String,
                 r"\b(?:unison|aug11|aug4|dim5|M1[034]|m1[034]|M[23679]|m[23679]|P1[125]|P[1458])\b",
             ),
+        ]);
+
+        // Chord qualities sourced from theory::chords::CHORDS so the highlighter
+        // and the compiler stay in sync. Filtered to word-shaped identifiers so
+        // the \b...\b form is enough, placed after the interval rule so
+        // overlapping short aliases (M7, m7, M6, ...) stay colored as intervals,
+        // and stripped of any name that the WORDS table already claims (e.g.
+        // `min` / `max` are arithmetic words, not the minor chord quality).
+        let mut chord_qualities: Vec<&str> = Vec::new();
+        for chord in CHORDS {
+            for name in std::iter::once(chord.name).chain(chord.aliases.iter().copied()) {
+                let bytes = name.as_bytes();
+                if bytes.len() < 2 {
+                    continue;
+                }
+                if !bytes[0].is_ascii_alphabetic() {
+                    continue;
+                }
+                if !name.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    continue;
+                }
+                if builtin_words.contains(&name)
+                    || symbol_words.contains(&name)
+                    || special_words.contains(&name)
+                {
+                    continue;
+                }
+                if !chord_qualities.contains(&name) {
+                    chord_qualities.push(name);
+                }
+            }
+        }
+        if !chord_qualities.is_empty() {
+            rules.push(SyntaxRule::new(Special, &word_pattern(&chord_qualities)));
+        }
+
+        rules.extend([
             SyntaxRule::new(Number, r"-?(?:\d+/-?\d+|\.?\d+(?:\.\d+)?)"),
             SyntaxRule::new(Special, r"\."),
             SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
@@ -342,6 +380,64 @@ mod tests {
         for (tok, cat) in &tokens {
             assert_eq!(*cat, String, "note {tok} should be String (green)");
         }
+    }
+
+    #[test]
+    fn syntax_chord_qualities_are_special() {
+        use TokenCategory::*;
+        // `min` is intentionally absent: it is also the arithmetic word
+        // (minimum of two numbers) and is kept on Builtin so the editor
+        // reflects its primary meaning. Use `minor` or `m` for minor chords.
+        let chord_names = [
+            "maj", "major", "minor", "dim", "aug", "sus2", "sus4", "maj6", "min6", "maj7", "min7",
+            "dom7", "dim7", "aug7", "minmaj7", "dom9", "maj9", "min9", "dom11", "maj11", "min11",
+            "dom13", "maj13", "min13", "add9", "madd9", "dom7b9", "dom7s11", "maj7s11", "alt",
+            "pwr", "m7b5",
+        ];
+        let tokens = categories_for(&chord_names.join(" "));
+        for name in chord_names {
+            let found = tokens.iter().find(|(t, _)| t == name);
+            assert!(
+                found.is_some(),
+                "chord quality {name} should be highlighted as a single token"
+            );
+            assert_eq!(
+                found.unwrap().1,
+                Special,
+                "chord quality {name} should be Special, got {:?}",
+                found.unwrap().1
+            );
+        }
+
+        // Overlapping aliases with interval names must stay on the interval rule
+        // so `c4 M7 +` keeps reading as "c4, major seventh interval, plus".
+        // (M11/m11 are not in the interval regex, so they fall through to the
+        // chord rule and are not checked here.)
+        let tokens = categories_for("M6 m6 M7 m7 M9 m9 M13 m13");
+        for (tok, cat) in &tokens {
+            assert_eq!(
+                *cat, String,
+                "{tok} should stay as an interval (String), not be stolen by the chord rule"
+            );
+        }
+
+        // Numeric chord aliases (5, 6, 7, 9, 11, 13) must stay as Number,
+        // not be stolen by the chord rule.
+        let tokens = categories_for("5 6 7 9 11 13");
+        for (tok, cat) in &tokens {
+            assert_eq!(
+                *cat, Number,
+                "{tok} should stay as a Number, not be stolen by the chord rule"
+            );
+        }
+
+        // `min` is an arithmetic word and must stay on Builtin.
+        let tokens = categories_for("min");
+        let min = tokens.iter().find(|(t, _)| t == "min").expect("min token");
+        assert_eq!(
+            min.1, Builtin,
+            "min should stay Builtin (arithmetic word), not become a chord quality"
+        );
     }
 }
 

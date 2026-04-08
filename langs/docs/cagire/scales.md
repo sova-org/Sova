@@ -1,18 +1,24 @@
-# Scales
+A *scale* picks an ordered list of degree indices from a tuning. Each index points at a step in the tuning's cents table. `0` is the root, `1` is the first step, and so on. Once you have a scale, `deg` resolves a degree against a root note and returns a frequency in Hz, ready to feed into a synth's `freq` parameter. See the [Tunings](tunings.md) article for how to build the tuning a scale sits on top of. Every example below uses `12 edo` unless noted, but the same words work over any tuning.
 
-A *scale* picks an ordered list of degree indices from a tuning. Each index points at a step in the tuning's cents table. `0` is the root, `1` is the first step, and so on. Once you have a scale, `deg` resolves a degree against a root note and returns a frequency in Hz, ready to feed into a synth's `freq` parameter.
+## Quick start
 
-See the Tunings article for how to build the tuning a scale sits on top of. Every example below uses `12 edo` unless noted, but the same words work over any tuning.
+If you don't know anything about scales yet and just want notes coming out of a synth, this one-liner is the shortest path:
+
+```forth
+c4 minor 0 7 rand deg freq
+sine snd .
+```
+
+Read left to right: "root is middle C, scale is minor, pick a random degree between 0 and 7, turn it into a frequency, feed it to a sine, play it." Swap `minor` for any other name from the built-in scales list further down (`dorian`, `blues`, `pentatonic`, `harmonicminor`, ...) to change the mood. Swap `c4` to move everything up or down. Everything else in this article builds on that pattern.
 
 ## Building a scale
 
 ```forth
+;; This is the major scale built from scratch
 [ 0 2 4 5 7 9 11 ] 12 edo scale
 ```
 
-Stack effect: `([i1 i2 ...] tuning -- scale)`. The example above builds a major scale from 12-EDO: it picks tuning steps `0, 2, 4, 5, 7, 9, 11`, which correspond to `C, D, E, F, G, A, B`.
-
-Each index in the list must be a valid step in the tuning (0 through `tuning_size - 1`) and indices must be unique. Order matters: it determines the degree numbering, so `[ 0 2 4 5 7 9 11 ]` and `[ 0 4 7 11 5 9 2 ]` are technically the same set of notes but different scales for `deg` purposes.
+Stack effect: `([i1 i2 ...] tuning -- scale)`. The example above builds a major scale from 12-EDO: it picks tuning steps `0, 2, 4, 5, 7, 9, 11`, which correspond to `C, D, E, F, G, A, B`. Each index in the list must be a valid step in the tuning (0 through `tuning_size - 1`) and indices must be unique. Order matters: it determines the degree numbering, so `[ 0 2 4 5 7 9 11 ]` and `[ 0 4 7 11 5 9 2 ]` are technically the same set of notes but different scales for `deg` purposes.
 
 ## Built-in scales
 
@@ -68,6 +74,24 @@ Stack effect: `(root scale degree -- hz)`. The result is a frequency, not a MIDI
 c4 minor 0 deg freq sine snd .
 ```
 
+### `note` vs `deg`
+
+This is the most common point of confusion, so it's worth calling out. `note` (from the [Notes](notes.md) article) and `deg` look like they do similar jobs but they sit in different slots in the emit pipeline:
+
+- `note` is a setter. You hand it a MIDI number and it stores it on the emit. Nothing lands back on the stack. `c4 note sine snd .` plays middle C.
+- `deg` is a computation. It takes `(root scale degree -- hz)` and returns a frequency on the stack. It never touches the emit by itself. `c4 minor 0 deg` just leaves `261.63` sitting there until you do something with it.
+
+So they don't replace each other. `deg` is partnered with `freq`, not with `note`:
+
+```forth
+c4 note sine snd .              ;; MIDI path, whole semitones
+c4 minor 0 deg freq sine snd .  ;; scale path, frequency in Hz
+```
+
+Why the split? MIDI notes are whole numbers from 0 to 127. Tunings can be microtonal: 19-EDO, Bohlen-Pierce, Pythagorean, anything in between. If `deg` stored a MIDI integer, every fractional-cent pitch would get rounded to the nearest semitone and custom tunings would be pointless. Returning Hz keeps the precision alive all the way to the oscillator.
+
+Rule of thumb: if you have a specific pitch in mind, reach for `note`. If you're thinking in scale degrees ("walk up the scale", "pick the third", "grab a random one"), reach for `deg` + `freq`.
+
 ### Wrapping behavior
 
 `deg` wraps degrees over the scale length and adds full periods when you cross a boundary, so degrees outside `0..len` always resolve to *something musical* rather than failing:
@@ -82,7 +106,8 @@ So for a 7-degree scale, degree `7` is the same step as degree `0` but one perio
 Combined with `cycle` or `index`, `deg` becomes a melody generator:
 
 ```forth
-c4 minor 0 1 2 3 4 5 6 7 8 cycle deg freq sine snd .
+c4 minor [ 0 1 2 3 4 5 6 7 ] cycle deg freq
+sine snd .
 ```
 
 This walks the C minor scale from degree 0 through 7 and back, picking the next degree on every frame trigger. Add `at` for sub-frame motion:
@@ -95,42 +120,18 @@ This walks the C minor scale from degree 0 through 7 and back, picking the next 
 ) at
 ```
 
-Random degrees from a scale:
-
-```forth
-0 7 rand minor c4 swap deg freq sine snd .
-```
-
 ## Putting It Together
 
 A simple bass line walking degrees of C minor:
 
 ```forth
 c2 minor [ 0 2 4 5 7 5 4 2 ] cycle deg freq
-0.8 gain sine snd .
+0.8 gain pulse snd 500 1000.0 rand lpf .
 ```
 
 A custom 19-EDO scale with seven degrees:
 
 ```forth
-[ 0 3 6 8 11 14 17 ] 19 edo scale          ;; major-ish in 19-EDO
+[ 0 3 6 8 11 14 17 ] 19 edo scale
 c4 swap 0 deg freq sine snd .
-```
-
-Modal interchange. Switch the parent rotation per line:
-
-```forth
-( 0 ) ( 1 ) ( 2 ) ( 5 ) 4 pcycle major mode
-c4 swap 0 1 2 3 cycle deg freq
-sine snd .
-```
-
-A Bohlen-Pierce scale (13 equal divisions of 1902 cents) used for melody:
-
-```forth
-[ 146.3 292.6 438.9 585.2 731.5 877.8 1024.1 1170.4 1316.7
-  1463.0 1609.3 1755.6 ] 1902 tuning
-[ 0 2 4 6 8 10 ] swap scale       ;; 6-degree subset
-c4 swap 0 1 2 3 4 5 6 cycle deg freq
-sine snd .
 ```
