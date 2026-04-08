@@ -164,6 +164,6 @@ Eight notes per frame. Every fourth one louder.
 The words on this page are the explicit branching and looping primitives. Cagire has more ways to conditionally run code, each with its own page:
 
 - [Quotations](quotations.md) for the `( ... )` syntax that `?`, `!?`, `ifelse`, `select`, `apply` and `times` all rely on.
-- [Randomness](randomness.md) for probability-driven execution: `chance`, `prob`, `sometimes`, `rarely`, `often`, `always`, `never`.
+- [Probability](probability.md) for probability-driven execution: `chance`, `prob`, `sometimes`, `rarely`, `often`, `always`, `never`.
 - [Periodic](periodic.md) for time-indexed execution: `every`, `except`, `every+`, `except+`, `bjork`, `pbjork`.
 - [Generators](generators.md) for `gen` and friends, when you want a quotation to produce a sequence of values.

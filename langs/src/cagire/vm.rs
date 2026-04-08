@@ -848,6 +848,56 @@ impl CagireVM {
                     }
                 }
 
+                Op::First(word_span) => {
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 {
+                        return Err(CagireError::new("first count must be > 0", span!()));
+                    }
+                    let hit = (ctx.iter as i64) < n;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::After(word_span) => {
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n < 0 {
+                        return Err(CagireError::new("after count must be >= 0", span!()));
+                    }
+                    let hit = (ctx.iter as i64) >= n;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::Once(word_span) => {
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    let hit = ctx.iter == 0;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
                 Op::Bjork(word_span) | Op::PBjork(word_span) => {
                     let n = at!(stack.pop_int())?;
                     let k = at!(stack.pop_int())?;
@@ -3546,5 +3596,69 @@ mod tests {
             eval_stack("1 0 -0.5 .,"),
             vec![Value::Int(1), Value::Float(0.5), Value::Int(0)],
         );
+    }
+
+    // --- sectional gating: first / after / once ---
+
+    fn eval_with_iter(script: &str, iter: usize) -> Vec<(ConcreteEvent, SyncTime)> {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        eval_ctx.line_iterations = iter;
+        vm.evaluate(script, &mut eval_ctx).unwrap()
+    }
+
+    #[test]
+    fn test_first_fires_before_n() {
+        let script = "( c4 note . ) 8 first";
+        for iter in [0usize, 3, 7] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+        for iter in [8usize, 9, 100] {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_first_rejects_zero() {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        assert!(vm.evaluate("( c4 note . ) 0 first", &mut eval_ctx).is_err());
+    }
+
+    #[test]
+    fn test_after_fires_from_n() {
+        let script = "( c4 note . ) 8 after";
+        for iter in 0usize..8 {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+        for iter in [8usize, 9, 100] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_after_zero_always_fires() {
+        let script = "( c4 note . ) 0 after";
+        for iter in [0usize, 1, 5, 100] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_once_only_iter_zero() {
+        let script = "( c4 note . ) once";
+        let events = eval_with_iter(script, 0);
+        assert_eq!(get_midi_notes(&events), vec![60]);
+        for iter in [1usize, 5, 1000] {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
     }
 }

@@ -27,7 +27,7 @@ Each of the following words pops one quotation off the stack (sometimes plus ext
 
 * **Conditional.** `?`, `!?`, `ifelse`, `select`, `apply`, `map`.
 * **Looping.** `times` (the iteration index is `@i`).
-* **Probability.** `chance`, `prob`, `always`, `often`, `sometimes`, `rarely`, `almostAlways`, `almostNever`, `never`. See *Randomness*.
+* **Probability.** `chance`, `prob`, `always`, `often`, `sometimes`, `rarely`, `almostAlways`, `almostNever`, `never`. See *Probability*.
 * **Periodic.** `every`, `except`, `every+`, `except+`, `bjork`, `pbjork`. See *Periodic Execution*.
 * **Sub frame timing.** `at`. See *Timing*.
 * **Generation.** `gen`.

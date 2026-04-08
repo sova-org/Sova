@@ -119,7 +119,7 @@ pub struct ClientBridge {
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
     pub mutation_flashes: HashMap<(usize, usize), Instant>,
 
-    // Latest compilation error for toast display
+    // Latest error (compile or runtime) for toast display
     pub last_error: Option<(String, Instant)>,
 
     // Incoming script edits from peers
@@ -608,6 +608,10 @@ impl ClientBridge {
                     self.annotations = a;
                 }
                 ServerMessage::Notification(SovaNotification::Error(e)) => {
+                    self.last_error = Some((
+                        format!("L{}:F{} — {}", e.line, e.frame, e.text),
+                        Instant::now(),
+                    ));
                     self.errors.insert((e.line, e.frame), e);
                 }
                 ServerMessage::FeedbackEnabled {

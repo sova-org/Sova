@@ -1,5 +1,3 @@
-# Periodic Execution
-
 Periodic execution words run a quotation only on certain iterations of a line, leaving it dormant the rest of the time. They are how you build patterns like "kick on every beat, snare on every fourth, crash once a bar, hi-hats following a Euclidean rhythm" without writing any conditional logic by hand.
 
 All the words in this article are deterministic. They read the line iteration counter (`iter`) and decide whether to fire. Same iteration, same decision. They don't care about wall-clock time, just about how many times the line has been visited.
@@ -89,6 +87,47 @@ Some classic Euclidean patterns:
 | 3 | 7 | Ruchenitza |
 | 7 | 12 | West African |
 
+## Sectional gating
+
+The following words also read `iter`, but they gate a line over a *section* of its life rather than on a repeating schedule. They are how you write intros, drops, and "this voice plays from iteration 16 onward" without reaching for counters.
+
+### first
+
+`first` fires only on the first `n` iterations, then stays silent:
+
+```forth
+( roll snd 0.4 gain . ) 16 first    ;; roll for 16 iterations, then gone
+```
+
+Stack effect: `(quot n --)`.
+
+### after
+
+`after` is the complement. Silent for `n` iterations, then fires on every one after that:
+
+```forth
+( kick snd . ) 16 after    ;; silent for 16, then steady kick
+```
+
+Stack effect: `(quot n --)`. Pair `first` with `after` using the same `n` to hand a voice off at a bar boundary:
+
+```forth
+( roll snd . ) 16 first
+( kick snd . ) 16 after
+```
+
+`after 0` is a valid no-op gate: it fires on every iteration. That lets you flip the count from `0` to `16` as a programmable "silence then drop" knob without restructuring the line.
+
+### once
+
+`once` fires only on iteration 0. Sugar for the common "do this exactly when the line starts" case:
+
+```forth
+( crash snd . ) once    ;; one hit on the downbeat, then done
+```
+
+Stack effect: `(quot --)`. No count needed.
+
 ## Layering Periodic Words
 
 Periodic words compose freely. The most common pattern is to layer several voices, each with its own firing rule:
@@ -101,7 +140,7 @@ Periodic words compose freely. The most common pattern is to layer several voice
 ( crash snd . ) 32 every
 ```
 
-(`always` lives in the [Randomness](#) article. It just unconditionally executes the quotation, useful for muting voices by swapping `always` for `never` without restructuring the code.)
+(`always` lives in the [Probability](#) article. It just unconditionally executes the quotation, useful for muting voices by swapping `always` for `never` without restructuring the code.)
 
 A Euclidean drum kit with phase-offset accents:
 
@@ -112,4 +151,4 @@ A Euclidean drum kit with phase-offset accents:
 ( ride snd . ) 7 16 bjork
 ```
 
-For *cycling through values* on each iteration (rather than gating execution), see the [Cycling](#) article. For sub-frame timing within a single iteration, see [Timing](#). The `at` word splits a single frame into evenly-spaced sub-events and pairs naturally with these periodic words.
+For *cycling through values* on each iteration (rather than gating execution), see the [Cycling](#) article. For sub-frame timing within a single iteration, see [Timing](#). The `at` word splits a single frame into evenly-spaced sub-events and pairs naturally with these periodic words. For the wider framing of periodic gating as parameter modulation, see [Control Rate Modulation](#).

@@ -1,5 +1,3 @@
-# Cycling
-
 Cycling steps through values *deterministically*. There is no randomness involved. These words rotate through a list based on an internal counter, so the same script produces the same sequence every time. They are the workhorse of pattern-style live coding: build a list of values, hand it to a cycling word, and let the counter walk through them as the frame triggers.
 
 The two counters that drive cycling come from the runtime context:
@@ -107,4 +105,4 @@ c4 swap [ 0 2 4 7 ] cycle deg freq
 sine snd .
 ```
 
-For periodic firing (run a quotation *every nth iteration*) rather than picking from a list, see the [Periodic Execution](#) article.
+For periodic firing (run a quotation *every nth iteration*) rather than picking from a list, see the [Periodic Execution](#) article. For the wider framing of cycling as a way to modulate parameters, see [Control Rate Modulation](#).

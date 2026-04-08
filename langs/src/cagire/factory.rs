@@ -64,6 +64,14 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/variables.md").into(),
         ));
         doc.articles.push((
+            "Audio Engine".into(),
+            include_str!("../../docs/cagire/audio_engine.md").into(),
+        ));
+        doc.articles.push((
+            "Static Parameters".into(),
+            include_str!("../../docs/cagire/static_params.md").into(),
+        ));
+        doc.articles.push((
             "Notes".into(),
             include_str!("../../docs/cagire/notes.md").into(),
         ));
@@ -88,6 +96,10 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/randomness.md").into(),
         ));
         doc.articles.push((
+            "Probability".into(),
+            include_str!("../../docs/cagire/probability.md").into(),
+        ));
+        doc.articles.push((
             "Cycling".into(),
             include_str!("../../docs/cagire/cycling.md").into(),
         ));
@@ -98,6 +110,14 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push((
             "Timing".into(),
             include_str!("../../docs/cagire/timing.md").into(),
+        ));
+        doc.articles.push((
+            "Control Rate Modulation".into(),
+            include_str!("../../docs/cagire/control_rate_params.md").into(),
+        ));
+        doc.articles.push((
+            "Audio Rate Modulation".into(),
+            include_str!("../../docs/cagire/audio_rate_params.md").into(),
         ));
         doc.articles.push((
             "MIDI".into(),

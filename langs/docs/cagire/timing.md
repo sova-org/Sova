@@ -11,7 +11,7 @@ Every frame has a duration. By default, sounds emit at the very start of that du
 0 0.25 0.5 0.75 ( hat snd . ) at  ;; four hats, evenly spaced
 ```
 
-Each iteration gets its own independent state. Nondeterministic ops (rand, choose, coin) roll fresh values per delta:
+Each iteration gets its own independent state. Nondeterministic ops (rand, choose, coin) roll fresh values per delta. This is also how you get control rate modulation faster than the frame rate: see [Control Rate Modulation](#).
 
 ```forth
 0 0.5 ( kick snd 1 4 rand n . ) at   ;; different random sample each hit
