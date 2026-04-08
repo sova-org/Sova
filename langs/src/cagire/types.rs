@@ -312,7 +312,6 @@ pub(super) struct CmdRegister {
     sound: Option<Value>,
     chord: Option<Value>,
     params: Vec<(&'static str, Value)>,
-    global_params: Vec<(&'static str, Value)>,
     delta_secs: Option<f64>,
 }
 
@@ -322,7 +321,6 @@ impl CmdRegister {
             sound: None,
             chord: None,
             params: Vec::with_capacity(16),
-            global_params: Vec::new(),
             delta_secs: None,
         }
     }
@@ -375,33 +373,10 @@ impl CmdRegister {
         }
     }
 
-    pub(super) fn global_params(&self) -> &[(&'static str, Value)] {
-        &self.global_params
-    }
-
-    pub(super) fn commit_global(&mut self) {
-        self.global_params.append(&mut self.params);
-        self.sound = None;
-        self.chord = None;
-    }
-
-    pub(super) fn clear_global(&mut self) {
-        self.global_params.clear();
-    }
-
-    pub(super) fn set_global(&mut self, params: Vec<(&'static str, Value)>) {
-        self.global_params = params;
-    }
-
-    pub(super) fn take_global(&mut self) -> Vec<(&'static str, Value)> {
-        std::mem::take(&mut self.global_params)
-    }
-
     /// Capture the per-event state (sound, chord, params, delta_secs) so it
     /// can be restored later. Used by `at` to give every subdivision a fresh
     /// copy of the outer scope's state and to leave the cmd register
-    /// untouched after the loop completes. `global_params` is intentionally
-    /// excluded — globals are scoped per-frame, not per-event.
+    /// untouched after the loop completes.
     pub(super) fn snapshot_state(&self) -> CmdState {
         CmdState {
             sound: self.sound.clone(),

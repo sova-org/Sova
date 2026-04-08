@@ -1,64 +1,77 @@
 # Control Flow
 
-Sometimes a frame should behave differently depending on context: a coin flip, which iteration of the line is playing. Control flow words let you branch, choose, and repeat inside a frame's script.
+Every programming language comes with control flow mechanisms to create loops, conditions, to write logical processes, etc. Cagire comes with a fairly large set of tools and words that you can use to control the flow of your programs. Some are more useful than others, and some are more _idiomatic_ (forth-like) than others. Pick the ones that make sense to you and go with the flow!
 
 ## if / else / then
 
-The simplest branch. Push a condition, then `if`:
+Push a condition to the stack, then use `if` to branch. This example will sometimes play a note, sometimes not:
 
 ```forth
-coin if 0.8 gain then
-saw snd c4 note .
+;; coin is producing either 0 (false) or 1 (true)
+coin if
+tri snd c5 note .
+then
 ```
-
-The gain is applied if the coin flip is true. The sound always plays. Add `else` for a two-way split:
+Add `else` for a two-way split. Here we will have either a very high pitched note or a low pitched one:
 
 ```forth
 coin if
-  c4 note
+  c6 note
 else
   c3 note
 then
-saw snd 0.6 gain .
+saw snd 0.6 gain .1 decay .
 ```
 
 ## ? and !?
 
-When you already have a quotation, `?` executes it if the condition is truthy:
+This control flow construct plays with quotations. Quotations are fragments of a program that are inactive unless you activate them somehow. `?` and `?!` are able to activate them. Push a quotation to the stack. If some given condition is true, the `?`/`?!` words will execute it:
 
 ```forth
+;; We have 50/50 chance of adding reverb
 ( 0.4 verb ) coin ?
-saw snd c4 note 0.5 gain .    ;; reverb on half the hits
+saw snd
+c4 note
+0.5 gain
+.
 ```
 
-`!?` is the opposite. Executes when falsy:
+`!?` is the opposite. Executes the quotation when falsy:
 
 ```forth
 ( 0.2 gain ) coin !?
-saw snd c4 note .              ;; quiet on half the hits
+saw snd
+c4 note
+.              ;; quiet on half the hits
 ```
 
-These pair well with `chance`, `prob`, and the other probability words:
+These pair well with `chance`, `prob` and other probability words:
 
 ```forth
 ( 0.5 verb ) 0.3 chance ?      ;; occasional reverb wash
 ( 12 + ) coin ?                 ;; octave up on coin flip
 ```
 
+You will notice that they are used more often than `if`/`then`/`else` and long form counterparts.
+
 ## ifelse
 
 Two quotations, one condition. The true branch comes first:
 
 ```forth
+;; bass or lead, coin flip
 ( c3 note ) ( c4 note ) coin ifelse
-saw snd 0.6 gain .                ;; bass or lead, coin flip
+saw snd
+5000 500 0.25 slide lpf
+0.9 lpq
+0.6 gain
+.
 ```
 
-Reads naturally: "c3 or c4, depending on the coin."
-
 ```forth
-( 0.8 gain ) ( 0.3 gain ) coin ifelse
-tri snd c4 note 0.2 decay .      ;; loud or quiet, coin flip
+;; kick or cymbal
+( kick snd . )
+( cymbal snd . ) coin ifelse
 ```
 
 ## select
@@ -66,18 +79,22 @@ tri snd c4 note 0.2 decay .      ;; loud or quiet, coin flip
 Choose the nth option from a list of quotations:
 
 ```forth
-( c4 ) ( e4 ) ( g4 ) ( b4 ) iter 4 mod select
-note sine snd 0.5 decay .
+;; Pick a random note from four different quotations
+( c4 ) ( e4 ) ( g4 ) ( b4 ) 0 3 rand select note
+sine snd
+0.5 decay
+2 1 0.1 slide fm
+.5 delay .25 delaytime
+.
 ```
-
-Four notes cycling through a major seventh chord, one per line iteration. The index is 0-based.
 
 ## apply
 
 When you have a quotation and want to execute it unconditionally, use `apply`:
 
 ```forth
-( dup + ) apply    ;; doubles the top value
+;; this will just unquote 'dup +' which will execute it
+( dup + ) apply
 ```
 
 This is simpler than `?` when there is no condition to check. It pops the quotation and runs it.
@@ -93,7 +110,10 @@ iter 4 mod case
   2 of g3 note endof
   3 of a3 note endof
 endcase
-saw snd 0.6 gain 800 lpf .
+saw snd
+0.6 gain
+800 lpf 
+.
 ```
 
 A different root note each time the line loops.
@@ -103,14 +123,15 @@ The last line before `endcase` is the default. It runs when no `of` matched:
 ```forth
 iter 3 mod case
   0 of 0.9 gain endof
-  0.4 gain              ;; default: quieter
+  ;; default: quieter
+  0.4 gain
 endcase
 saw snd c4 note .
 ```
 
 ## times
 
-Repeat a quotation n times. The variable `@i` is automatically set to the current iteration index (starting from 0):
+Repeat a quotation _n_ times. The variable `@i` is automatically set to the current iteration index (starting from 0):
 
 ```forth
 3 ( c4 @i 4 * + note ) times
@@ -137,3 +158,12 @@ Vary intensity per iteration:
 ```
 
 Eight notes per frame. Every fourth one louder.
+
+## See also
+
+The words on this page are the explicit branching and looping primitives. Cagire has more ways to conditionally run code, each with its own page:
+
+- [Quotations](quotations.md) for the `( ... )` syntax that `?`, `!?`, `ifelse`, `select`, `apply` and `times` all rely on.
+- [Randomness](randomness.md) for probability-driven execution: `chance`, `prob`, `sometimes`, `rarely`, `often`, `always`, `never`.
+- [Periodic](periodic.md) for time-indexed execution: `every`, `except`, `every+`, `except+`, `bjork`, `pbjork`.
+- [Generators](generators.md) for `gen` and friends, when you want a quotation to produce a sequence of values.

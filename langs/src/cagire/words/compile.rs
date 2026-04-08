@@ -86,8 +86,6 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "mode" => Op::Mode,
         "deg" => Op::Deg,
         "chord" => Op::SetChord,
-        "all" => Op::EmitAll,
-        "noall" => Op::ClearGlobal,
         "rec" => Op::Rec,
         "overdub" | "dub" => Op::Overdub,
         "orec" => Op::Orec,

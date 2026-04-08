@@ -85,10 +85,13 @@ pub(super) struct CagireVM {
     pub vars: HashMap<String, Value>,
     pub dict: Dictionary,
     pub rng: StdRng,
-    global_params: Vec<(&'static str, Value)>,
     pub resolved: Vec<(Span, ResolvedValue)>,
     pub selected: Vec<Span>,
     pub event_annotations: Vec<Vec<Span>>,
+    /// Names removed by `Op::Forget` during the most recent evaluation.
+    /// Read by the interpreter to propagate removals back to the shared
+    /// dictionary so other frames stop seeing the forgotten word.
+    pub forgotten: Vec<String>,
     active_emit_annotations: Vec<Span>,
 }
 
@@ -100,10 +103,10 @@ impl CagireVM {
             vars: HashMap::new(),
             dict: Dictionary::new(),
             rng: StdRng::from_os_rng(),
-            global_params: Vec::new(),
             resolved: Vec::new(),
             selected: Vec::new(),
             event_annotations: Vec::new(),
+            forgotten: Vec::new(),
             active_emit_annotations: Vec::new(),
         }
     }
@@ -114,10 +117,10 @@ impl CagireVM {
             vars: HashMap::new(),
             dict,
             rng: StdRng::from_os_rng(),
-            global_params: Vec::new(),
             resolved: Vec::new(),
             selected: Vec::new(),
             event_annotations: Vec::new(),
+            forgotten: Vec::new(),
             active_emit_annotations: Vec::new(),
         }
     }
@@ -132,6 +135,7 @@ impl CagireVM {
         self.resolved.clear();
         self.selected.clear();
         self.event_annotations.clear();
+        self.forgotten.clear();
         self.active_emit_annotations.clear();
         if script.trim().is_empty() {
             return Err(CagireError::new("empty script", Span::default()));
@@ -141,9 +145,7 @@ impl CagireVM {
         let mut stack = Stack::new();
         let mut events = Vec::with_capacity(8);
         let mut cmd = CmdRegister::new();
-        cmd.set_global(self.global_params.clone());
         self.execute_ops(&ops, &spans, &sctx, ctx, &mut stack, &mut events, &mut cmd)?;
-        self.global_params = cmd.take_global();
         Ok(events)
     }
 
@@ -1686,38 +1688,6 @@ impl CagireVM {
                     stack.push(Value::Int(val), span!());
                 }
 
-                Op::EmitAll => {
-                    if !cmd.params().is_empty() {
-                        for (event, _) in events.iter_mut() {
-                            if let ConcreteEvent::Generic(VariableValue::Map(args), ..) = event {
-                                for (k, v) in cmd.params() {
-                                    if *k == "device" {
-                                        continue;
-                                    }
-                                    let param_str = v.to_param_string();
-                                    if let Ok(f) = param_str.parse::<f64>() {
-                                        if is_tempo_scaled_param(k) {
-                                            args.insert(
-                                                k.to_string(),
-                                                VariableValue::Float(f * ctx.step_duration),
-                                            );
-                                        } else {
-                                            args.insert(k.to_string(), VariableValue::Float(f));
-                                        }
-                                    } else {
-                                        args.insert(k.to_string(), VariableValue::Str(param_str));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    cmd.commit_global();
-                }
-
-                Op::ClearGlobal => {
-                    cmd.clear_global();
-                }
-
                 Op::Rec => {
                     let name = at!(stack.pop())?;
                     let path = format!("/doux/rec/{}", at!(name.as_str())?);
@@ -1782,7 +1752,9 @@ impl CagireVM {
 
                 Op::Forget => {
                     let name = at!(stack.pop())?;
-                    self.dict.remove(at!(name.as_str())?);
+                    let key = at!(name.as_str())?;
+                    self.dict.remove(key);
+                    self.forgotten.push(key.to_string());
                 }
 
                 Op::Print => {
@@ -1906,7 +1878,6 @@ impl CagireVM {
                 .iter()
                 .rev()
                 .find(|(k, _)| *k == name)
-                .or_else(|| cmd.global_params().iter().rev().find(|(k, _)| *k == name))
                 .map(|(_, v)| v)
         };
         let get_int = |name: &str| -> Option<i64> {
@@ -1936,7 +1907,7 @@ impl CagireVM {
 
             if sound_str.starts_with('/') {
                 let mut osc_args = Vec::with_capacity(params.len() * 2);
-                for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                for (k, v) in params.iter() {
                     if *k == "device" || is_internal_chord_param(k) {
                         continue;
                     }
@@ -1962,7 +1933,7 @@ impl CagireVM {
                 let mut args = HashMap::with_capacity(params.len() + 3);
                 args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
-                for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                for (k, v) in params.iter() {
                     if *k == "device" || is_internal_chord_param(k) {
                         continue;
                     }
@@ -2040,7 +2011,7 @@ impl CagireVM {
                     if let Some(dev_ref) = device_map.get_out_device_at_slot(dev) {
                         if dev_ref.kind() == DeviceKind::Osc {
                             let mut osc_args = Vec::with_capacity(params.len() * 2);
-                            for (k, v) in cmd.global_params().iter().chain(params.iter()) {
+                            for (k, v) in params.iter() {
                                 if *k == "device" || *k == "address" || is_internal_chord_param(k) {
                                     continue;
                                 }
@@ -2362,9 +2333,8 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
         _ => 1,
     };
     let param_max = cmd
-        .global_params()
+        .params()
         .iter()
-        .chain(cmd.params().iter())
         .map(|(_, v)| match v {
             Value::CycleList(items) => items.len(),
             _ => 1,

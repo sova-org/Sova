@@ -32,7 +32,7 @@ pub(super) fn compile_script(
     dict: &mut Dictionary,
 ) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
     let tokens = tokenize(input)?;
-    compile(&tokens, dict)
+    compile(&tokens, dict, true)
 }
 
 fn parse_ratio_literal(word: &str, span: Span) -> Result<Option<f64>, CagireError> {
@@ -180,7 +180,11 @@ fn extend(ops: &mut Vec<Op>, spans: &mut Vec<Span>, other_ops: Vec<Op>, other_sp
     spans.extend(other_spans);
 }
 
-fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
+fn compile(
+    tokens: &[Token],
+    dict: &mut Dictionary,
+    top_level: bool,
+) -> Result<(Vec<Op>, Vec<Span>), CagireError> {
     let mut ops = Vec::new();
     let mut spans = Vec::new();
     let mut i = 0;
@@ -188,9 +192,36 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, Vec<Span
     while i < tokens.len() {
         let tok = &tokens[i];
         let sp = tok.span;
+        // Compile-time forget directive: at the top level of a script, the
+        // pattern `"<name>" forget` removes <name> from the compile dict
+        // immediately so subsequent tokens in the same script see the
+        // removal. The runtime ops are still emitted (below) so cross-frame
+        // propagation via vm.forgotten still happens.
+        if top_level
+            && matches!(&tok.kind, TokenKind::Word(w) if w == "forget")
+            && i > 0
+        {
+            if let TokenKind::Str(s) = &tokens[i - 1].kind {
+                dict.remove(s.as_str());
+            }
+        }
         match &tok.kind {
-            TokenKind::Int(n) => push(&mut ops, &mut spans, Op::PushInt(*n), sp),
-            TokenKind::Float(f) => push(&mut ops, &mut spans, Op::PushFloat(*f), sp),
+            TokenKind::Int(n) => {
+                let name = n.to_string();
+                if dict.contains_key(&name) {
+                    compile_word(&name, sp, &mut ops, &mut spans, dict);
+                } else {
+                    push(&mut ops, &mut spans, Op::PushInt(*n), sp);
+                }
+            }
+            TokenKind::Float(f) => {
+                let name = f.to_string();
+                if dict.contains_key(&name) {
+                    compile_word(&name, sp, &mut ops, &mut spans, dict);
+                } else {
+                    push(&mut ops, &mut spans, Op::PushFloat(*f), sp);
+                }
+            }
             TokenKind::Str(s) => push(&mut ops, &mut spans, Op::PushStr(Arc::from(s.as_str())), sp),
             TokenKind::Word(w) => {
                 let word = w.as_str();
@@ -293,7 +324,7 @@ fn compile_quotation(
     }
 
     let end_idx = end_idx.ok_or_else(|| err("missing ')'", open_span))?;
-    let (quote_ops, quote_spans) = compile(&tokens[..end_idx], dict)?;
+    let (quote_ops, quote_spans) = compile(&tokens[..end_idx], dict, false)?;
     Ok((quote_ops, quote_spans, end_idx + 1))
 }
 
@@ -322,7 +353,7 @@ fn compile_bracket(
     }
 
     let end_idx = end_idx.ok_or_else(|| err("missing ']'", open_span))?;
-    let (bracket_ops, bracket_spans) = compile(&tokens[..end_idx], dict)?;
+    let (bracket_ops, bracket_spans) = compile(&tokens[..end_idx], dict, false)?;
     Ok((bracket_ops, bracket_spans, end_idx + 1))
 }
 
@@ -351,7 +382,7 @@ fn compile_colon_def(
     }
     let semi_pos = semi_pos.ok_or_else(|| err("missing ';' in word definition", colon_span))?;
     let body_tokens = &tokens[1..semi_pos];
-    let (body_ops, _body_spans) = compile(body_tokens, dict)?;
+    let (body_ops, _body_spans) = compile(body_tokens, dict, false)?;
     Ok((semi_pos + 1, name, body_ops))
 }
 
@@ -384,11 +415,11 @@ fn compile_if(
     let then_pos = then_pos.ok_or_else(|| err("missing 'then'", if_span))?;
 
     let (then_ops, then_spans, else_ops, else_spans) = if let Some(ep) = else_pos {
-        let (to, ts) = compile(&tokens[..ep], dict)?;
-        let (eo, es) = compile(&tokens[ep + 1..then_pos], dict)?;
+        let (to, ts) = compile(&tokens[..ep], dict, false)?;
+        let (eo, es) = compile(&tokens[ep + 1..then_pos], dict, false)?;
         (to, ts, eo, es)
     } else {
-        let (to, ts) = compile(&tokens[..then_pos], dict)?;
+        let (to, ts) = compile(&tokens[..then_pos], dict, false)?;
         (to, ts, Vec::new(), Vec::new())
     };
 
@@ -436,8 +467,8 @@ fn compile_case(
     let mut clause_start = 0;
 
     for &(of_pos, endof_pos) in &clauses {
-        let (test_ops, test_spans) = compile(&tokens[clause_start..of_pos], dict)?;
-        let (body_ops, body_spans) = compile(&tokens[of_pos + 1..endof_pos], dict)?;
+        let (test_ops, test_spans) = compile(&tokens[clause_start..of_pos], dict, false)?;
+        let (body_ops, body_spans) = compile(&tokens[of_pos + 1..endof_pos], dict, false)?;
         let of_span = tokens[of_pos].span;
 
         extend(&mut ops, &mut op_spans, test_ops, test_spans);
@@ -459,7 +490,7 @@ fn compile_case(
 
     let default_tokens = &tokens[clause_start..endcase_pos];
     if !default_tokens.is_empty() {
-        let (default_ops, default_spans) = compile(default_tokens, dict)?;
+        let (default_ops, default_spans) = compile(default_tokens, dict, false)?;
         extend(&mut ops, &mut op_spans, default_ops, default_spans);
     }
 
@@ -688,6 +719,148 @@ mod tests {
         let e = compile_script("( 2 3", &mut dict).unwrap_err();
         assert_eq!(e.span, Span { start: 0, end: 1 });
         assert!(e.message.contains(")"));
+    }
+
+    #[test]
+    fn test_redefine_int_literal() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 2 4 ; 2", &mut dict).unwrap();
+        assert!(dict.contains_key("2"));
+        // The trailing `2` should inline the body of the user word (PushInt(4)),
+        // not push the literal 2.
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushInt(4)));
+    }
+
+    #[test]
+    fn test_redefine_float_literal() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 0.5 1.5 ; 0.5", &mut dict).unwrap();
+        assert!(dict.contains_key("0.5"));
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushFloat(f) if (f - 1.5).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_int_literal_unaffected_when_no_redefinition() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": foo 7 ; 2", &mut dict).unwrap();
+        // The trailing `2` is unrelated to the `foo` definition and should
+        // still compile to a literal push.
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushInt(2)));
+    }
+
+    #[test]
+    fn test_note_name_not_shadowed_by_int_redefinition() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 60 999 ; c4", &mut dict).unwrap();
+        // c4 flows through compile_word's note-name path, not the Int token
+        // arm, so it must still resolve to MIDI 60.
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushInt(60)));
+    }
+
+    #[test]
+    fn test_int_redefinition_does_not_affect_negative() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 5 99 ; -5", &mut dict).unwrap();
+        // The redefinition is keyed "5"; the trailing -5 tokenizes as Int(-5)
+        // with name "-5", which is not in the dict.
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushInt(-5)));
+    }
+
+    #[test]
+    fn test_fractional_float_does_not_collide_with_int() {
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 0.5 99 ; 0", &mut dict).unwrap();
+        // The redefinition is keyed "0.5"; the trailing 0 has name "0",
+        // which is not in the dict.
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], Op::PushInt(0)));
+    }
+
+    #[test]
+    fn test_forget_at_top_level_removes_word_for_subsequent_compilation() {
+        // The compile-time forget directive: at the top level of a script,
+        // `"name" forget` removes name from the compile dict immediately, so
+        // tokens that come after see the word as unknown.
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": double dup + ; \"double\" forget double", &mut dict)
+            .unwrap();
+        // After the directive, the trailing `double` should resolve as an
+        // unknown word (intentional language feature: unknown words become
+        // strings), not as the inlined dup+ body.
+        assert!(!dict.contains_key("double"));
+        // [PushStr("double"), Forget, PushStr("double")]
+        assert_eq!(ops.len(), 3);
+        assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "double"));
+        assert!(matches!(ops[1], Op::Forget));
+        assert!(matches!(&ops[2], Op::PushStr(s) if s.as_ref() == "double"));
+    }
+
+    #[test]
+    fn test_forget_at_top_level_undoes_numeric_redefinition() {
+        // The same directive applies to numeric redefinitions: after the
+        // directive the trailing `2` reverts to a literal push.
+        let mut dict = Dictionary::new();
+        let (ops, _) = compile_script(": 2 4 ; \"2\" forget 2", &mut dict).unwrap();
+        assert!(!dict.contains_key("2"));
+        // [PushStr("2"), Forget, PushInt(2)]
+        assert_eq!(ops.len(), 3);
+        assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "2"));
+        assert!(matches!(ops[1], Op::Forget));
+        assert!(matches!(ops[2], Op::PushInt(2)));
+    }
+
+    #[test]
+    fn test_forget_then_redefine_at_top_level() {
+        // Forget the word, then redefine it. Subsequent uses should bind to
+        // the new body, not the old one.
+        let mut dict = Dictionary::new();
+        let (ops, _) =
+            compile_script(": foo 1 ; \"foo\" forget : foo 2 ; foo", &mut dict).unwrap();
+        // [PushStr("foo"), Forget, PushInt(2) (from new body)]
+        assert_eq!(ops.len(), 3);
+        assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "foo"));
+        assert!(matches!(ops[1], Op::Forget));
+        assert!(matches!(ops[2], Op::PushInt(2)));
+    }
+
+    #[test]
+    fn test_forget_inside_quotation_does_not_affect_compile_dict() {
+        // Inside a quotation the directive must NOT fire, because the
+        // quotation may never run. The compile dict keeps the definition,
+        // and the trailing `foo` still inlines the body.
+        let mut dict = Dictionary::new();
+        let (ops, _) =
+            compile_script(": foo 7 ; ( \"foo\" forget ) apply foo", &mut dict).unwrap();
+        // foo is still defined at compile time.
+        assert!(dict.contains_key("foo"));
+        // The trailing `foo` should inline the body (PushInt(7)), not become
+        // a string. Find it as the last op.
+        assert!(matches!(ops.last(), Some(Op::PushInt(7))));
+    }
+
+    #[test]
+    fn test_forget_inside_if_branch_does_not_affect_compile_dict() {
+        // Same reasoning for an if-branch: the branch may not execute, so
+        // the directive must not fire at compile time.
+        let mut dict = Dictionary::new();
+        let (ops, _) =
+            compile_script(": foo 5 ; 1 if \"foo\" forget then foo", &mut dict).unwrap();
+        assert!(dict.contains_key("foo"));
+        assert!(matches!(ops.last(), Some(Op::PushInt(5))));
+    }
+
+    #[test]
+    fn test_forget_unknown_name_is_harmless() {
+        // Forgetting a name that does not exist in the dict should not
+        // error at compile time.
+        let mut dict = Dictionary::new();
+        let result = compile_script("\"nonexistent\" forget", &mut dict);
+        assert!(result.is_ok());
     }
 
     #[test]

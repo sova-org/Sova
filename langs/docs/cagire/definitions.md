@@ -35,7 +35,7 @@ When you define a word in any frame, it becomes available to all frames across a
 
 Frame A:
 ```forth
-: bass "saw" snd 0.8 gain 800 lpf ;
+: bass saw snd 0.8 gain 800 lpf ;
 ```
 
 Frame B:
@@ -49,6 +49,8 @@ g2 note bass .
 ```
 
 The `bass` word carries the sound design. Each frame just adds a note and plays.
+
+Two things to keep in mind. A word is only visible to other frames once the frame that defines it has been evaluated at least once, so if you paste two frames at the same instant and one depends on the other, the defining frame must run first. And there is no per-frame namespace: redefining a name anywhere overwrites it for everyone, so the most recent definition wins across the whole session.
 
 ## Redefining Words
 
@@ -68,18 +70,33 @@ You can even redefine numbers:
 
 Now `2` pushes `4` onto the stack. The number two no longer exists in your session. This is a classic Forth demonstration: nothing is sacred, everything can be redefined.
 
+Be careful with this. Numeric definitions are shared across frames just like any other word, so redefining `2` in one frame will quietly change the meaning of `2` everywhere on the next evaluation. There is no call site to grep for. String literals like `"kick"` are not redefinable this way.
+
 ## Removing Words
 
-`forget` removes a user-defined word from the dictionary:
+`forget` removes a user-defined word from the dictionary. Pass the name as a string:
 
 ```forth
 : double dup + ;
 3 double           ;; 6
 "double" forget
-3 double           ;; error: unknown word
+3 double           ;; double is gone, this just leaves the string "double" on the stack
 ```
 
-This only affects words you defined with `:` ... `;`. Built-in words cannot be forgotten.
+Once forgotten, the word is also removed from every other frame on their next evaluation. So you can clean up a temporary definition from one frame and the rest of your session stops seeing it.
+
+A common idiom is to wrap a one-shot definition in a frame that defines, uses, and forgets it in a single line:
+
+```forth
+: tmp kick snd . ; tmp "tmp" forget
+```
+
+`tmp` runs once, then is removed before the frame finishes, so it never leaks to other frames.
+
+Two limits to know about:
+
+- `forget` only takes effect for code that comes textually *after* it in the same frame, and only when the name is a literal string. A `forget` whose name is computed at runtime (or that lives inside an `if` branch or a quotation) will still update the shared dictionary for future frames, but it cannot retroactively unbind uses earlier in its own frame.
+- Built-in words cannot be forgotten.
 
 ## Practical Uses
 

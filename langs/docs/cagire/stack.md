@@ -31,7 +31,7 @@ This is why Forth uses postfix notation: operands come first, then the operator.
 Documentation describes what words do using stack effect notation:
 
 ```
-( before -- after )
+;; ( before -- after )
 ```
 
 The word `+` has the effect `( a b -- sum )`. It takes two values and leaves one.
@@ -93,3 +93,5 @@ The fix is simple: make sure you push enough values before calling a word. Check
 ```
 
 The `3` was never used. Either it should not be there, or you forgot a word that consumes it.
+
+There are other 'errors' that will not and cannot be caught. It is up to you, most of the time, to make sure that the stack is used correctly.

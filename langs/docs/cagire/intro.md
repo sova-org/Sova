@@ -117,48 +117,61 @@ hat snd .         ;; only the hat plays
 
 This is useful when conditionals might cancel a sound before it emits.
 
-`all` takes the current register parameters and applies them to every subsequent sound in the script. Use it when you want a shared effect across all voices. `noall` clears the global parameters. Per-sound parameters override global ones:
-
-```forth
-500 lpf 0.5 verb all
-"kick" snd .                 ;; gets lpf and verb
-"hat" snd 2000 lpf .         ;; lpf overridden, verb from global
-noall
-"snare" snd .                ;; no global params
-```
-
 ## How Scripts Run in Sova
 
 Sova organizes music into a **Scene** made of parallel **Lines**, each containing a sequence of **Frames**. Each frame holds a script and a duration in beats.
 
 When the sequencer reaches a frame, it runs the associated script. A script can do whatever it is programmed to do: play a note, trigger a sample, apply effects, generate randomness, or all of the above. Scripts can share code and data with each other. Lines play in parallel, frames play in sequence: the sequencer advances to the next frame in a line when the current frame's duration elapses.
 
-Using Cagire doesn't feel like programming at all. It feels more like juggling with words and numbers. The core loop: you hear a line playing, open a frame, change a word, and immediately hear the difference. Forth's brevity helps: swapping `sine` for `saw` or adding `0.3 verb` at the end is a single edit that reshapes the sound.
+Using Cagire doesn't feel like programming at all. It feels more like juggling with words and numbers. The core loop: you hear a line playing, change a word in a frame, evaluate and immediately hear the difference. Forth's brevity helps: swapping `sine` for `saw` or adding `0.3 verb` at the end is a single edit that reshapes the sound.
 
 ## Your First Sounds
 
-Play a sample:
+Play a kick drum:
 
 ```forth
-"kick" snd .
+kick snd .
 ```
 
-Play a MIDI note with a sine oscillator:
+Now a random synth drum:
 
 ```forth
-c4 note "sine" snd .
+[ kick tom rim snare hat cymbal ] choose snd .
 ```
 
-A sawtooth wave with lowpass filter and reverb:
+Play a note with a sine oscillator:
 
 ```forth
-"saw" snd c4 note 0.5 gain 800 lpf 0.4 verb .
+c4 note sine snd .
 ```
 
-Chain multiple events:
+Add vibrato:
 
 ```forth
-60 note . 64 note . 67 note .
+c4 note sine snd 8 vib 0.125 vibmod .
+```
+
+Play a sawtooth wave with lowpass filter and reverb:
+
+```forth
+saw snd
+c4 note
+0.5 gain
+;; slide on cutoff value
+8000 200 0.1 slide lpf
+0.4 verb
+.
+```
+
+Play a chord:
+
+```forth
+c4 note
+min7 chord
+tri snd
+2 fm
+.5 decay
+.
 ```
 
 ## Next Steps

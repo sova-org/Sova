@@ -142,8 +142,6 @@ pub enum Op {
     ExceptOffset(Option<Span>),
     Mark,
     Count(Option<Span>),
-    EmitAll,
-    ClearGlobal,
     Rec,
     Overdub,
     Orec,

@@ -44,8 +44,15 @@ impl Interpreter for CagireInterpreter {
             self.executed = true;
             match self.vm.evaluate(&self.source, ctx) {
                 Ok(evts) => {
-                    // Merge new word definitions back into the shared dictionary
+                    // Propagate this evaluation's dictionary changes back to
+                    // the shared dictionary so other frames see them on their
+                    // next evaluation. Forgets are applied first so that a
+                    // forget-then-redefine sequence ends up with the new
+                    // definition installed.
                     let mut shared = self.shared_dict.lock().unwrap();
+                    for name in &self.vm.forgotten {
+                        shared.remove(name);
+                    }
                     for (name, body) in &self.vm.dict {
                         shared.insert(name.clone(), body.clone());
                     }
@@ -244,6 +251,79 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn forget_propagates_across_frames_via_shared_dict() {
+        // Frame A defines `bass`. Frame B sees it (proving the merge works).
+        // Frame C forgets it. Frame D should no longer see it.
+        let shared = Arc::new(Mutex::new(Dictionary::new()));
+        let mut tctx = TestCtx::new();
+
+        // Frame A: define `bass`.
+        {
+            let dict = shared.lock().unwrap().clone();
+            let mut interp = CagireInterpreter::new(": bass 99 ;", dict, Arc::clone(&shared));
+            let mut ctx = tctx.eval_ctx();
+            let _ = interp.execute_next(&mut ctx);
+        }
+        assert!(shared.lock().unwrap().contains_key("bass"));
+
+        // Frame B: see it (sanity check that merge worked).
+        {
+            let dict = shared.lock().unwrap().clone();
+            assert!(dict.contains_key("bass"));
+            let mut interp = CagireInterpreter::new("bass", dict, Arc::clone(&shared));
+            let mut ctx = tctx.eval_ctx();
+            let _ = interp.execute_next(&mut ctx);
+        }
+
+        // Frame C: forget it.
+        {
+            let dict = shared.lock().unwrap().clone();
+            let mut interp =
+                CagireInterpreter::new("\"bass\" forget", dict, Arc::clone(&shared));
+            let mut ctx = tctx.eval_ctx();
+            let _ = interp.execute_next(&mut ctx);
+        }
+        assert!(!shared.lock().unwrap().contains_key("bass"));
+
+        // Frame D: should no longer see it.
+        {
+            let dict = shared.lock().unwrap().clone();
+            assert!(!dict.contains_key("bass"));
+        }
+    }
+
+    #[test]
+    fn forget_does_not_clobber_unrelated_words_in_shared_dict() {
+        // A frame that forgets `foo` should leave `bar` (defined by an
+        // earlier frame) alone in the shared dictionary.
+        let shared = Arc::new(Mutex::new(Dictionary::new()));
+        let mut tctx = TestCtx::new();
+
+        // Frame A: define both.
+        {
+            let dict = shared.lock().unwrap().clone();
+            let mut interp =
+                CagireInterpreter::new(": foo 1 ; : bar 2 ;", dict, Arc::clone(&shared));
+            let mut ctx = tctx.eval_ctx();
+            let _ = interp.execute_next(&mut ctx);
+        }
+        assert!(shared.lock().unwrap().contains_key("foo"));
+        assert!(shared.lock().unwrap().contains_key("bar"));
+
+        // Frame B: forget only `foo`.
+        {
+            let dict = shared.lock().unwrap().clone();
+            let mut interp =
+                CagireInterpreter::new("\"foo\" forget", dict, Arc::clone(&shared));
+            let mut ctx = tctx.eval_ctx();
+            let _ = interp.execute_next(&mut ctx);
+        }
+        let final_shared = shared.lock().unwrap();
+        assert!(!final_shared.contains_key("foo"));
+        assert!(final_shared.contains_key("bar"));
     }
 
     #[test]
