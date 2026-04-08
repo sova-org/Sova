@@ -1,16 +1,24 @@
-# Getting Started with Cagire
-
-Cagire is a stack-based, Forth-like language for live coding music inside Sova. It is a DSL (a Domain Specific Language) specialized in making live music. Values are pushed onto a stack; words consume and produce stack values. It favors brevity and directness: build sounds by stacking parameters, then emit with `.`.
+Cagire is a stack-based, Forth-like language for live coding music. It is a Domain Specific Language (DSL) specialized for interacting with the Sova runtime. Values are pushed onto a stack; words consume and produce stack values in return. It favors brevity and directness. You build sounds by stacking parameters and emit them towards your designated target with the `.` operator.
 
 ## Why Forth?
 
 Most programming languages rely on a complex syntax of variables, expressions and statements like `x = 3 + 4` or `do_something(()=>bob(4))`. Forth works differently. It has almost no syntax at all. Instead, you push values onto a stack and apply words that transform them:
 
 ```forth
+;; This is 3 + 4
 3 4 +
 ```
 
 The program above leaves the number `7` on the stack. There are no variables, no parentheses, no syntax to remember. You just end up with words and numbers separated by spaces. For live coding music, this directness is quite exciting. All you do is think in terms of transformations and add things to the stack: take a note, shift it up, add reverb, play it.
+
+```forth
+;; This is (3 * 2) + 4
+3 2 * 4 +
+```
+
+Your first minutes reading Cagire code will leave you puzzled because you are not used to read from right to left.
+It gradually becomes a second nature to the point where you no longer think about it.
+
 
 ## The Stack
 
@@ -26,7 +34,11 @@ The stack is last-in, first-out. The most recent value is always on top. This me
 
 ## Words
 
-Everything in Cagire is either a number or a word. Words are like functions but conceptually simpler. They have no arguments or return values in the traditional sense. They just manipulate the stack directly.
+Everything in Cagire is either a number or a word.
+Words are like functions but conceptually simpler. It is closer to a concept that would encompass something that is `a named program fragment`.
+Words have no arguments or return values in the traditional sense.$
+They just manipulate the stack directly.
+They eat the values before them when they need to.
 
 ```forth
 dup  ;; duplicate the top value
@@ -34,17 +46,17 @@ drop ;; discard the top value
 swap ;; swap the top two values
 ```
 
-Words compose naturally on the stack. To double a number:
+Words compose naturally on the stack:
 
 ```forth
 3 dup +  ;; 3 3 + = 6
 ```
 
-You can also create your own words. They will work just like existing words. There are good reasons to create new words:
+You can also create your own words. They will work just like existing words. There are many good reasons to create new words and doing so is super useful:
 
-- To make synth definitions.
-- To abstract some piece of code that you use frequently.
-- To share data and processes between different frames.
+- Craft your own synth definitions.
+- Store and re-inject data that you define once and use in multiple locations.
+- Introduce new abstractions and logical constructs that you need.
 
 ## Values
 
@@ -73,7 +85,7 @@ Three kinds of words interact with it:
 ```forth
 kick sound      ;; sets the sound name
 0.5 gain        ;; adds a parameter
-.               ;; emits the command and clears the register
+.               ;; emits the command
 ```
 
 The word `sound` (or its shorthand `snd`) sets what sound to play. Parameter words like `gain`, `freq`, `decay`, or `verb` add key-value pairs to the register. Nothing happens until you emit with `.` (dot). At that moment, the register is packaged into a command and sent to Sova's scheduler for dispatch.
@@ -81,25 +93,26 @@ The word `sound` (or its shorthand `snd`) sets what sound to play. Parameter wor
 This design lets you build sounds incrementally:
 
 ```forth
-"sine" sound
+sine sound
 c4 note
 0.5 gain
-0.3 decay
-0.4 verb
+0.1 decay
+0.8 verb
 .
 ```
 
 Each line adds something to the register. The final `.` triggers the sound. You can also write it all on one line:
 
 ```forth
-"sine" snd c4 note 0.5 gain 0.3 decay 0.4 verb .
+sine snd c4 note 0.5 gain 0.3 decay 0.4 verb .
 ```
 
 The order of parameters does not matter. You can even emit multiple times in a single frame. If you need to discard the register without emitting, use `clear`:
 
 ```forth
-"kick" snd 0.5 gain clear    ;; nothing plays, register is emptied
-"hat" snd .                  ;; only the hat plays
+kick snd 0.5 gain ;; filling the register
+clear               ;; register is emptied
+hat snd .         ;; only the hat plays
 ```
 
 This is useful when conditionals might cancel a sound before it emits.

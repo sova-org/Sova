@@ -1,49 +1,10 @@
-# Scales & Tunings
+# Scales
 
-Cagire's scale system is built in two layers. A *tuning* is a set of pitch positions inside a repeating period (measured in cents). A *scale* is an ordered selection of those tuning steps. Once you have a scale, `deg` resolves a degree against a root note and returns a frequency in Hz, ready to feed into a synth's `freq` parameter.
+A *scale* picks an ordered list of degree indices from a tuning. Each index points at a step in the tuning's cents table. `0` is the root, `1` is the first step, and so on. Once you have a scale, `deg` resolves a degree against a root note and returns a frequency in Hz, ready to feed into a synth's `freq` parameter.
 
-This separation lets you write microtonal music (19-EDO, just intonation, custom temperaments) using the same scale words as standard 12-tone material.
+See the Tunings article for how to build the tuning a scale sits on top of. Every example below uses `12 edo` unless noted, but the same words work over any tuning.
 
-## Tunings
-
-A tuning describes how a single repeating "octave" is divided. Cagire ships with one tuning constructor for the common case (`edo`) and one for arbitrary intervals (`tuning`).
-
-### Equal divisions
-
-`edo n` builds an `n`-step equal division of the 2/1 octave (1200 cents):
-
-```forth
-12 edo              ;; 12-step tuning over 2/1, standard chromatic
-19 edo              ;; 19-EDO tuning, microtonal
-24 edo              ;; quarter-tones
-```
-
-Stack effect: `(n -- tuning)`. The result is a `Tuning` value with `n` evenly spaced steps from 0 to (but not including) 1200 cents.
-
-`12 edo` is the implicit tuning used by every built-in scale name like `major`, so you only need to call it explicitly when you want a non-12 division.
-
-### Custom tunings
-
-`tuning` builds a tuning from an explicit list of cents offsets within a period. Provide the offsets, then the period:
-
-```forth
-[ 90.225 204.090 294.135 408.000 498.045 588.090 702.000
-  792.180 906.270 996.090 1110.045 ] 1200 tuning
-```
-
-Stack effect: `([c1 c2 ...] period -- tuning)`. The bracketed list pushes the cent offsets and a count; `tuning` pops them along with the period and returns a `Tuning`.
-
-Rules for the offset list:
-
-- Every offset must satisfy `0 < cents < period`. The 0-cent root is implicit and prepended automatically. Don't list it.
-- Offsets must be strictly ascending.
-- The period itself is in cents and must be positive. Use 1200 for a standard octave; use other values for non-octave periods like Bohlen-Pierce (1902).
-
-The example above is 12-tone Pythagorean tuning over a 1200-cent octave: same number of notes as 12-EDO but with pure perfect fifths (702 cents instead of 700).
-
-## Scales
-
-A scale picks an ordered list of degree indices from a tuning. Each index points at a step in the tuning's cents table. `0` is the root, `1` is the first step, and so on.
+## Building a scale
 
 ```forth
 [ 0 2 4 5 7 9 11 ] 12 edo scale
@@ -53,7 +14,7 @@ Stack effect: `([i1 i2 ...] tuning -- scale)`. The example above builds a major 
 
 Each index in the list must be a valid step in the tuning (0 through `tuning_size - 1`) and indices must be unique. Order matters: it determines the degree numbering, so `[ 0 2 4 5 7 9 11 ]` and `[ 0 4 7 11 5 9 2 ]` are technically the same set of notes but different scales for `deg` purposes.
 
-### Built-in scales
+## Built-in scales
 
 Most common 12-EDO scales already exist as named words. They are ordinary scale values, not magic. You can store them in variables, choose between them, or rotate them with `mode` like any other scale:
 
@@ -78,7 +39,7 @@ Use them anywhere a scale is expected:
 c4 minor 0 deg     ;; first degree of C minor, ~261.63 Hz
 ```
 
-### Modes
+## Modes
 
 `mode` rotates a scale's degree ordering while keeping the same tuning. The shift is the number of degrees to rotate:
 
@@ -114,7 +75,7 @@ c4 minor 0 deg freq sine snd .
 - `degree % len` selects which scale step.
 - `degree / len` (Euclidean division) decides how many full periods to shift.
 
-So for a 7-degree scale, degree `7` is the same step as degree `0` but one period higher; degree `-1` is the same step as degree `6` but one period lower. This matches what you'd expect from a real instrument and works for any tuning, including non-octave ones. `deg` uses the tuning's `period_cents`, so 19-EDO wraps every 19 degrees, Bohlen-Pierce wraps every 13, and so on.
+So for a 7-degree scale, degree `7` is the same step as degree `0` but one period higher; degree `-1` is the same step as degree `6` but one period lower. This matches what you'd expect from a real instrument and works for any tuning, including non-octave ones. `deg` uses the tuning's period, so 19-EDO wraps every 19 degrees, Bohlen-Pierce wraps every 13, and so on.
 
 ## Sequencing Through a Scale
 

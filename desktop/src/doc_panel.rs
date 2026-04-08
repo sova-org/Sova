@@ -161,6 +161,30 @@ enum DocView {
     DouxModule(usize),
 }
 
+/// Lets `show_highlighted_markdown` make fenced code blocks runnable in this pass.
+/// `None` is passed when blocks should render inertly (Hydra, general docs, reference descriptions).
+struct MarkdownRunner<'a> {
+    bridge: &'a ClientBridge,
+    lang_name: &'a str,
+}
+
+/// Decide whether a fenced code block is runnable based on its info string.
+fn is_runnable(info: &str, lang: &str) -> bool {
+    let tag = info.trim().to_ascii_lowercase();
+    if tag.is_empty() {
+        return true;
+    }
+    if tag == lang {
+        return true;
+    }
+    // Opt-out tags for output samples, ASCII diagrams, etc.
+    if matches!(tag.as_str(), "text" | "txt" | "output") {
+        return false;
+    }
+    // Aliases: existing Cagire docs use ```forth fences.
+    matches!((lang, tag.as_str()), ("cagire", "forth"))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SidebarMode {
     Docs = 0,
@@ -891,6 +915,7 @@ impl DocPanel {
                 content,
                 self.hydra_syntax.as_ref(),
                 &theme,
+                None,
             )
         } else {
             None
@@ -1330,8 +1355,18 @@ impl DocPanel {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    clicked_slug =
-                        show_highlighted_markdown(ui, &mut self.md_cache, content, syntax, &theme);
+                    let mut runner = MarkdownRunner {
+                        bridge,
+                        lang_name: lang,
+                    };
+                    clicked_slug = show_highlighted_markdown(
+                        ui,
+                        &mut self.md_cache,
+                        content,
+                        syntax,
+                        &theme,
+                        Some(&mut runner),
+                    );
                 }
             }
             Some(DocView::LangReference(idx)) => {
@@ -1396,6 +1431,7 @@ impl DocPanel {
                             &entry_description,
                             syntax,
                             &theme,
+                            None,
                         );
                     }
 
@@ -1439,31 +1475,7 @@ impl DocPanel {
                         });
 
                         if let Some(result) = &self.example_output {
-                            ui.add_space(4.0);
-                            match result {
-                                Ok(output) => {
-                                    egui::Frame::NONE
-                                        .fill(egui::Color32::from_rgb(20, 40, 20))
-                                        .inner_margin(6.0)
-                                        .show(ui, |ui| {
-                                            ui.colored_label(
-                                                egui::Color32::from_rgb(120, 220, 120),
-                                                output,
-                                            );
-                                        });
-                                }
-                                Err(err) => {
-                                    egui::Frame::NONE
-                                        .fill(egui::Color32::from_rgb(50, 20, 20))
-                                        .inner_margin(6.0)
-                                        .show(ui, |ui| {
-                                            ui.colored_label(
-                                                egui::Color32::from_rgb(220, 100, 100),
-                                                err,
-                                            );
-                                        });
-                                }
-                            }
+                            show_run_status_pill(ui, result);
                         }
                     }
 
@@ -1521,8 +1533,18 @@ impl DocPanel {
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(8.0);
-                    clicked_slug =
-                        show_highlighted_markdown(ui, &mut self.md_cache, content, syntax, &theme);
+                    let mut runner = MarkdownRunner {
+                        bridge,
+                        lang_name: lang,
+                    };
+                    clicked_slug = show_highlighted_markdown(
+                        ui,
+                        &mut self.md_cache,
+                        content,
+                        syntax,
+                        &theme,
+                        Some(&mut runner),
+                    );
                 } else if let Some((elem, entry)) = doc.reference.iter().next() {
                     ui.heading(element_label(elem));
                     ui.add_space(8.0);
@@ -1630,12 +1652,36 @@ fn element_label(elem: &LanguageElement) -> String {
 /// Splits on ``` fences, renders prose via CommonMarkViewer and code blocks
 /// as syntax-highlighted labels in a dark frame.
 /// Returns the slug of the first clicked cross-reference link, if any.
+/// Render a green/red status pill for a snippet run result.
+fn show_run_status_pill(ui: &mut egui::Ui, status: &Result<String, String>) {
+    ui.add_space(4.0);
+    let (bg, fg, text) = match status {
+        Ok(s) => (
+            egui::Color32::from_rgb(20, 40, 20),
+            egui::Color32::from_rgb(120, 220, 120),
+            s,
+        ),
+        Err(s) => (
+            egui::Color32::from_rgb(50, 20, 20),
+            egui::Color32::from_rgb(220, 100, 100),
+            s,
+        ),
+    };
+    egui::Frame::NONE
+        .fill(bg)
+        .inner_margin(6.0)
+        .show(ui, |ui| {
+            ui.colored_label(fg, text);
+        });
+}
+
 fn show_highlighted_markdown(
     ui: &mut egui::Ui,
     cache: &mut CommonMarkCache,
     md: &str,
     syntax: Option<&CompiledSyntax>,
     theme: &SyntaxTheme,
+    mut runner: Option<&mut MarkdownRunner<'_>>,
 ) -> Option<String> {
     let font_id = egui::FontId::monospace(13.0);
     let text_color = ui.visuals().text_color();
@@ -1656,10 +1702,10 @@ fn show_highlighted_markdown(
             }
         }
 
-        // Skip the opening ``` and optional language tag line
+        // Skip the opening ``` and capture the optional info string up to the newline
         let after_fence = &rest[fence_start + 3..];
-        let after_tag = match after_fence.find('\n') {
-            Some(nl) => &after_fence[nl + 1..],
+        let (info, after_tag) = match after_fence.find('\n') {
+            Some(nl) => (&after_fence[..nl], &after_fence[nl + 1..]),
             None => {
                 // Malformed: no closing fence
                 rest = after_fence;
@@ -1685,6 +1731,13 @@ fn show_highlighted_markdown(
 
         let code = code.strip_suffix('\n').unwrap_or(code);
 
+        let runnable = runner
+            .as_deref()
+            .is_some_and(|r| is_runnable(info, r.lang_name));
+        let connected = runner
+            .as_deref()
+            .is_some_and(|r| r.bridge.is_connected());
+
         ui.add_space(6.0);
         let frame_response = egui::Frame::NONE
             .fill(bg)
@@ -1697,6 +1750,30 @@ fn show_highlighted_markdown(
             .show(ui, |ui| {
                 let job = build_highlighted_job(code, &font_id, text_color, syntax, theme);
                 ui.add(egui::Label::new(job).selectable(true));
+                if runnable {
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let btn = egui::Button::new(t!("doc.run").as_ref());
+                                if ui.add_enabled(connected, btn).clicked()
+                                    && let Some(r) = runner.as_deref_mut()
+                                {
+                                    r.bridge.send(ClientMessage::SchedulerControl(
+                                        SchedulerMessage::RunSnippet(
+                                            Script::new(
+                                                code.to_owned(),
+                                                r.lang_name.to_owned(),
+                                            ),
+                                            1.0,
+                                        ),
+                                    ));
+                                }
+                            },
+                        );
+                    });
+                }
             });
         let rect = frame_response.response.rect;
         let accent = ui.visuals().selection.bg_fill;
@@ -1704,6 +1781,7 @@ fn show_highlighted_markdown(
             [rect.left_top(), rect.left_bottom()],
             egui::Stroke::new(3.0, accent),
         );
+
         ui.add_space(6.0);
 
         rest = remainder;

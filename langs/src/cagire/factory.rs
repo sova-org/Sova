@@ -71,7 +71,11 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/chords.md").into(),
         ));
         doc.articles.push((
-            "Scales & Tunings".into(),
+            "Tunings".into(),
+            include_str!("../../docs/cagire/tunings.md").into(),
+        ));
+        doc.articles.push((
+            "Scales".into(),
             include_str!("../../docs/cagire/scales.md").into(),
         ));
         doc.articles.push((
@@ -106,11 +110,6 @@ impl Language for CagireInterpreterFactory {
             "Cagire vs Classic Forth".into(),
             include_str!("../../docs/cagire/differences.md").into(),
         ));
-        doc.articles.push((
-            "Language Reference".into(),
-            include_str!("../../docs/cagire/reference.md").into(),
-        ));
-
         for word in WORDS.iter() {
             let mut entry = ReferenceEntry::new(word.desc)
                 .with_signature(word.stack)
