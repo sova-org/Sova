@@ -14,7 +14,7 @@ Whitespace around `(` and `)` is required.
 ( c4 note sine snd . )    ;; quotation
 
 ;; two unknowns word, error!
-;; (c4 is seend as a word,
+;; (c4 is seen as a word,
 ;; .) is seen as a word too.
 (c4 note sine snd .)
 ```

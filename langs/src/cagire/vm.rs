@@ -1745,28 +1745,27 @@ impl CagireVM {
 
                 Op::Rec => {
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}", at!(name.as_str())?);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(2);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
 
                 Op::Overdub => {
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}/overdub/1", at!(name.as_str())?);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(3);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("overdub".to_string(), VariableValue::Str("1".into()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1774,14 +1773,14 @@ impl CagireVM {
                 Op::Orec => {
                     let orbit = at!(stack.pop_int())?;
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}/orbit/{}", at!(name.as_str())?, orbit);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(3);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1789,18 +1788,15 @@ impl CagireVM {
                 Op::Odub => {
                     let orbit = at!(stack.pop_int())?;
                     let name = at!(stack.pop())?;
-                    let path = format!(
-                        "/doux/rec/{}/overdub/1/orbit/{}",
-                        at!(name.as_str())?,
-                        orbit
-                    );
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(4);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("overdub".to_string(), VariableValue::Str("1".into()));
+                    args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -3659,6 +3655,84 @@ mod tests {
         for iter in [1usize, 5, 1000] {
             let events = eval_with_iter(script, iter);
             assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_rec_emits_dirt() {
+        let events = eval("\"drums\" rec");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_overdub_emits_dirt() {
+        let events = eval("\"loop\" overdub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("loop".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+                assert_eq!(args.len(), 3);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_dub_alias_emits_dirt() {
+        let events = eval("\"loop\" dub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_orec_emits_dirt() {
+        let events = eval("\"drums\" 0 orec");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.get("orbit"), Some(&VariableValue::Str("0".into())));
+                assert_eq!(args.len(), 3);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_odub_emits_dirt() {
+        let events = eval("\"drums\" 2 odub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+                assert_eq!(args.get("orbit"), Some(&VariableValue::Str("2".into())));
+                assert_eq!(args.len(), 4);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
         }
     }
 }
