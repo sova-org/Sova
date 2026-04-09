@@ -2371,6 +2371,8 @@ fn is_tempo_scaled_param(name: &str) -> bool {
             | "glide"
             | "chorusdelay"
             | "duration"
+            | "compattack"
+            | "comprelease"
     )
 }
 

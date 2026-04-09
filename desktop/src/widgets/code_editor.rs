@@ -73,6 +73,7 @@ struct CompletionState {
     entries: Vec<CompletionEntry>,
     selected: usize,
     prefix_start: usize,
+    manual: bool,
 }
 
 pub struct CodeEditorOutput {
@@ -93,6 +94,7 @@ pub struct CodeEditor {
     last_completion_prefix: Option<String>,
     prev_text_hash: u64,
     suppress_completion: bool,
+    prev_cursor_char: Option<usize>,
 }
 
 impl CodeEditor {
@@ -107,6 +109,7 @@ impl CodeEditor {
             last_completion_prefix: None,
             prev_text_hash: 0,
             suppress_completion: false,
+            prev_cursor_char: None,
         }
     }
 
@@ -328,6 +331,8 @@ impl CodeEditor {
         }
 
         let cursor_char = edit_output.cursor_range.as_ref().map(|cr| cr.primary.index);
+        let cursor_moved = cursor_char != self.prev_cursor_char;
+        self.prev_cursor_char = cursor_char;
 
         let (prefix_start, prefix) = cursor_char
             .map(|cc| {
@@ -377,6 +382,12 @@ impl CodeEditor {
             }
         }
 
+        // Dismiss completion if cursor moved without typing
+        if self.completion.is_some() && !text_changed && cursor_moved {
+            self.completion = None;
+            self.last_completion_prefix = None;
+        }
+
         // Open or recompute completions
         if self.completion.is_none() && !self.search_open {
             let should_open = ctrl_space
@@ -393,12 +404,20 @@ impl CodeEditor {
                         entries,
                         selected: 0,
                         prefix_start,
+                        manual: ctrl_space,
                     });
+                    self.last_completion_prefix = Some(prefix.clone());
                 }
             }
         } else if let Some(state) = &mut self.completion {
             if let Some(ref_map) = reference {
-                if self.last_completion_prefix.as_deref() != Some(prefix.as_str()) {
+                if prefix.is_empty()
+                    || !cursor_at_word_end
+                    || (prefix.len() < 2 && !state.manual)
+                {
+                    self.completion = None;
+                    self.last_completion_prefix = None;
+                } else if self.last_completion_prefix.as_deref() != Some(prefix.as_str()) {
                     let entries = compute_completions(&prefix, ref_map, ctx.sample_names);
                     if entries.is_empty() {
                         self.completion = None;
@@ -1098,6 +1117,10 @@ fn compute_completions(
     reference: &BTreeMap<LanguageElement, ReferenceEntry>,
     sample_names: &[String],
 ) -> Vec<CompletionEntry> {
+    if prefix.is_empty() {
+        return Vec::new();
+    }
+
     let mut entries = Vec::new();
 
     for (elem, entry) in reference {
@@ -1105,17 +1128,6 @@ fn compute_completions(
             LanguageElement::Word(w) => w.clone(),
             LanguageElement::Brackets(open, _) => open.clone(),
         };
-
-        if prefix.is_empty() {
-            entries.push(CompletionEntry {
-                label,
-                description: entry.description.clone(),
-                category: entry.category.clone(),
-                score: 0,
-                label_matches: Vec::new(),
-            });
-            continue;
-        }
 
         if let Some((score, indices)) = super::fuzzy_score(prefix, &label) {
             entries.push(CompletionEntry {
