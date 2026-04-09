@@ -848,6 +848,56 @@ impl CagireVM {
                     }
                 }
 
+                Op::First(word_span) => {
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n <= 0 {
+                        return Err(CagireError::new("first count must be > 0", span!()));
+                    }
+                    let hit = (ctx.iter as i64) < n;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::After(word_span) => {
+                    let n = at!(stack.pop_int())?;
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    if n < 0 {
+                        return Err(CagireError::new("after count must be >= 0", span!()));
+                    }
+                    let hit = (ctx.iter as i64) >= n;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::Once(word_span) => {
+                    let (quot, quot_origin) = at!(stack.pop_with_origin())?;
+                    let hit = ctx.iter == 0;
+                    if let Some(s) = word_span {
+                        self.resolved.push((*s, ResolvedValue::Bool(hit)));
+                    }
+                    if hit {
+                        if quot_origin != Span::default() {
+                            self.selected.push(quot_origin);
+                        }
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
                 Op::Bjork(word_span) | Op::PBjork(word_span) => {
                     let n = at!(stack.pop_int())?;
                     let k = at!(stack.pop_int())?;
@@ -1695,28 +1745,27 @@ impl CagireVM {
 
                 Op::Rec => {
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}", at!(name.as_str())?);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(2);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
 
                 Op::Overdub => {
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}/overdub/1", at!(name.as_str())?);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(3);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("overdub".to_string(), VariableValue::Str("1".into()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1724,14 +1773,14 @@ impl CagireVM {
                 Op::Orec => {
                     let orbit = at!(stack.pop_int())?;
                     let name = at!(stack.pop())?;
-                    let path = format!("/doux/rec/{}/orbit/{}", at!(name.as_str())?, orbit);
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(3);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1739,18 +1788,15 @@ impl CagireVM {
                 Op::Odub => {
                     let orbit = at!(stack.pop_int())?;
                     let name = at!(stack.pop())?;
-                    let path = format!(
-                        "/doux/rec/{}/overdub/1/orbit/{}",
-                        at!(name.as_str())?,
-                        orbit
-                    );
-                    let message = OSCMessage::new(path, vec![]);
+                    let mut args = HashMap::with_capacity(4);
+                    args.insert("doux".to_string(), VariableValue::Str("rec".into()));
+                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert("overdub".to_string(), VariableValue::Str("1".into()));
+                    args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
+                    let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Osc {
-                            message,
-                            device_id: 2,
-                        },
+                        ConcreteEvent::Dirt { args, device_id: dev },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -3546,5 +3592,147 @@ mod tests {
             eval_stack("1 0 -0.5 .,"),
             vec![Value::Int(1), Value::Float(0.5), Value::Int(0)],
         );
+    }
+
+    // --- sectional gating: first / after / once ---
+
+    fn eval_with_iter(script: &str, iter: usize) -> Vec<(ConcreteEvent, SyncTime)> {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        eval_ctx.line_iterations = iter;
+        vm.evaluate(script, &mut eval_ctx).unwrap()
+    }
+
+    #[test]
+    fn test_first_fires_before_n() {
+        let script = "( c4 note . ) 8 first";
+        for iter in [0usize, 3, 7] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+        for iter in [8usize, 9, 100] {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_first_rejects_zero() {
+        let mut vm = CagireVM::new();
+        let mut tctx = TestCtx::new();
+        let mut eval_ctx = tctx.eval_ctx();
+        assert!(vm.evaluate("( c4 note . ) 0 first", &mut eval_ctx).is_err());
+    }
+
+    #[test]
+    fn test_after_fires_from_n() {
+        let script = "( c4 note . ) 8 after";
+        for iter in 0usize..8 {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+        for iter in [8usize, 9, 100] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_after_zero_always_fires() {
+        let script = "( c4 note . ) 0 after";
+        for iter in [0usize, 1, 5, 100] {
+            let events = eval_with_iter(script, iter);
+            assert_eq!(get_midi_notes(&events), vec![60], "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_once_only_iter_zero() {
+        let script = "( c4 note . ) once";
+        let events = eval_with_iter(script, 0);
+        assert_eq!(get_midi_notes(&events), vec![60]);
+        for iter in [1usize, 5, 1000] {
+            let events = eval_with_iter(script, iter);
+            assert!(get_midi_notes(&events).is_empty(), "iter={iter}");
+        }
+    }
+
+    #[test]
+    fn test_rec_emits_dirt() {
+        let events = eval("\"drums\" rec");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_overdub_emits_dirt() {
+        let events = eval("\"loop\" overdub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("loop".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+                assert_eq!(args.len(), 3);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_dub_alias_emits_dirt() {
+        let events = eval("\"loop\" dub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_orec_emits_dirt() {
+        let events = eval("\"drums\" 0 orec");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.get("orbit"), Some(&VariableValue::Str("0".into())));
+                assert_eq!(args.len(), 3);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_odub_emits_dirt() {
+        let events = eval("\"drums\" 2 odub");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Dirt { args, device_id } => {
+                assert_eq!(*device_id, 1);
+                assert_eq!(args.get("doux"), Some(&VariableValue::Str("rec".into())));
+                assert_eq!(args.get("sound"), Some(&VariableValue::Str("drums".into())));
+                assert_eq!(args.get("overdub"), Some(&VariableValue::Str("1".into())));
+                assert_eq!(args.get("orbit"), Some(&VariableValue::Str("2".into())));
+                assert_eq!(args.len(), 4);
+            }
+            other => panic!("expected Dirt event, got {other:?}"),
+        }
     }
 }

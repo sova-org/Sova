@@ -2,6 +2,7 @@ use crate::client_bridge::ClientBridge;
 use crate::widgets::{COLOR_MUTED, COLOR_OK};
 use eframe::egui;
 use sova_core::protocol::{DeviceInfo, DeviceKind};
+use sova_server::ClientMessage;
 
 pub struct DevicesPanel {
     pub open: bool,
@@ -17,6 +18,7 @@ pub struct DevicesPanel {
     editing_latency: Option<String>,
     slot_edit_value: String,
     latency_edit_value: String,
+    last_device_poll: Option<std::time::Instant>,
 }
 
 impl DevicesPanel {
@@ -35,10 +37,31 @@ impl DevicesPanel {
             editing_latency: None,
             slot_edit_value: String::new(),
             latency_edit_value: String::new(),
+            last_device_poll: None,
+        }
+    }
+
+    fn poll_devices_if_needed(&mut self, bridge: &ClientBridge) {
+        if bridge.has_feedback() || !bridge.is_connected() {
+            return;
+        }
+        const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+        let should_poll = match self.last_device_poll {
+            None => true,
+            Some(last) => last.elapsed() >= POLL_INTERVAL,
+        };
+        if should_poll {
+            bridge.send(ClientMessage::RequestDeviceList);
+            self.last_device_poll = Some(std::time::Instant::now());
         }
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
+        if self.open {
+            self.poll_devices_if_needed(bridge);
+        } else {
+            self.last_device_poll = None;
+        }
         let mut open = self.open;
         egui::Window::new(t!("devices.title"))
             .open(&mut open)
@@ -53,6 +76,7 @@ impl DevicesPanel {
     }
 
     pub fn show_inside(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        self.poll_devices_if_needed(bridge);
         if !bridge.is_connected() {
             ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
             return;

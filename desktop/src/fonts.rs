@@ -66,6 +66,11 @@ fn insert_system_font(
         return;
     };
 
+    if ab_glyph::FontRef::try_from_slice_and_index(&bytes, font_index).is_err() {
+        eprintln!("Font '{family_name}' is not supported (index {font_index}), skipping");
+        return;
+    }
+
     fonts.font_data.insert(
         key.into(),
         Arc::new(egui::FontData {

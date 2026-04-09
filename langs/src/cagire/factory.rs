@@ -64,6 +64,14 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/variables.md").into(),
         ));
         doc.articles.push((
+            "Audio Engine".into(),
+            include_str!("../../docs/cagire/audio_engine.md").into(),
+        ));
+        doc.articles.push((
+            "Modulations".into(),
+            include_str!("../../docs/cagire/modulations.md").into(),
+        ));
+        doc.articles.push((
             "Notes".into(),
             include_str!("../../docs/cagire/notes.md").into(),
         ));
@@ -86,6 +94,10 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push((
             "Randomness".into(),
             include_str!("../../docs/cagire/randomness.md").into(),
+        ));
+        doc.articles.push((
+            "Probability".into(),
+            include_str!("../../docs/cagire/probability.md").into(),
         ));
         doc.articles.push((
             "Cycling".into(),

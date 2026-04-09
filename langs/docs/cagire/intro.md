@@ -127,6 +127,8 @@ Using Cagire doesn't feel like programming at all. It feels more like juggling w
 
 ## Your First Sounds
 
+Every sound in this section is played by Doux, the audio engine bundled with Sova. To learn what else Doux can do and how parameters flow into it, see the **Audio Engine** article.
+
 Play a kick drum:
 
 ```forth

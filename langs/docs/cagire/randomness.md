@@ -1,6 +1,4 @@
-# Randomness
-
-Music needs surprise. A line that plays identically every time gets boring fast. This article covers Cagire's words for *non-deterministic* variation: random number generation, probabilistic execution, weighted selection, and seeding. For *deterministic* stepping through a list of values, see the [Cycling](#) article. For deterministic firing on certain iterations, see [Periodic Execution](#).
+Music needs surprise. A line that plays identically every time gets boring fast. This article covers Cagire's words for drawing non-deterministic *values*: random numbers, weighted selection, shuffling, and seeding. For running a quotation with some chance, see the [Probability](#) article. For deterministic stepping through a list of values, see [Cycling](#). For deterministic firing on certain iterations, see [Periodic Execution](#).
 
 ## Random Numbers
 
@@ -27,50 +25,6 @@ coin note sine snd .    ;; either 0 or 1 as the note
 These are useful for parameters where perception is logarithmic (frequency, duration, gain), because a uniform `rand` over the same range will spend most of its values in the upper octave.
 
 Each fresh draw of any of these words is independent. Inside an `at` quotation they re-roll on every subdivision (see [Timing](#) for the rule).
-
-## Conditional Execution
-
-Probability words take a quotation and execute it with some chance. `chance` takes a float from 0.0 to 1.0; `prob` takes a percentage from 0 to 100:
-
-```forth
-( hat snd . ) 0.25 chance    ;; 25% chance
-( hat snd . ) 75 prob        ;; 75% chance
-```
-
-Stack effect: `(quot prob --)` for both. The quotation is the deeper item, the probability sits on top.
-
-### Named probabilities
-
-Named probability words are syntactic sugar for the most common cases. They save you from typing `0.5 chance` when `sometimes` reads better:
-
-| Word | Probability |
-|------|------------|
-| `always` | 100% |
-| `almostAlways` | 90% |
-| `often` | 75% |
-| `sometimes` | 50% |
-| `rarely` | 25% |
-| `almostNever` | 10% |
-| `never` | 0% |
-
-```forth
-( hat snd . ) often          ;; 75%
-( snare snd . ) sometimes    ;; 50%
-( clap snd . ) rarely        ;; 25%
-```
-
-`always` and `never` look pointless at first glance, but they earn their keep as live-coding mute switches: write a voice with `always`, change it to `never` to silence the voice without deleting the line, then change it back when you want it.
-
-### Coin-flip shorthand
-
-`coin` plus `?` or `!?` gives a quick coin-flip control flow:
-
-```forth
-( hat snd . ) coin ?     ;; execute if coin is 1
-( rim snd . ) coin !?    ;; execute if coin is 0
-```
-
-`?` runs its quotation when the boolean above it is truthy; `!?` runs it when falsy. They're general-purpose conditionals (see [Control Flow](#)) but pair very naturally with `coin` for one-line variation.
 
 ## Random Selection
 
@@ -150,3 +104,5 @@ modal snd .
 ```
 
 The root plays most often. Higher chord tones are rarer. Decay and harmonics vary continuously, with `exprand` keeping `harmonics` mostly low.
+
+For the wider framing of random values as a way to modulate sound parameters, see [Modulations](#).

@@ -140,6 +140,9 @@ pub enum Op {
     Except(Option<Span>),
     EveryOffset(Option<Span>),
     ExceptOffset(Option<Span>),
+    First(Option<Span>),
+    After(Option<Span>),
+    Once(Option<Span>),
     Mark,
     Count(Option<Span>),
     Rec,
@@ -171,6 +174,9 @@ impl Op {
             | Op::ExceptOffset(s)
             | Op::Bjork(s)
             | Op::PBjork(s)
+            | Op::First(s)
+            | Op::After(s)
+            | Op::Once(s)
             | Op::Count(s)
             | Op::Index(s) => *s = Some(span),
             _ => {}
