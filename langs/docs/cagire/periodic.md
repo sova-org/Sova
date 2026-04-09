@@ -151,4 +151,4 @@ A Euclidean drum kit with phase-offset accents:
 ( ride snd . ) 7 16 bjork
 ```
 
-For *cycling through values* on each iteration (rather than gating execution), see the [Cycling](#) article. For sub-frame timing within a single iteration, see [Timing](#). The `at` word splits a single frame into evenly-spaced sub-events and pairs naturally with these periodic words. For the wider framing of periodic gating as parameter modulation, see [Control Rate Modulation](#).
+For *cycling through values* on each iteration (rather than gating execution), see the [Cycling](#) article. For sub-frame timing within a single iteration, see [Timing](#). The `at` word splits a single frame into evenly-spaced sub-events and pairs naturally with these periodic words. For the wider framing of periodic gating as parameter modulation, see [Modulations](#).

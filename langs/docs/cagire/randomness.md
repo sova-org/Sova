@@ -105,4 +105,4 @@ modal snd .
 
 The root plays most often. Higher chord tones are rarer. Decay and harmonics vary continuously, with `exprand` keeping `harmonics` mostly low.
 
-For the wider framing of random values as a way to modulate sound parameters, see [Control Rate Modulation](#). For random motion that happens continuously at audio rate instead of once per frame, see [Audio Rate Modulation](#).
+For the wider framing of random values as a way to modulate sound parameters, see [Modulations](#).

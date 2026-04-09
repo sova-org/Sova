@@ -68,8 +68,8 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/audio_engine.md").into(),
         ));
         doc.articles.push((
-            "Static Parameters".into(),
-            include_str!("../../docs/cagire/static_params.md").into(),
+            "Modulations".into(),
+            include_str!("../../docs/cagire/modulations.md").into(),
         ));
         doc.articles.push((
             "Notes".into(),
@@ -110,14 +110,6 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push((
             "Timing".into(),
             include_str!("../../docs/cagire/timing.md").into(),
-        ));
-        doc.articles.push((
-            "Control Rate Modulation".into(),
-            include_str!("../../docs/cagire/control_rate_params.md").into(),
-        ));
-        doc.articles.push((
-            "Audio Rate Modulation".into(),
-            include_str!("../../docs/cagire/audio_rate_params.md").into(),
         ));
         doc.articles.push((
             "MIDI".into(),

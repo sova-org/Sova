@@ -105,4 +105,4 @@ c4 swap [ 0 2 4 7 ] cycle deg freq
 sine snd .
 ```
 
-For periodic firing (run a quotation *every nth iteration*) rather than picking from a list, see the [Periodic Execution](#) article. For the wider framing of cycling as a way to modulate parameters, see [Control Rate Modulation](#).
+For periodic firing (run a quotation *every nth iteration*) rather than picking from a list, see the [Periodic Execution](#) article. For the wider framing of cycling as a way to modulate parameters, see [Modulations](#).

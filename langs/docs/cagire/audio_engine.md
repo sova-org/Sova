@@ -1,6 +1,6 @@
 Doux is the audio engine that ships with Sova. When you write `sine snd c4 note 0.5 gain .`, almost every word in that line is an instruction to Doux. The oscillators, the envelopes, the filters, the reverbs, the crushers, the compressors: they all live inside Doux. Understanding Doux is understanding what most of Cagire does. This article is a tour of what is in there and how Cagire talks to it.
 
-For the mechanics of handing values to parameters, see the [Static Parameters](#) article. For changing those values over time, see [Control Rate Modulation](#) and [Audio Rate Modulation](#). For sending notes to external gear instead of Doux, see [MIDI](#).
+For the mechanics of handing values to parameters and changing them over time, see the [Modulations](#) article. For sending notes to external gear instead of Doux, see [MIDI](#).
 
 ## The Sound Register
 
@@ -172,8 +172,4 @@ Different voices sharing the same orbit also share that orbit's effect state, wh
 
 ## Where to Go Next
 
-Now that you know what is inside Doux, there are three things to learn:
-
-- [Static Parameters](#) covers how values flow from the stack to the sound register, including stacking order, overriding, and resetting.
-- [Control Rate Modulation](#) shows how to change parameter values from one frame to the next using cycling, randomness, and periodic words.
-- [Audio Rate Modulation](#) introduces the dedicated words that let Doux itself sweep a parameter smoothly between frames.
+Now that you know what is inside Doux, see [Modulations](#) for how values flow from the stack to the sound register, how to change them from one frame to the next, and how to hand Doux continuous movements that sweep parameters smoothly.

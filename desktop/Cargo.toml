@@ -25,7 +25,7 @@ egui-file-dialog = "0.12"
 serde = { workspace = true }
 serde_json = { workspace = true }
 confy = "2"
-doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.30", features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.31", features = ["native"] }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
