@@ -721,7 +721,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 if needs_resync.swap(false, Ordering::Relaxed) {
                     let scene = state.scene_image.lock().await.clone();
                     let c = Clock::from(&state.clock_server);
-                    let devices = state.devices.create_device_snapshot();
+                    let devices = state.devices.device_list();
                     let snapshot = Snapshot {
                         scene,
                         tempo: c.tempo(),
