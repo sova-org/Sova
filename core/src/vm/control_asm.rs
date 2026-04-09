@@ -356,17 +356,13 @@ impl ControlASM {
                     }
                     VariableValue::Vec(mut v) => {
                         let index = key.as_integer(ctx) as usize;
-                        if index > v.len() {
-                            todo!()
-                        }
+                        let index = index.min(v.len());
                         v.insert(index, val_value);
                         ctx.set_var(res, VariableValue::Vec(v));
                     }
                     VariableValue::Str(mut s) => {
                         let index = key.as_integer(ctx) as usize;
-                        if index > s.len() {
-                            todo!()
-                        }
+                        let index = index.min(s.len());
                         s.insert_str(index, val_value.as_str(ctx).as_str());
                         ctx.set_var(res, VariableValue::Str(s));
                     }
@@ -377,7 +373,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -414,7 +409,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -445,7 +439,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -510,7 +503,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -752,9 +744,8 @@ impl ControlASM {
             // Calls and returns
             ControlASM::CallFunction(f) => {
                 if return_stack.len() >= MAX_CALL_DEPTH {
-                    ctx.errors.throw(
-                        SovaError::from(&mut *ctx).message("maximum call depth exceeded"),
-                    );
+                    ctx.errors
+                        .throw(SovaError::from(&mut *ctx).message("maximum call depth exceeded"));
                     return ReturnInfo::IndexChange(usize::MAX);
                 }
                 return_stack.push(ReturnInfo::ProgChange(
