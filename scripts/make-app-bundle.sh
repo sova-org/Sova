@@ -13,7 +13,7 @@ TARGET="$1"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 BINARY="$REPO_ROOT/target/$TARGET/release/sova-frontend"
 ICON="$REPO_ROOT/desktop/assets/Sova.icns"
-VERSION="0.1.0"
+VERSION="$(grep -m1 '^version' "$REPO_ROOT/Cargo.toml" | sed 's/.*"\(.*\)"/\1/')"
 
 if [[ ! -f "$BINARY" ]]; then
     echo "ERROR: binary not found at $BINARY"

@@ -1,7 +1,8 @@
 [package]
 name = "sova-server"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
+publish = false
 
 [lib]
 name = "sova_server"

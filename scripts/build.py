@@ -151,7 +151,12 @@ class PlatformResult:
 def get_version(root: Path) -> str:
     with open(root / "desktop" / "Cargo.toml", "rb") as f:
         cargo = tomllib.load(f)
-    return cargo["package"]["version"]
+    version = cargo["package"]["version"]
+    if isinstance(version, dict) and version.get("workspace"):
+        with open(root / "Cargo.toml", "rb") as f:
+            workspace = tomllib.load(f)
+        return workspace["workspace"]["package"]["version"]
+    return version
 
 
 def builder_for(p: Platform) -> str:

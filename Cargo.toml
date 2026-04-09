@@ -8,6 +8,9 @@ members = [
 ]
 resolver = "3"
 
+[workspace.package]
+version = "0.1.0"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
