@@ -107,4 +107,8 @@ pub const DEMOS_GENERAL: &[(&str, &[u8])] = &[
         "Studious",
         include_bytes!("../assets/demos/general/chords.sova"),
     ),
+    (
+        "People with basses",
+        include_bytes!("../assets/demos/general/people_with_basses.sova"),
+    ),
 ];
