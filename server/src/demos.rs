@@ -52,8 +52,8 @@ pub const DEMOS_GENERAL: &[(&str, &[u8])] = &[
         include_bytes!("../assets/demos/general/aliens_near_us.sova"),
     ),
     (
-        "2005 algorave",
-        include_bytes!("../assets/demos/general/2005_algorave.sova"),
+        "2012 algorave",
+        include_bytes!("../assets/demos/general/2012_algorave.sova"),
     ),
     (
         "By the pond",
