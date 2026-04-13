@@ -73,6 +73,11 @@ pub fn make_internal_event(ctx: &EvaluationContext, item: BoinxItem) -> Option<C
             let t = map.remove("value").unwrap_or_default().as_float(ctx);
             Some(ConcreteEvent::SetTempo(t))
         }
+        "local" => {
+            let l_i = map.remove("line").unwrap_or_default().as_integer(ctx) as usize;
+            let f_i = map.remove("frame").unwrap_or_default().as_integer(ctx) as usize;
+            Some(ConcreteEvent::ExecuteLocally(ctx.line_index, ctx.frame_index, l_i, f_i))
+        }
         _ => None,
     }
 }
