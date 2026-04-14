@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::cagire::ops::Op;
 use crate::cagire::types::Span;
 
-use super::{lookup_word, WordCompile::*};
+use super::{WordCompile::*, lookup_word};
 
 pub(super) fn simple_op(name: &str) -> Option<Op> {
     Some(match name {

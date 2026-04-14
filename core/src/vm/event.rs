@@ -81,8 +81,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) 
-            | ConcreteEvent::KillExecutions(..) 
+            | ConcreteEvent::SetFrame(..)
+            | ConcreteEvent::KillExecutions(..)
             | ConcreteEvent::SetTempo(_) => None,
         }
     }
@@ -98,7 +98,7 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) 
+            | ConcreteEvent::SetFrame(..)
             | ConcreteEvent::KillExecutions(..)
             | ConcreteEvent::SetTempo(_) => true,
             _ => false,
@@ -385,9 +385,7 @@ impl Event {
                 ctx.evaluate(l_i).as_integer(ctx) as usize,
                 ctx.evaluate(f_i).as_integer(ctx) as usize,
             ),
-            Event::SetTempo(t) => ConcreteEvent::SetTempo(
-                ctx.evaluate(t).as_float(ctx)
-            )
+            Event::SetTempo(t) => ConcreteEvent::SetTempo(ctx.evaluate(t).as_float(ctx)),
         }
     }
 }

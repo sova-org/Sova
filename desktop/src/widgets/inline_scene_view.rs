@@ -9,8 +9,9 @@ use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
 use sova_server::{ClientMessage, TextOp};
 
-use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext, cycled_accent};
+use super::{CodeEditor, EditorContext};
 use crate::client_bridge::ClientBridge;
+use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, cycled_accent};
 
 /// Full-body language picker grid. Replaces the code editor area with a grid
 /// of clickable language tiles. Returns `Some(lang_name)` when a language is
@@ -210,6 +211,14 @@ pub fn show_lang_picker(
     result
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum FocusRequest {
+    None,
+    Editor,
+    Duration,
+    Repetitions,
+}
+
 pub struct InlineFrameState {
     pub editor: CodeEditor,
     pub content: String,
@@ -219,13 +228,12 @@ pub struct InlineFrameState {
     pub lang_picker_filter: String,
     pub lang_picker_selection: usize,
     pub last_eval: Option<Instant>,
-    pub last_cursor_line: Option<usize>,
-    pub last_cursor_col: Option<usize>,
+    pub last_cursor: Option<(usize, usize)>,
     pub sent_cursor: Option<(usize, usize)>,
     pub last_cursor_send: Instant,
 
     pub editor_has_focus: bool,
-    pub request_focus: bool,
+    pub focus_request: FocusRequest,
     pub escape_pressed: bool,
     pub menu_open: bool,
     pub prev_content: String,
@@ -250,13 +258,12 @@ impl InlineFrameState {
             lang_picker_filter: String::new(),
             lang_picker_selection: 0,
             last_eval: None,
-            last_cursor_line: None,
-            last_cursor_col: None,
+            last_cursor: None,
             sent_cursor: None,
             last_cursor_send: Instant::now(),
 
             editor_has_focus: false,
-            request_focus: false,
+            focus_request: FocusRequest::None,
             escape_pressed: false,
             menu_open: false,
             pending_ops: Vec::new(),
@@ -402,6 +409,7 @@ impl InlineFrameState {
         frame: &Frame,
         bridge: &ClientBridge,
         is_focused: bool,
+        is_sequencer: bool,
     ) {
         // Subdued style: transparent backgrounds so the header doesn't compete with the code
         let wv = &mut ui.style_mut().visuals.widgets;
@@ -426,20 +434,22 @@ impl InlineFrameState {
             }
         }
 
-        // Collapse toggle (chevron)
-        let collapse_icon = if self.collapsed {
-            crate::icons::CHEVRON_RIGHT
-        } else {
-            crate::icons::CHEVRON_DOWN
-        };
-        if ui
-            .add(
-                egui::Button::new(crate::icons::rich(collapse_icon).color(COLOR_MUTED))
-                    .fill(egui::Color32::TRANSPARENT),
-            )
-            .clicked()
-        {
-            self.collapsed = !self.collapsed;
+        // Collapse toggle (chevron) — not in sequencer editor panel
+        if !is_sequencer {
+            let collapse_icon = if self.collapsed {
+                crate::icons::CHEVRON_RIGHT
+            } else {
+                crate::icons::CHEVRON_DOWN
+            };
+            if ui
+                .add(
+                    egui::Button::new(crate::icons::rich(collapse_icon).color(COLOR_MUTED))
+                        .fill(egui::Color32::TRANSPARENT),
+                )
+                .clicked()
+            {
+                self.collapsed = !self.collapsed;
+            }
         }
 
         // Enabled toggle
@@ -480,10 +490,14 @@ impl InlineFrameState {
             self.lang_picker_selection = 0;
         }
 
-        ui.separator();
-
-        // Duration
+        // Duration — if a focus request is pending, grab the id the widget is
+        // about to use and request focus on it, so DragValue enters kb edit mode.
         let mut dur = frame.duration;
+        if self.focus_request == FocusRequest::Duration {
+            self.focus_request = FocusRequest::None;
+            let id = ui.next_auto_id();
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         let dur_resp = ui.add(
             egui::DragValue::new(&mut dur)
                 .range(0.001..=f64::MAX)
@@ -502,6 +516,11 @@ impl InlineFrameState {
 
         // Repetitions
         let mut rep = frame.repetitions;
+        if self.focus_request == FocusRequest::Repetitions {
+            self.focus_request = FocusRequest::None;
+            let id = ui.next_auto_id();
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         let rep_resp = ui.add(
             egui::DragValue::new(&mut rep)
                 .range(1..=usize::MAX)
@@ -527,20 +546,22 @@ impl InlineFrameState {
                 self.menu_open = !self.menu_open;
             }
 
-            // Focus toggle
-            let focus_icon = if is_focused {
-                crate::icons::UNFOCUS
-            } else {
-                crate::icons::FOCUS
-            };
-            if ui
-                .add(
-                    egui::Button::new(crate::icons::small(focus_icon).color(COLOR_MUTED))
-                        .fill(egui::Color32::TRANSPARENT),
-                )
-                .clicked()
-            {
-                self.focus_toggled = true;
+            // Focus toggle (not in sequencer mode)
+            if !is_sequencer {
+                let focus_icon = if is_focused {
+                    crate::icons::UNFOCUS
+                } else {
+                    crate::icons::FOCUS
+                };
+                if ui
+                    .add(
+                        egui::Button::new(crate::icons::small(focus_icon).color(COLOR_MUTED))
+                            .fill(egui::Color32::TRANSPARENT),
+                    )
+                    .clicked()
+                {
+                    self.focus_toggled = true;
+                }
             }
 
             // Dirty indicator
@@ -560,7 +581,6 @@ impl InlineFrameState {
 
             // Step badge
             if n_frames > 1 {
-                let label = format!("{}/{}", fi + 1, n_frames);
                 let (badge_bg, badge_fg) = if playing_fis.contains(&fi) {
                     (accent, egui::Color32::WHITE)
                 } else if playing_fis.iter().any(|&pfi| fi < pfi) {
@@ -576,20 +596,13 @@ impl InlineFrameState {
                 } else {
                     (ui.visuals().extreme_bg_color, COLOR_MUTED)
                 };
-                let font = egui::FontId::monospace(10.0);
-                let galley = ui.painter().layout_no_wrap(label, font, badge_fg);
-                let pad = egui::vec2(5.0, 2.0);
-                let desired = galley.size() + pad * 2.0;
-                let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
-                ui.painter().rect_filled(rect, 0.0, badge_bg);
-                let center = rect.center();
-                ui.painter().galley(
-                    egui::pos2(
-                        center.x - galley.size().x / 2.0,
-                        center.y - galley.size().y / 2.0,
-                    ),
-                    galley,
+                crate::widgets::shortcut::badge_text(
+                    ui,
+                    format!("{}/{}", fi + 1, n_frames),
+                    badge_bg,
                     badge_fg,
+                    10.0,
+                    egui::vec2(5.0, 2.0),
                 );
             }
         });
@@ -605,7 +618,12 @@ impl InlineFrameState {
         default_lang: &str,
     ) -> Option<(usize, usize)> {
         let mut picker_target = None;
-        if ui.button(t!("scene.insert_frame_before")).clicked() {
+        let item = |ui: &mut egui::Ui, label: &str| -> bool {
+            ui.add(egui::Button::new(label).fill(egui::Color32::TRANSPARENT))
+                .clicked()
+        };
+
+        if item(ui, &t!("scene.insert_frame_before")) {
             bridge.send(SchedulerMessage::AddFrame(
                 li,
                 fi,
@@ -614,9 +632,8 @@ impl InlineFrameState {
             ));
             picker_target = Some((li, fi));
             self.menu_open = false;
-            ui.close();
         }
-        if ui.button(t!("scene.insert_frame_after")).clicked() {
+        if item(ui, &t!("scene.insert_frame_after")) {
             bridge.send(SchedulerMessage::AddFrame(
                 li,
                 fi + 1,
@@ -625,9 +642,8 @@ impl InlineFrameState {
             ));
             picker_target = Some((li, fi + 1));
             self.menu_open = false;
-            ui.close();
         }
-        if ui.button(t!("scene.duplicate_frame")).clicked() {
+        if item(ui, &t!("scene.duplicate_frame")) {
             if let Some(frame) = bridge
                 .scene()
                 .and_then(|s| s.lines.get(li))
@@ -641,15 +657,15 @@ impl InlineFrameState {
                 ));
             }
             self.menu_open = false;
-            ui.close();
         }
 
         ui.separator();
 
         if ui
-            .add(egui::Button::new(
-                egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR),
-            ))
+            .add(
+                egui::Button::new(egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR))
+                    .fill(egui::Color32::TRANSPARENT),
+            )
             .clicked()
         {
             bridge.send(SchedulerMessage::RemoveFrame(
@@ -658,7 +674,6 @@ impl InlineFrameState {
                 ActionTiming::Immediate,
             ));
             self.menu_open = false;
-            ui.close();
         }
         picker_target
     }
@@ -675,8 +690,8 @@ impl InlineFrameState {
         let editor_id_focus = editor_id.with("editor");
 
         // Handle focus request from Nav → Edit mode transition
-        if self.request_focus {
-            self.request_focus = false;
+        if self.focus_request == FocusRequest::Editor {
+            self.focus_request = FocusRequest::None;
             ui.memory_mut(|m| m.request_focus(editor_id_focus));
         }
 
@@ -689,8 +704,7 @@ impl InlineFrameState {
                     self.dirty = true;
                     self.compute_diff_ops();
                 }
-                self.last_cursor_line = output.cursor_line;
-                self.last_cursor_col = output.cursor_col;
+                self.last_cursor = output.cursor_line.zip(output.cursor_col);
             });
 
         // Flush pending CRDT operations (throttled)
@@ -728,13 +742,13 @@ impl InlineFrameState {
         }
 
         // Send text cursor position to peers (throttled)
-        if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
-            let pos = (line, col);
-            if self.sent_cursor != Some(pos) && self.last_cursor_send.elapsed().as_millis() >= 50 {
-                self.sent_cursor = Some(pos);
-                self.last_cursor_send = Instant::now();
-                bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
-            }
+        if let Some(pos) = self.last_cursor
+            && self.sent_cursor != Some(pos)
+            && self.last_cursor_send.elapsed().as_millis() >= 50
+        {
+            self.sent_cursor = Some(pos);
+            self.last_cursor_send = Instant::now();
+            bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
         }
 
         // Eval flash
@@ -772,6 +786,7 @@ pub struct InlineScriptState {
     pub height: f32,
     pub editor_has_focus: bool,
     pub request_focus: bool,
+    pub escape_pressed: bool,
     pub last_eval: Option<Instant>,
 }
 
@@ -788,6 +803,7 @@ impl InlineScriptState {
             height: crate::scene_panel::CELL_HEIGHT,
             editor_has_focus: false,
             request_focus: false,
+            escape_pressed: false,
             last_eval: None,
         }
     }
@@ -889,12 +905,11 @@ impl InlineScriptState {
                     .add(egui::Button::new(discard_text).fill(discard_fill))
                     .on_hover_text(t!("step.discard"))
                     .clicked()
+                    && let Some(script) = bridge.scene().and_then(|s| s.prelude.get(idx))
                 {
-                    if let Some(script) = bridge.scene().and_then(|s| s.prelude.get(idx)) {
-                        self.content = script.content().to_owned();
-                        self.lang = script.lang().to_owned();
-                        self.dirty = false;
-                    }
+                    self.content = script.content().to_owned();
+                    self.lang = script.lang().to_owned();
+                    self.dirty = false;
                 }
             }
         });
@@ -931,6 +946,7 @@ impl InlineScriptState {
             if escape && !self.editor.is_completion_open() {
                 ui.memory_mut(|m| m.surrender_focus(editor_id_focus));
                 self.editor_has_focus = false;
+                self.escape_pressed = true;
             }
         }
         if self.editor_has_focus {

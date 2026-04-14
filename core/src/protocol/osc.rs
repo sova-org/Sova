@@ -95,10 +95,13 @@ impl OSCOut {
                     if udp_socket.set_broadcast(true).is_err() {
                         let e = format!("[!] Unable to create broadcast socket {}", self.address);
                         crate::log_eprintln!("{e}");
-                        return Err(ProtocolError(format!("[!] Unable to connect socket to {}", self.address)));
+                        return Err(ProtocolError(format!(
+                            "[!] Unable to connect socket to {}",
+                            self.address
+                        )));
                     }
                 }
-                
+
                 crate::log_println!(
                     "    Created UDP socket bound to {}",
                     udp_socket.local_addr()?

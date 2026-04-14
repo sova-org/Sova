@@ -1,6 +1,7 @@
 use eframe::egui;
 use font_kit::handle::Handle;
 use font_kit::source::SystemSource;
+use sova_core::log_eprintln;
 use std::sync::Arc;
 
 /// Cached list of system font family names, sorted alphabetically.
@@ -12,7 +13,7 @@ pub fn list_system_fonts() -> Vec<String> {
         .into_iter()
         .filter(|name| !name.starts_with('.'))
         .collect();
-    families.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    families.sort_by_key(|a| a.to_lowercase());
     families.dedup();
     families
 }
@@ -28,7 +29,7 @@ fn load_system_font_data(family_name: &str) -> Option<(Vec<u8>, u32)> {
     ) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("Font '{family_name}' not found: {e}");
+            log_eprintln!("Font '{family_name}' not found: {e}");
             return None;
         }
     };
@@ -40,13 +41,13 @@ fn load_system_font_data(family_name: &str) -> Option<(Vec<u8>, u32)> {
     let font = match handle.load() {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("Failed to load font '{family_name}': {e}");
+            log_eprintln!("Failed to load font '{family_name}': {e}");
             return None;
         }
     };
 
     let Some(data) = font.copy_font_data() else {
-        eprintln!("Failed to read font data for '{family_name}'");
+        log_eprintln!("Failed to read font data for '{family_name}'");
         return None;
     };
 
@@ -67,7 +68,7 @@ fn insert_system_font(
     };
 
     if ab_glyph::FontRef::try_from_slice_and_index(&bytes, font_index).is_err() {
-        eprintln!("Font '{family_name}' is not supported (index {font_index}), skipping");
+        log_eprintln!("Font '{family_name}' is not supported (index {font_index}), skipping");
         return;
     }
 

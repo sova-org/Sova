@@ -1,6 +1,7 @@
 use eframe::egui;
 
 use crate::icons;
+use crate::widgets::shortcut::{self, Key, Shortcut};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CommandId {
@@ -46,31 +47,20 @@ struct Command {
     label: String,
     category: String,
     desc: String,
-    shortcut: Option<String>,
+    shortcut: Option<Shortcut>,
     active: bool,
 }
 
-fn modifier_prefix() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "Cmd"
-    } else {
-        "Ctrl"
-    }
-}
-
 fn commands() -> Vec<Command> {
-    let m = modifier_prefix();
-
-    let panel =
-        |id, icon: &'static str, label_key: &str, desc_key: &str, shortcut: String| Command {
-            id,
-            icon: Some(icon),
-            label: t!(label_key).into(),
-            category: t!("cmd.category.panel").into(),
-            desc: t!(desc_key).into(),
-            shortcut: Some(shortcut),
-            active: false,
-        };
+    let panel = |id, icon: &'static str, label_key: &str, desc_key: &str, sc: Shortcut| Command {
+        id,
+        icon: Some(icon),
+        label: t!(label_key).into(),
+        category: t!("cmd.category.panel").into(),
+        desc: t!(desc_key).into(),
+        shortcut: Some(sc),
+        active: false,
+    };
 
     vec![
         // Panels
@@ -79,113 +69,117 @@ fn commands() -> Vec<Command> {
             icons::GEAR,
             "cmd.options",
             "cmd.options.desc",
-            format!("{m}+,"),
+            Shortcut::cmd(Key::Char(',')),
         ),
         panel(
             CommandId::Server,
             icons::CONNECT,
             "cmd.server",
             "cmd.server.desc",
-            format!("{m}+Shift+S"),
+            Shortcut::cmd_shift(Key::Char('S')),
         ),
         panel(
             CommandId::Audio,
             icons::UNMUTE,
             "cmd.audio",
             "cmd.audio.desc",
-            format!("{m}+Shift+A"),
+            Shortcut::cmd_shift(Key::Char('A')),
         ),
         panel(
             CommandId::Devices,
             icons::PLUGS_CONNECTED,
             "cmd.devices",
             "cmd.devices.desc",
-            format!("{m}+Shift+I"),
+            Shortcut::cmd_shift(Key::Char('I')),
         ),
         panel(
             CommandId::Scope,
             icons::WAVE_SINE,
             "cmd.scope",
             "cmd.scope.desc",
-            format!("{m}+Shift+O"),
+            Shortcut::cmd_shift(Key::Char('O')),
         ),
         panel(
             CommandId::Spectrum,
             icons::WAVE_SINE,
             "cmd.spectrum",
             "cmd.spectrum.desc",
-            format!("{m}+Shift+P"),
+            Shortcut::cmd_shift(Key::Char('P')),
         ),
         panel(
             CommandId::VuMeter,
             icons::WAVE_SINE,
             "cmd.vu_meter",
             "cmd.vu_meter.desc",
-            format!("{m}+Shift+U"),
+            Shortcut::cmd_shift(Key::Char('U')),
         ),
         panel(
             CommandId::ScopeBar,
             icons::WAVE_SINE,
             "cmd.scope_bar",
             "cmd.scope_bar.desc",
-            format!("{m}+Shift+W"),
+            Shortcut::cmd_shift(Key::Char('W')),
         ),
         panel(
             CommandId::Chat,
             icons::SEND,
             "cmd.chat",
             "cmd.chat.desc",
-            format!("{m}+Shift+C"),
+            Shortcut::cmd_shift(Key::Char('C')),
         ),
         panel(
             CommandId::Logs,
             icons::FILE_TEXT,
             "cmd.logs",
             "cmd.logs.desc",
-            format!("{m}+Shift+L"),
+            Shortcut::cmd_shift(Key::Char('L')),
         ),
         panel(
             CommandId::SampleBrowser,
             icons::MUSIC_NOTE,
             "cmd.sample_browser",
             "cmd.sample_browser.desc",
-            format!("{m}+Shift+E"),
+            Shortcut::cmd_shift(Key::Char('E')),
         ),
         panel(
             CommandId::Documentation,
             icons::BOOK,
             "cmd.documentation",
             "cmd.documentation.desc",
-            format!("{m}+Shift+H"),
+            Shortcut::cmd_shift(Key::Char('H')),
         ),
         panel(
             CommandId::Visuals,
             icons::PALETTE,
             "cmd.visuals",
             "cmd.visuals.desc",
-            format!("{m}+Shift+V"),
+            Shortcut::cmd_shift(Key::Char('V')),
         ),
         panel(
             CommandId::Debug,
             icons::CPU,
             "cmd.debug",
             "cmd.debug.desc",
-            format!("{m}+Shift+B"),
+            Shortcut::cmd_shift(Key::Char('B')),
         ),
-        panel(
-            CommandId::Keybindings,
-            icons::KEYBOARD,
-            "cmd.keybindings",
-            "cmd.keybindings.desc",
-            "F1".into(),
-        ),
-        panel(
-            CommandId::About,
-            icons::CIRCLE_FILLED,
-            "cmd.about",
-            "cmd.about.desc",
-            String::new(),
-        ),
+        Command {
+            id: CommandId::Keybindings,
+            icon: Some(icons::KEYBOARD),
+            label: t!("cmd.keybindings").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.keybindings.desc").into(),
+            shortcut: None,
+            active: false,
+        },
+        Command {
+            id: CommandId::About,
+            icon: Some(icons::CIRCLE_FILLED),
+            label: t!("cmd.about").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.about.desc").into(),
+            shortcut: None,
+            active: false,
+        },
         // Engine
         Command {
             id: CommandId::RestartCore,
@@ -203,7 +197,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.play_pause").into(),
             category: t!("cmd.category.transport").into(),
             desc: t!("cmd.play_pause.desc").into(),
-            shortcut: Some(format!("{m}+Shift+Space")),
+            shortcut: Some(Shortcut::cmd_shift(Key::Space)),
             active: false,
         },
         // File
@@ -213,7 +207,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.save_scene").into(),
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.save_scene.desc").into(),
-            shortcut: Some(format!("{m}+S")),
+            shortcut: Some(Shortcut::cmd(Key::Char('S'))),
             active: false,
         },
         Command {
@@ -222,7 +216,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.load_scene").into(),
             category: t!("cmd.category.file").into(),
             desc: t!("cmd.load_scene.desc").into(),
-            shortcut: Some(format!("{m}+O")),
+            shortcut: Some(Shortcut::cmd(Key::Char('O'))),
             active: false,
         },
         Command {
@@ -241,7 +235,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.zoom_in").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_in.desc").into(),
-            shortcut: Some(format!("{m}+=")),
+            shortcut: Some(Shortcut::cmd(Key::Char('='))),
             active: false,
         },
         Command {
@@ -250,7 +244,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.zoom_out").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_out.desc").into(),
-            shortcut: Some(format!("{m}+-")),
+            shortcut: Some(Shortcut::cmd(Key::Char('-'))),
             active: false,
         },
         Command {
@@ -259,7 +253,7 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.zoom_reset").into(),
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_reset.desc").into(),
-            shortcut: Some(format!("{m}+0")),
+            shortcut: Some(Shortcut::cmd(Key::Char('0'))),
             active: false,
         },
     ]
@@ -329,6 +323,15 @@ impl CommandPalette {
                 label_matches: Vec::new(),
             })
             .collect();
+    }
+
+    /// Iterator over `(CommandId, Shortcut)` pairs for every command that has
+    /// a key binding. Used by the global shortcut handler so the keyboard map
+    /// and the palette stay in sync from a single source.
+    pub fn shortcut_table(&self) -> impl Iterator<Item = (CommandId, Shortcut)> + '_ {
+        self.commands
+            .iter()
+            .filter_map(|c| c.shortcut.map(|s| (c.id, s)))
     }
 
     pub fn update_states(&mut self, states: &PanelStates) {
@@ -463,8 +466,7 @@ impl CommandPalette {
 
                             // Icon
                             let icon_offset = if let Some(icon) = cmd.icon {
-                                let icon_pos =
-                                    rect.min + egui::vec2(label_x + text_offset, 2.0);
+                                let icon_pos = rect.min + egui::vec2(label_x + text_offset, 2.0);
                                 let icon_color = if selected {
                                     ui.visuals().selection.stroke.color
                                 } else {
@@ -512,13 +514,11 @@ impl CommandPalette {
                             }
 
                             // Shortcut (right-aligned)
-                            if let Some(shortcut) = &cmd.shortcut
-                                && !shortcut.is_empty()
-                            {
+                            if let Some(sc) = &cmd.shortcut {
                                 ui.painter().text(
                                     rect.max - egui::vec2(6.0, row_height - 10.0),
                                     egui::Align2::RIGHT_TOP,
-                                    shortcut,
+                                    shortcut::format(ui.ctx(), sc),
                                     egui::FontId::monospace(11.0),
                                     weak_color,
                                 );
@@ -531,8 +531,7 @@ impl CommandPalette {
                                 weak_color
                             };
                             ui.painter().text(
-                                rect.min
-                                    + egui::vec2(label_x + text_offset + icon_offset, 20.0),
+                                rect.min + egui::vec2(label_x + text_offset + icon_offset, 20.0),
                                 egui::Align2::LEFT_TOP,
                                 &cmd.desc,
                                 egui::FontId::proportional(11.0),

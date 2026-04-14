@@ -281,8 +281,7 @@ mod tests {
         // Frame C: forget it.
         {
             let dict = shared.lock().unwrap().clone();
-            let mut interp =
-                CagireInterpreter::new("\"bass\" forget", dict, Arc::clone(&shared));
+            let mut interp = CagireInterpreter::new("\"bass\" forget", dict, Arc::clone(&shared));
             let mut ctx = tctx.eval_ctx();
             let _ = interp.execute_next(&mut ctx);
         }
@@ -316,8 +315,7 @@ mod tests {
         // Frame B: forget only `foo`.
         {
             let dict = shared.lock().unwrap().clone();
-            let mut interp =
-                CagireInterpreter::new("\"foo\" forget", dict, Arc::clone(&shared));
+            let mut interp = CagireInterpreter::new("\"foo\" forget", dict, Arc::clone(&shared));
             let mut ctx = tctx.eval_ctx();
             let _ = interp.execute_next(&mut ctx);
         }

@@ -348,8 +348,7 @@ pub(super) const WORDS: &[Word] = &[
         aliases: &[],
         category: "Generator",
         stack: "(\"pattern\" -- f1 f2 ...)",
-        desc:
-            "Push pattern hit positions as floats. x=hit .=rest -=extend []=subdivide <|>=alternate",
+        desc: "Push pattern hit positions as floats. x=hit .=rest -=extend []=subdivide <|>=alternate",
         example: include_str!("../../../docs/cagire/examples/pat.cagire"),
         compile: Simple,
         varargs: false,

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
+use sova_core::log_eprintln;
 use std::path::PathBuf;
 
 use crate::widgets::EditorSettings;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AppSettings {
     pub windows: WindowSettings,
@@ -17,8 +18,8 @@ pub struct AppSettings {
     pub visuals: VisualsSettings,
     pub doc: DocSettings,
     pub scene: SceneSettings,
+    pub tools: ToolsSettings,
     pub recent_scenes: Vec<PathBuf>,
-    pub dismissed_tips: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub enum DocTrigger {
     Hover,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DocSettings {
     pub side: DocSide,
@@ -59,7 +60,7 @@ impl Default for DocSettings {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScopeSettings {
     pub persistence: f32,
@@ -75,11 +76,11 @@ impl Default for ScopeSettings {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SpectrumSettings {
     pub smoothing: f32,
-    pub bar_gap: f32,
+    pub peak_decay: f32,
     pub gradient_strength: f32,
     pub detached: bool,
 }
@@ -88,14 +89,14 @@ impl Default for SpectrumSettings {
     fn default() -> Self {
         Self {
             smoothing: 0.85,
-            bar_gap: 0.0,
+            peak_decay: 0.92,
             gradient_strength: 0.3,
             detached: false,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppearanceSettings {
     pub zoom: f32,
@@ -124,12 +125,12 @@ impl Default for AppearanceSettings {
             animation_time: 0.15,
             ui_font: String::new(),
             editor_font: String::new(),
-            bg_brightness: 20,
+            bg_brightness: 0,
         }
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VisualsSettings {
     pub code: String,
@@ -154,7 +155,7 @@ impl ScopeBarMode {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
     pub chat_detached: bool,
@@ -174,7 +175,35 @@ impl Default for WindowSettings {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolsTab {
+    Chat,
+    SampleBrowser,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ToolsSettings {
+    pub open: bool,
+    pub show_chat: bool,
+    pub show_sample_browser: bool,
+    pub active_tab: Option<ToolsTab>,
+    pub width: f32,
+}
+
+impl Default for ToolsSettings {
+    fn default() -> Self {
+        Self {
+            open: false,
+            show_chat: false,
+            show_sample_browser: false,
+            active_tab: None,
+            width: 360.0,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerSettings {
     pub ip: String,
@@ -190,7 +219,7 @@ impl Default for ServerSettings {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClientSettings {
     pub ip: String,
@@ -210,7 +239,7 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioSettings {
     pub host: String,
@@ -238,11 +267,13 @@ impl Default for AudioSettings {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SceneSettings {
     pub prelude_collapsed: bool,
     pub prelude_col_width: f32,
+    pub view_mode: u8,
+    pub show_phase_bar: bool,
 }
 
 impl Default for SceneSettings {
@@ -250,6 +281,8 @@ impl Default for SceneSettings {
         Self {
             prelude_collapsed: true,
             prelude_col_width: 300.0,
+            view_mode: 0,
+            show_phase_bar: true,
         }
     }
 }
@@ -260,6 +293,6 @@ pub fn load() -> AppSettings {
 
 pub fn save(settings: &AppSettings) {
     if let Err(e) = confy::store("sova", None, settings) {
-        eprintln!("Failed to save settings: {e}");
+        log_eprintln!("Failed to save settings: {e}");
     }
 }

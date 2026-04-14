@@ -17,7 +17,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
         return;
     }
 
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
         *open = false;
         return;
     }

@@ -197,10 +197,7 @@ fn compile(
         // immediately so subsequent tokens in the same script see the
         // removal. The runtime ops are still emitted (below) so cross-frame
         // propagation via vm.forgotten still happens.
-        if top_level
-            && matches!(&tok.kind, TokenKind::Word(w) if w == "forget")
-            && i > 0
-        {
+        if top_level && matches!(&tok.kind, TokenKind::Word(w) if w == "forget") && i > 0 {
             if let TokenKind::Str(s) = &tokens[i - 1].kind {
                 dict.remove(s.as_str());
             }
@@ -787,8 +784,8 @@ mod tests {
         // `"name" forget` removes name from the compile dict immediately, so
         // tokens that come after see the word as unknown.
         let mut dict = Dictionary::new();
-        let (ops, _) = compile_script(": double dup + ; \"double\" forget double", &mut dict)
-            .unwrap();
+        let (ops, _) =
+            compile_script(": double dup + ; \"double\" forget double", &mut dict).unwrap();
         // After the directive, the trailing `double` should resolve as an
         // unknown word (intentional language feature: unknown words become
         // strings), not as the inlined dup+ body.
@@ -819,8 +816,7 @@ mod tests {
         // Forget the word, then redefine it. Subsequent uses should bind to
         // the new body, not the old one.
         let mut dict = Dictionary::new();
-        let (ops, _) =
-            compile_script(": foo 1 ; \"foo\" forget : foo 2 ; foo", &mut dict).unwrap();
+        let (ops, _) = compile_script(": foo 1 ; \"foo\" forget : foo 2 ; foo", &mut dict).unwrap();
         // [PushStr("foo"), Forget, PushInt(2) (from new body)]
         assert_eq!(ops.len(), 3);
         assert!(matches!(&ops[0], Op::PushStr(s) if s.as_ref() == "foo"));
@@ -834,8 +830,7 @@ mod tests {
         // quotation may never run. The compile dict keeps the definition,
         // and the trailing `foo` still inlines the body.
         let mut dict = Dictionary::new();
-        let (ops, _) =
-            compile_script(": foo 7 ; ( \"foo\" forget ) apply foo", &mut dict).unwrap();
+        let (ops, _) = compile_script(": foo 7 ; ( \"foo\" forget ) apply foo", &mut dict).unwrap();
         // foo is still defined at compile time.
         assert!(dict.contains_key("foo"));
         // The trailing `foo` should inline the body (PushInt(7)), not become
@@ -848,8 +843,7 @@ mod tests {
         // Same reasoning for an if-branch: the branch may not execute, so
         // the directive must not fire at compile time.
         let mut dict = Dictionary::new();
-        let (ops, _) =
-            compile_script(": foo 5 ; 1 if \"foo\" forget then foo", &mut dict).unwrap();
+        let (ops, _) = compile_script(": foo 5 ; 1 if \"foo\" forget then foo", &mut dict).unwrap();
         assert!(dict.contains_key("foo"));
         assert!(matches!(ops.last(), Some(Op::PushInt(5))));
     }

@@ -478,7 +478,10 @@ impl SovaCoreServer {
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
-    let is_host = socket.peer_addr().map(|s| s.ip().is_loopback()).unwrap_or_default();
+    let is_host = socket
+        .peer_addr()
+        .map(|s| s.ip().is_loopback())
+        .unwrap_or_default();
     socket.set_nodelay(true)?;
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(std::time::Duration::from_secs(60))
@@ -490,7 +493,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut reader = BufReader::with_capacity(32 * 1024, reader);
     let mut writer = BufWriter::with_capacity(32 * 1024, writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string();
-
 
     let clock = Clock::from(&state.clock_server);
 
@@ -660,10 +662,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         loop {
             match read_message_internal(&mut reader, &reader_client_name).await {
                 Ok(Some(msg)) => {
-                    if client_msg_tx
-                        .send(ClientRead::Message(msg))
-                        .is_err()
-                    {
+                    if client_msg_tx.send(ClientRead::Message(msg)).is_err() {
                         break;
                     }
                 }

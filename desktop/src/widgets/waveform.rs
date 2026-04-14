@@ -31,10 +31,7 @@ impl<'a> Waveform<'a> {
         }
     }
 
-    pub fn from_line(
-        line: &'a [f32],
-        color: egui::Color32,
-    ) -> Self {
+    pub fn from_line(line: &'a [f32], color: egui::Color32) -> Self {
         Self {
             samples: &[],
             peaks: None,
@@ -85,23 +82,8 @@ impl<'a> Waveform<'a> {
         let desired = egui::vec2(avail.x, avail.y.max(60.0));
         let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
         let painter = ui.painter_at(rect);
-        let guide_color = self.color.gamma_multiply(0.08);
 
         let center_y = rect.center().y;
-        painter.line_segment(
-            [
-                egui::pos2(rect.left(), center_y),
-                egui::pos2(rect.right(), center_y),
-            ],
-            egui::Stroke::new(1.0, self.color.gamma_multiply(0.3)),
-        );
-        for t in [0.25_f32, 0.75_f32] {
-            let y = egui::lerp(rect.top()..=rect.bottom(), t);
-            painter.line_segment(
-                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-                egui::Stroke::new(0.5, guide_color),
-            );
-        }
 
         if let Some(line) = self.line_samples {
             if line.len() < 2 {
@@ -126,13 +108,7 @@ impl<'a> Waveform<'a> {
         self.handle_click(&resp, rect)
     }
 
-    fn draw_line(
-        &self,
-        painter: &egui::Painter,
-        rect: egui::Rect,
-        center_y: f32,
-        line: &[f32],
-    ) {
+    fn draw_line(&self, painter: &egui::Painter, rect: egui::Rect, center_y: f32, line: &[f32]) {
         let half_h = rect.height() * 0.5;
         let width = rect.width();
         let len = line.len() as f32;

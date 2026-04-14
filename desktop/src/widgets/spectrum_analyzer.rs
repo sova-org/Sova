@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use rustfft::{FftPlanner, num_complex::Complex};
+use std::sync::Arc;
 
 pub const FFT_SIZE: usize = 2048;
 pub const NUM_BANDS: usize = 128;
