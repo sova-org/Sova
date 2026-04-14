@@ -225,14 +225,11 @@ impl super::ScenePanel {
                 });
 
                 // Frame menu popup: reuse unified context menu
-                if self
+                let menu_open = self
                     .frame_states
-                    .get(&(li, fi))
-                    .is_some_and(|s| s.menu_open)
-                {
-                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.menu_open = false;
-                    }
+                    .get_mut(&(li, fi))
+                    .is_some_and(|s| std::mem::take(&mut s.menu_open));
+                if menu_open {
                     // Ensure cursor/selection are set for this frame
                     if !self.selection.contains(&(li, fi)) {
                         self.selection.clear();
@@ -243,14 +240,11 @@ impl super::ScenePanel {
                 }
 
                 // Handle focus toggle from header button
-                if self
+                let focus_toggled = self
                     .frame_states
-                    .get(&(li, fi))
-                    .is_some_and(|s| s.focus_toggled)
-                {
-                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        state.focus_toggled = false;
-                    }
+                    .get_mut(&(li, fi))
+                    .is_some_and(|s| std::mem::take(&mut s.focus_toggled));
+                if focus_toggled {
                     self.enter_focus_mode((li, fi));
                 }
 
