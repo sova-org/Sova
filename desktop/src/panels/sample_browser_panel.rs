@@ -1,29 +1,20 @@
+mod keyboard;
+mod preview;
+mod tree;
+
 use std::path::PathBuf;
 use std::sync::mpsc;
 
 use eframe::egui;
-use sova_core::log_eprintln;
 
 use crate::InputOwner;
 use crate::client_bridge::ClientBridge;
-use crate::sample_browser::{SampleBrowserState, TreeLineKind, resolve_sample_path};
+use crate::sample_browser::{SampleBrowserState, TreeLineKind};
 use crate::settings::AppearanceSettings;
 use crate::widgets::{self, Waveform};
 use sova_server::ClientMessage;
 
-struct PreviewData {
-    key: String,
-    mono_samples: Vec<f32>,
-    channels: u8,
-    duration_secs: f32,
-}
-
-struct DecodeResult {
-    key: String,
-    mono_samples: Vec<f32>,
-    channels: u8,
-    duration_secs: f32,
-}
+use preview::{DecodeResult, PreviewData};
 
 pub struct SampleBrowserPanel {
     pub open: bool,
@@ -181,7 +172,8 @@ impl SampleBrowserPanel {
 
         // Handle keyboard input
         let prev_cursor = state.cursor;
-        let (activate, focus_search) = handle_keyboard(ui, state, search_focused, input_owner);
+        let (activate, focus_search) =
+            keyboard::handle_keyboard(ui, state, search_focused, input_owner);
         let cursor_changed = state.cursor != prev_cursor;
         if focus_search {
             search_resp.request_focus();
@@ -191,117 +183,19 @@ impl SampleBrowserPanel {
         let avail = ui.available_height() - 80.0;
         let visible_rows = (avail / row_height).max(5.0) as usize;
 
-        let mut clicked_file: Option<(String, usize)> = None;
-        let mut new_cursor: Option<usize> = None;
-        let mut should_toggle = false;
         let mut preview_request: Option<(String, usize)> = None;
         let mut seek_request = false;
 
-        egui::ScrollArea::vertical()
-            .max_height(visible_rows as f32 * row_height)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let entries = state.entries();
-                if entries.is_empty() {
-                    ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_entries"));
-                    return;
-                }
+        let tree = tree::render_tree(ui, state, row_height, visible_rows, cursor_changed);
 
-                for (i, entry) in entries.iter().enumerate() {
-                    let selected = i == state.cursor;
-                    let indent = entry.depth as f32 * 16.0;
-                    let is_file = matches!(entry.kind, TreeLineKind::File);
-
-                    let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), row_height),
-                        egui::Sense::click(),
-                    );
-
-                    if selected {
-                        ui.painter()
-                            .rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
-                    } else if resp.hovered() {
-                        ui.painter()
-                            .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.bg_fill);
-                    }
-
-                    let icon_x = rect.left() + 4.0 + indent;
-                    let text_x = icon_x + 16.0;
-
-                    let icon_font = egui::FontId::new(12.0, crate::icons::family());
-                    match &entry.kind {
-                        TreeLineKind::Root { expanded } | TreeLineKind::Folder { expanded } => {
-                            let icon = if *expanded {
-                                crate::icons::CHEVRON_DOWN
-                            } else {
-                                crate::icons::CHEVRON_RIGHT
-                            };
-                            ui.painter().text(
-                                egui::pos2(icon_x, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                icon,
-                                icon_font,
-                                ui.visuals().strong_text_color(),
-                            );
-                        }
-                        TreeLineKind::File => {
-                            let color = if selected || resp.hovered() {
-                                ui.visuals().selection.bg_fill
-                            } else {
-                                ui.visuals().weak_text_color()
-                            };
-                            ui.painter().text(
-                                egui::pos2(icon_x, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                crate::icons::PLAY,
-                                icon_font,
-                                color,
-                            );
-                        }
-                    }
-
-                    let color = if selected {
-                        ui.visuals().selection.stroke.color
-                    } else if entry.is_default && matches!(entry.kind, TreeLineKind::Root { .. }) {
-                        ui.visuals().weak_text_color()
-                    } else if is_file {
-                        ui.visuals().text_color()
-                    } else {
-                        ui.visuals().strong_text_color()
-                    };
-
-                    ui.painter().text(
-                        egui::pos2(text_x, rect.min.y + 1.0),
-                        egui::Align2::LEFT_TOP,
-                        &entry.label,
-                        egui::FontId::monospace(12.0),
-                        color,
-                    );
-
-                    if resp.clicked() {
-                        new_cursor = Some(i);
-                        if !is_file {
-                            should_toggle = true;
-                        } else {
-                            clicked_file = Some((entry.folder.clone(), entry.index));
-                        }
-                    }
-
-                    if selected && cursor_changed {
-                        resp.scroll_to_me(None);
-                    }
-                }
-            });
-
-        if let Some(cursor) = new_cursor {
+        if let Some(cursor) = tree.new_cursor {
             state.cursor = cursor;
-            if should_toggle {
+            if tree.should_toggle {
                 state.toggle_expand();
             }
         }
 
-        // Handle file click
-        if let Some((folder, index)) = clicked_file {
+        if let Some((folder, index)) = tree.clicked_file {
             preview_request = Some((folder, index));
         }
 
@@ -442,128 +336,4 @@ impl SampleBrowserPanel {
         self.detached = detached;
     }
 
-    fn trigger_preview(
-        &mut self,
-        entry: &crate::sample_browser::TreeLine,
-        sample_paths: &[PathBuf],
-        ctx: &egui::Context,
-    ) {
-        let key = format!("{}:{}", entry.folder, entry.label);
-
-        if self.preview.as_ref().is_some_and(|p| p.key == key) {
-            return;
-        }
-        if self.pending_key.as_ref().is_some_and(|k| k == &key) {
-            return;
-        }
-
-        let mut all_paths: Vec<PathBuf> = Vec::new();
-        if let Some(dp) = &self.default_path {
-            all_paths.push(dp.clone());
-        }
-        all_paths.extend_from_slice(sample_paths);
-
-        let Some(path) = resolve_sample_path(&all_paths, entry) else {
-            return;
-        };
-
-        let (tx, rx) = mpsc::channel();
-        self.decode_rx = Some(rx);
-        self.pending_key = Some(key.clone());
-
-        let ctx = ctx.clone();
-        std::thread::spawn(
-            move || match doux::sampling::decode_sample_file(&path, 44100.0) {
-                Ok(data) => {
-                    let channels = data.channels;
-                    let frame_count = data.frame_count as usize;
-                    let mono = if channels > 1 {
-                        let ch = channels as usize;
-                        (0..frame_count)
-                            .map(|i| {
-                                let start = i * ch;
-                                let end = (start + ch).min(data.frames.len());
-                                data.frames[start..end].iter().sum::<f32>() / ch as f32
-                            })
-                            .collect()
-                    } else {
-                        data.frames.to_vec()
-                    };
-                    let duration = frame_count as f32 / 44100.0;
-                    let _ = tx.send(DecodeResult {
-                        key,
-                        mono_samples: mono,
-                        channels,
-                        duration_secs: duration,
-                    });
-                    ctx.request_repaint();
-                }
-                Err(e) => {
-                    log_eprintln!("Failed to decode sample: {e}");
-                }
-            },
-        );
-    }
-}
-
-fn handle_keyboard(
-    ui: &mut egui::Ui,
-    state: &mut SampleBrowserState,
-    search_focused: bool,
-    input_owner: InputOwner,
-) -> (bool, bool) {
-    let search_id = ui.id().with("sample_search");
-    let other_focus = ui.memory(|m| m.focused().is_some_and(|id| id != search_id));
-    if other_focus {
-        return (false, false);
-    }
-
-    let mut activate = false;
-    let mut focus_search = false;
-
-    ui.input(|i| {
-        if search_focused {
-            if i.key_pressed(egui::Key::Escape) {
-                state.clear_search();
-                ui.memory_mut(|m| m.surrender_focus(search_id));
-            }
-            return;
-        }
-
-        // Bare navigation keys only when this panel owns input.
-        if input_owner != InputOwner::SampleBrowser {
-            return;
-        }
-
-        let ctrl = i.modifiers.command;
-
-        if i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::K) {
-            let n = if ctrl { 10 } else { 1 };
-            state.move_up(n);
-        }
-        if i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::J) {
-            let n = if ctrl { 10 } else { 1 };
-            state.move_down(n, 30);
-        }
-        if i.key_pressed(egui::Key::PageUp) {
-            state.move_up(20);
-        }
-        if i.key_pressed(egui::Key::PageDown) {
-            state.move_down(20, 30);
-        }
-        if i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::ArrowRight) {
-            activate = true;
-        }
-        if i.key_pressed(egui::Key::ArrowLeft) {
-            state.collapse_at_cursor();
-        }
-        if i.key_pressed(egui::Key::Slash) {
-            focus_search = true;
-        }
-        if i.key_pressed(egui::Key::Escape) && !state.search_query.is_empty() {
-            state.clear_filter();
-        }
-    });
-
-    (activate, focus_search)
 }
