@@ -4,9 +4,8 @@ use sova_server::ClientMessage;
 use crate::client_bridge::ClientBridge;
 use crate::icons;
 use crate::panels::server_panel::ServerAction;
-use crate::theme::STROKE_EMPHASIS;
 
-use super::{DocPanel, SettingsContext, SettingsTab, SETTINGS_TABS};
+use super::{tab_underline, DocPanel, SettingsContext, SettingsTab, SETTINGS_TABS};
 
 impl DocPanel {
     pub(crate) fn show_settings_content(
@@ -39,11 +38,7 @@ impl DocPanel {
                         icons::button_text(ui, tab.icon(), tab.label()),
                     );
                     if selected == tab {
-                        let accent = ui.visuals().selection.bg_fill;
-                        ui.painter().line_segment(
-                            [r.rect.left_bottom(), r.rect.right_bottom()],
-                            egui::Stroke::new(STROKE_EMPHASIS, accent),
-                        );
+                        tab_underline(ui, r.rect);
                     }
                     if r.clicked() {
                         self.settings.settings_tab = tab as u8;

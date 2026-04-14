@@ -17,6 +17,33 @@ use eframe::egui;
 use egui::containers::panel::Side;
 use egui_commonmark::CommonMarkCache;
 
+impl From<DocSide> for Side {
+    fn from(side: DocSide) -> Self {
+        match side {
+            DocSide::Left => Self::Left,
+            DocSide::Right => Self::Right,
+        }
+    }
+}
+
+/// Accent underline drawn along the bottom of a horizontal tab button when selected.
+pub(super) fn tab_underline(ui: &egui::Ui, rect: egui::Rect) {
+    let accent = ui.visuals().selection.bg_fill;
+    ui.painter().line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        egui::Stroke::new(STROKE_EMPHASIS, accent),
+    );
+}
+
+/// Accent marker drawn along the left edge of a TOC list item when selected.
+pub(super) fn toc_marker(ui: &egui::Ui, rect: egui::Rect) {
+    let accent = ui.visuals().selection.bg_fill;
+    ui.painter().line_segment(
+        [rect.left_top(), rect.left_bottom()],
+        egui::Stroke::new(STROKE_EMPHASIS, accent),
+    );
+}
+
 pub struct SettingsContext<'a> {
     pub server: &'a mut ServerPanel,
     pub audio: &'a mut AudioPanel,
@@ -315,22 +342,14 @@ impl DocPanel {
         if !self.is_expanded() {
             return (ServerAction::None, false, false);
         }
-        let side = match self.settings.side {
-            DocSide::Left => Side::Left,
-            DocSide::Right => Side::Right,
-        };
-        self.show_expanded(ctx, bridge, side, settings)
+        self.show_expanded(ctx, bridge, Side::from(self.settings.side), settings)
     }
 
     pub fn show_collapsed_side_panel(&mut self, ctx: &egui::Context, opacity: SceneOpacity) {
         if self.is_expanded() {
             return;
         }
-        let side = match self.settings.side {
-            DocSide::Left => Side::Left,
-            DocSide::Right => Side::Right,
-        };
-        self.show_collapsed(ctx, side, opacity);
+        self.show_collapsed(ctx, Side::from(self.settings.side), opacity);
     }
 
     fn show_collapsed(&mut self, ctx: &egui::Context, side: Side, opacity: SceneOpacity) {
@@ -411,11 +430,7 @@ impl DocPanel {
                         icons::button_text(ui, icons::BOOK, t!("doc.title")),
                     );
                     if mode == SidebarMode::Docs {
-                        let accent = ui.visuals().selection.bg_fill;
-                        ui.painter().line_segment(
-                            [doc_r.rect.left_bottom(), doc_r.rect.right_bottom()],
-                            egui::Stroke::new(STROKE_EMPHASIS, accent),
-                        );
+                        tab_underline(ui, doc_r.rect);
                     }
                     if doc_r.clicked() {
                         self.settings.mode = SidebarMode::Docs as u8;
@@ -426,14 +441,7 @@ impl DocPanel {
                         icons::button_text(ui, icons::GEAR, t!("settings.title")),
                     );
                     if mode == SidebarMode::Settings {
-                        let accent = ui.visuals().selection.bg_fill;
-                        ui.painter().line_segment(
-                            [
-                                settings_r.rect.left_bottom(),
-                                settings_r.rect.right_bottom(),
-                            ],
-                            egui::Stroke::new(STROKE_EMPHASIS, accent),
-                        );
+                        tab_underline(ui, settings_r.rect);
                     }
                     if settings_r.clicked() {
                         self.settings.mode = SidebarMode::Settings as u8;

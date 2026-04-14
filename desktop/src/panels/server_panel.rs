@@ -212,7 +212,6 @@ impl ServerPanel {
 
     pub fn show_actions(&mut self, ui: &mut egui::Ui) -> ServerAction {
         let mut action = ServerAction::None;
-        let ctx = ui.ctx().clone();
         let running = matches!(self.status, ServerStatus::Running);
 
         if running {
@@ -221,9 +220,7 @@ impl ServerPanel {
                 crate::icons::STOP,
                 t!("common.stop"),
             ));
-            if r.hovered() {
-                crate::widgets::hint::set(&ctx, t!("server.hint.stop"));
-            }
+            crate::widgets::hint::on_hover(ui.ctx(), &r, t!("server.hint.stop"));
             if r.clicked() {
                 action = ServerAction::Stop;
             }
@@ -233,9 +230,7 @@ impl ServerPanel {
                 crate::icons::PLAY,
                 t!("common.start"),
             ));
-            if r.hovered() {
-                crate::widgets::hint::set(&ctx, t!("server.hint.start"));
-            }
+            crate::widgets::hint::on_hover(ui.ctx(), &r, t!("server.hint.start"));
             if r.clicked() {
                 action = ServerAction::Start;
             }
@@ -246,15 +241,12 @@ impl ServerPanel {
             ServerStatus::Running => ui.colored_label(COLOR_OK, t!("server.running")),
             ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
         };
-        if status_r.hovered() {
-            crate::widgets::hint::set(&ctx, t!("server.hint.status"));
-        }
+        crate::widgets::hint::on_hover(ui.ctx(), &status_r, t!("server.hint.status"));
 
         action
     }
 
     pub fn show_config(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
         let running = matches!(self.status, ServerStatus::Running);
 
         ui.add_enabled_ui(!running, |ui| {
@@ -262,26 +254,22 @@ impl ServerPanel {
                 .num_columns(2)
                 .spacing([8.0, 4.0])
                 .show(ui, |ui| {
-                    let label = ui.label(t!("server.ip"));
-                    let field = ui.text_edit_singleline(&mut self.ip);
-                    if label.hovered() || field.hovered() {
-                        crate::widgets::hint::set(&ctx, t!("server.hint.ip"));
-                    }
+                    crate::widgets::hint::labeled(
+                        ui, t!("server.ip"), t!("server.hint.ip"),
+                        |ui| ui.text_edit_singleline(&mut self.ip),
+                    );
                     ui.end_row();
 
-                    let label = ui.label(t!("server.port"));
-                    let field = ui.text_edit_singleline(&mut self.port);
-                    if label.hovered() || field.hovered() {
-                        crate::widgets::hint::set(&ctx, t!("server.hint.port"));
-                    }
+                    crate::widgets::hint::labeled(
+                        ui, t!("server.port"), t!("server.hint.port"),
+                        |ui| ui.text_edit_singleline(&mut self.port),
+                    );
                     ui.end_row();
 
-                    let label = ui.label(t!("server.password"));
-                    let field =
-                        ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
-                    if label.hovered() || field.hovered() {
-                        crate::widgets::hint::set(&ctx, t!("server.hint.password"));
-                    }
+                    crate::widgets::hint::labeled(
+                        ui, t!("server.password"), t!("server.hint.password"),
+                        |ui| ui.add(egui::TextEdit::singleline(&mut self.password).password(true)),
+                    );
                     ui.end_row();
                 });
         });

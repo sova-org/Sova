@@ -16,7 +16,7 @@ use crate::widgets::{
 };
 
 use super::markdown::{show_highlighted_markdown, show_run_status_pill};
-use super::{DocPanel, DocView, MarkdownRunner};
+use super::{toc_marker, DocPanel, DocView, MarkdownRunner};
 
 impl DocPanel {
     pub(crate) fn show_lang_toc(
@@ -38,11 +38,7 @@ impl DocPanel {
                 let selected = self.view == Some(DocView::LangArticle(i));
                 let r = ui.selectable_label(selected, title);
                 if selected {
-                    let accent = ui.visuals().selection.bg_fill;
-                    ui.painter().line_segment(
-                        [r.rect.left_top(), r.rect.left_bottom()],
-                        egui::Stroke::new(crate::theme::STROKE_EMPHASIS, accent),
-                    );
+                    toc_marker(ui, r.rect);
                 }
                 if selected && self.scroll_toc {
                     r.scroll_to_me(Some(egui::Align::Center));

@@ -4,11 +4,11 @@ use egui_commonmark::CommonMarkViewer;
 
 use crate::client_bridge::ClientBridge;
 use crate::icons;
-use crate::theme::STROKE_EMPHASIS;
 use crate::widgets::{syntax_highlight::SyntaxTheme, EditorSettings};
 
 use super::{
-    find_clicked_hook, general_articles, hydra_articles, resolve_article_link, DocPanel, DocView,
+    find_clicked_hook, general_articles, hydra_articles, resolve_article_link, tab_underline,
+    toc_marker, DocPanel, DocView,
 };
 use super::markdown::show_highlighted_markdown;
 
@@ -32,11 +32,7 @@ impl DocPanel {
                     icons::button_text(ui, icons::BOOK, t!("doc.sova")),
                 );
                 if self.selected_tab == 0 {
-                    let accent = ui.visuals().selection.bg_fill;
-                    ui.painter().line_segment(
-                        [r.rect.left_bottom(), r.rect.right_bottom()],
-                        egui::Stroke::new(STROKE_EMPHASIS, accent),
-                    );
+                    tab_underline(ui, r.rect);
                 }
                 if r.clicked() {
                     self.selected_tab = 0;
@@ -60,11 +56,7 @@ impl DocPanel {
                         icons::button_text(ui, icons::CODE, &display_name),
                     );
                     if self.selected_tab == tab_idx {
-                        let accent = ui.visuals().selection.bg_fill;
-                        ui.painter().line_segment(
-                            [r.rect.left_bottom(), r.rect.right_bottom()],
-                            egui::Stroke::new(STROKE_EMPHASIS, accent),
-                        );
+                        tab_underline(ui, r.rect);
                     }
                     if r.clicked() {
                         self.selected_tab = tab_idx;
@@ -81,11 +73,7 @@ impl DocPanel {
                     icons::button_text(ui, icons::WAVE_SINE, "Hydra"),
                 );
                 if self.selected_tab == hydra_tab {
-                    let accent = ui.visuals().selection.bg_fill;
-                    ui.painter().line_segment(
-                        [r.rect.left_bottom(), r.rect.right_bottom()],
-                        egui::Stroke::new(STROKE_EMPHASIS, accent),
-                    );
+                    tab_underline(ui, r.rect);
                 }
                 if r.clicked() {
                     self.selected_tab = hydra_tab;
@@ -101,11 +89,7 @@ impl DocPanel {
                     icons::button_text(ui, icons::MUSIC_NOTE, "Doux"),
                 );
                 if self.selected_tab == doux_tab {
-                    let accent = ui.visuals().selection.bg_fill;
-                    ui.painter().line_segment(
-                        [r.rect.left_bottom(), r.rect.right_bottom()],
-                        egui::Stroke::new(STROKE_EMPHASIS, accent),
-                    );
+                    tab_underline(ui, r.rect);
                 }
                 if r.clicked() {
                     self.selected_tab = doux_tab;
@@ -224,11 +208,7 @@ impl DocPanel {
             let selected = self.view == Some(DocView::GeneralArticle(i));
             let r = ui.selectable_label(selected, *title);
             if selected {
-                let accent = ui.visuals().selection.bg_fill;
-                ui.painter().line_segment(
-                    [r.rect.left_top(), r.rect.left_bottom()],
-                    egui::Stroke::new(STROKE_EMPHASIS, accent),
-                );
+                toc_marker(ui, r.rect);
             }
             if selected && self.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
@@ -279,11 +259,7 @@ impl DocPanel {
             let selected = self.view == Some(DocView::HydraArticle(i));
             let r = ui.selectable_label(selected, *title);
             if selected {
-                let accent = ui.visuals().selection.bg_fill;
-                ui.painter().line_segment(
-                    [r.rect.left_top(), r.rect.left_bottom()],
-                    egui::Stroke::new(STROKE_EMPHASIS, accent),
-                );
+                toc_marker(ui, r.rect);
             }
             if selected && self.scroll_toc {
                 r.scroll_to_me(Some(egui::Align::Center));
@@ -361,11 +337,7 @@ impl DocPanel {
                     let selected = self.view == Some(DocView::DouxModule(*idx));
                     let r = ui.selectable_label(selected, module.name);
                     if selected {
-                        let accent = ui.visuals().selection.bg_fill;
-                        ui.painter().line_segment(
-                            [r.rect.left_top(), r.rect.left_bottom()],
-                            egui::Stroke::new(STROKE_EMPHASIS, accent),
-                        );
+                        toc_marker(ui, r.rect);
                     }
                     if selected && self.scroll_toc {
                         r.scroll_to_me(Some(egui::Align::Center));

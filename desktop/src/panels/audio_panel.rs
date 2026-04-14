@@ -18,13 +18,7 @@ const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
 ];
 
 pub struct AudioPanel {
-    host: String,
-    output_device: String,
-    input_device: String,
-    channels: u16,
-    buffer_size: Option<u32>,
-    max_voices: usize,
-    sample_paths: Vec<PathBuf>,
+    persisted: AudioSettings,
     #[cfg(feature = "default-samples")]
     default_samples_path: PathBuf,
     available_hosts: Vec<AudioHostInfo>,
@@ -36,13 +30,7 @@ pub struct AudioPanel {
 impl AudioPanel {
     pub fn new(settings: AudioSettings) -> Self {
         let mut panel = Self {
-            host: settings.host,
-            output_device: settings.output_device,
-            input_device: settings.input_device,
-            channels: settings.channels,
-            buffer_size: settings.buffer_size,
-            max_voices: settings.max_voices,
-            sample_paths: settings.sample_paths,
+            persisted: settings,
             #[cfg(feature = "default-samples")]
             default_samples_path: sova_server::audio::default_samples::ensure_default_samples(),
             available_hosts: Vec::new(),
@@ -55,7 +43,7 @@ impl AudioPanel {
     }
 
     pub fn sample_paths(&self) -> &[PathBuf] {
-        &self.sample_paths
+        &self.persisted.sample_paths
     }
 
     #[cfg(feature = "default-samples")]
@@ -64,24 +52,15 @@ impl AudioPanel {
     }
 
     pub fn settings(&self) -> AudioSettings {
-        AudioSettings {
-            host: self.host.clone(),
-            output_device: self.output_device.clone(),
-            input_device: self.input_device.clone(),
-            channels: self.channels,
-            buffer_size: self.buffer_size,
-            max_voices: self.max_voices,
-            sample_paths: self.sample_paths.clone(),
-            ..Default::default()
-        }
+        self.persisted.clone()
     }
 
     pub fn refresh_devices(&mut self) {
         self.available_hosts = doux_audio::list_hosts();
-        let selection = if self.host.is_empty() {
+        let selection = if self.persisted.host.is_empty() {
             doux_audio::HostSelection::Auto
         } else {
-            doux_audio::HostSelection::Named(self.host.to_lowercase())
+            doux_audio::HostSelection::Named(self.persisted.host.to_lowercase())
         };
         if let Ok(host) = doux_audio::get_host(selection) {
             self.output_devices = doux_audio::list_output_devices_for(&host);
@@ -96,32 +75,32 @@ impl AudioPanel {
 
     pub fn generate_audio_config(&self) -> AudioRestartConfig {
         AudioRestartConfig {
-            host: if self.host.is_empty() {
+            host: if self.persisted.host.is_empty() {
                 None
             } else {
-                Some(self.host.clone())
+                Some(self.persisted.host.clone())
             },
-            device: if self.output_device.is_empty() {
+            device: if self.persisted.output_device.is_empty() {
                 None
             } else {
-                Some(self.output_device.clone())
+                Some(self.persisted.output_device.clone())
             },
-            input_device: if self.input_device.is_empty() {
+            input_device: if self.persisted.input_device.is_empty() {
                 None
             } else {
-                Some(self.input_device.clone())
+                Some(self.persisted.input_device.clone())
             },
-            channels: self.channels,
-            buffer_size: self.buffer_size,
+            channels: self.persisted.channels,
+            buffer_size: self.persisted.buffer_size,
             sample_paths: {
                 #[cfg(feature = "default-samples")]
                 let mut paths = vec![self.default_samples_path.clone()];
                 #[cfg(not(feature = "default-samples"))]
                 let mut paths = Vec::new();
-                paths.extend(self.sample_paths.iter().map(PathBuf::from));
+                paths.extend(self.persisted.sample_paths.iter().map(PathBuf::from));
                 paths
             },
-            max_voices: self.max_voices,
+            max_voices: self.persisted.max_voices,
         }
     }
 
@@ -165,7 +144,7 @@ impl AudioPanel {
                     let r = ui.label(t!("audio.host"));
                     hint::on_hover(ui.ctx(), &r, t!("audio.hint.host"));
                     ui.horizontal(|ui| {
-                        let prev_host = self.host.clone();
+                        let prev_host = self.persisted.host.clone();
                         let default = t!("audio.system_default").to_string();
                         let names: Vec<&str> = self
                             .available_hosts
@@ -176,7 +155,7 @@ impl AudioPanel {
                         crate::widgets::combo_string_list(
                             ui,
                             "audio_host",
-                            &mut self.host,
+                            &mut self.persisted.host,
                             Some(&default),
                             &names,
                         );
@@ -185,9 +164,9 @@ impl AudioPanel {
                         if refresh.clicked() {
                             self.refresh_devices();
                         }
-                        if self.host != prev_host {
-                            self.output_device.clear();
-                            self.input_device.clear();
+                        if self.persisted.host != prev_host {
+                            self.persisted.output_device.clear();
+                            self.persisted.input_device.clear();
                             self.refresh_devices();
                         }
                     });
@@ -206,7 +185,7 @@ impl AudioPanel {
                     crate::widgets::combo_string_list(
                         ui,
                         "audio_output_device",
-                        &mut self.output_device,
+                        &mut self.persisted.output_device,
                         Some(&default),
                         &names,
                     );
@@ -230,7 +209,7 @@ impl AudioPanel {
                     crate::widgets::combo_string_list(
                         ui,
                         "audio_input_device",
-                        &mut self.input_device,
+                        &mut self.persisted.input_device,
                         Some(&default),
                         &names,
                     );
@@ -238,12 +217,12 @@ impl AudioPanel {
                 ui.end_row();
 
                 hint::labeled(ui, t!("audio.channels"), t!("audio.hint.channels"), |ui| {
-                    ui.add(egui::DragValue::new(&mut self.channels).range(1..=64))
+                    ui.add(egui::DragValue::new(&mut self.persisted.channels).range(1..=64))
                 });
                 ui.end_row();
 
                 hint::labeled(ui, t!("audio.voices"), t!("audio.hint.voices"), |ui| {
-                    ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=2048))
+                    ui.add(egui::DragValue::new(&mut self.persisted.max_voices).range(1..=2048))
                 });
                 ui.end_row();
 
@@ -252,7 +231,7 @@ impl AudioPanel {
                 if self.host_controls_buffer {
                     ui.add_enabled(false, egui::Label::new(t!("audio.host_managed")));
                 } else {
-                    let buf_label = match self.buffer_size {
+                    let buf_label = match self.persisted.buffer_size {
                         None => t!("audio.default").to_string(),
                         Some(s) => s.to_string(),
                     };
@@ -264,7 +243,7 @@ impl AudioPanel {
                                     None => t!("audio.default").to_string(),
                                     Some(s) => s.to_string(),
                                 };
-                                ui.selectable_value(&mut self.buffer_size, opt, label);
+                                ui.selectable_value(&mut self.persisted.buffer_size, opt, label);
                             }
                         });
                     hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.buffer"));
@@ -288,7 +267,7 @@ impl AudioPanel {
         }
 
         let mut remove_idx = None;
-        for (i, path) in self.sample_paths.iter().enumerate() {
+        for (i, path) in self.persisted.sample_paths.iter().enumerate() {
             ui.add(
                 egui::Label::new(egui::RichText::new(path.display().to_string()).monospace())
                     .wrap_mode(egui::TextWrapMode::Wrap),
@@ -298,7 +277,7 @@ impl AudioPanel {
             }
         }
         if let Some(idx) = remove_idx {
-            self.sample_paths.remove(idx);
+            self.persisted.sample_paths.remove(idx);
         }
 
         let r = ui.button(t!("audio.add_folder"));
@@ -312,7 +291,7 @@ impl AudioPanel {
     }
 
     pub fn add_sample_path(&mut self, path: PathBuf) {
-        self.sample_paths.push(path);
+        self.persisted.sample_paths.push(path);
     }
 
     fn show_status(&self, ui: &mut egui::Ui, state: &sova_server::AudioEngineState) {
@@ -369,5 +348,26 @@ impl AudioPanel {
                     ui.end_row();
                 });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_round_trip() {
+        let original = AudioSettings {
+            host: "CoreAudio".into(),
+            output_device: "Built-in Output".into(),
+            input_device: "Built-in Microphone".into(),
+            channels: 2,
+            buffer_size: Some(256),
+            max_voices: 64,
+            sample_paths: vec![PathBuf::from("/tmp/samples")],
+            master_volume: 0.8,
+        };
+        let panel = AudioPanel::new(original.clone());
+        assert!(panel.settings() == original);
     }
 }
