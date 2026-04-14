@@ -58,7 +58,7 @@ pub fn make_documentation() -> LanguageDocumentation {
 
     let entry = ReferenceEntry::new(
         "This operator iterates (cycling) over every item of the LHS and the RHS and perform each time a *Compose* operator between the item yielded from the LHS and the one yielded from the RHS."
-    ).with_example("[C E A G] ! [(. .+4)(. .+3)(. .+3)(. .+4)]").with_category("Operators");
+    ).with_example("[C5 E5 A5 G5] ! [(. .+4)(. .+3)(. .+3)(. .+4)]").with_category("Operators");
     doc.reference
         .insert(LanguageElement::Word("!".to_owned()), entry);
 

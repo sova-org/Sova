@@ -30,7 +30,7 @@ fn unpack_if_one(mut args: Vec<BoinxItem>) -> Vec<BoinxItem> {
     }
 }
 
-pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>) -> BoinxItem {
+pub fn explode_map(map: HashMap<String, BoinxItem>) -> BoinxItem {
     let mut items = None;
     for (key, value) in map.into_iter() {
         let mut to_add = value;
@@ -50,7 +50,7 @@ pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>)
             items = Some(to_add)
         }
     }
-    items.unwrap_or_default().evaluate(ctx)
+    items.unwrap_or_default()
 }
 
 pub fn audio_rate_modulation_string(
@@ -377,7 +377,7 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                     );
                 }
                 match args.pop().unwrap() {
-                    ArgMap(m) => explode_map(ctx, m),
+                    ArgMap(m) => explode_map(m).evaluate(ctx),
                     item => item,
                 }
             },
@@ -636,6 +636,22 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
                     .into()
             },
         ),
+    );
+    funcs.insert(
+        "".to_owned(),
+        ItemFunc::define("Can be called only as '_'. Explode the map given in parameter, and add it to the composition", |ctx, mut args| {
+            if args.len() > 1 {
+                ctx.errors.throw(
+                    SovaError::from(&*ctx).message("Too many arguments for '_', taking only last !")
+                );
+            }
+            let item = args.pop().unwrap();
+            let item = match item {
+                ArgMap(map) => explode_map(map),
+                x => x
+            };
+            Arithmetic(Box::new(Placeholder), BoinxArithmeticOp::Add, Box::new(item), None)
+        })
     );
     funcs
 });

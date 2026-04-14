@@ -28,7 +28,7 @@ else_op = _{ ":" }
 
 note = ${ note_letter ~ (sharp | flat)* ~ int? ~ !letter }
 
-real = @{ int ~ "." ~ int }
+real = @{ int? ~ "." ~ int }
 number = _{ real | int }
 micros = ${ int ~ "u" } 
 semibeats = ${ number ~ "''" } 
@@ -78,7 +78,7 @@ ci = { item }
 cond = { ci ~ comp_op ~ ci }
 
 if_else = { cond_op ~ cond ~ sub_prog ~ else_op ~ sub_prog }
-el = _{ sub_prog | simul | seque | map | if_else | placeholder | note | duration | number | func | ident | str | mute }
+el = _{ sub_prog | simul | seque | map | if_else | note | duration | number | placeholder | func | ident | str | mute }
 
 item = _{ un_op? ~ escape? ~ el ~ (bin_op ~ item)? }
 
@@ -89,7 +89,7 @@ si = { weighted | item }
 
 seque = { "[" ~ si+ ~ "]" }
 simul = { "(" ~ li+ ~ ")" }
-map = { "<" ~ (name ~ ":" ~ li)+ ~ ">" }
+map = { ("<" ~ (name ~ ":" ~ li)+ ~ ">") | (name ~ ":" ~ li)+ }
 
 compo = { item ~ ( (zip_op | compo_op | iter_op | each_op | super_each_op) ~ item )* }
 

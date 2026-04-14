@@ -290,6 +290,17 @@ impl ActionProcessor {
             ConcreteEvent::SetTempo(t) => {
                 clock.set_tempo(t);
             }
+            ConcreteEvent::ExecuteLocally(l0_i, f0_i, l_i, f_i) => {
+                if !scene.has_frame(l_i, f_i) || !scene.has_frame(l0_i, f0_i) {
+                    return;
+                }
+                let script = scene.frame(l_i, f_i).unwrap().script();
+                let Some(interpreter) = languages.interpreters.get_interpreter(script) else {
+                    return;
+                };
+                let exec = ScriptExecution::execute_at(interpreter, clock.micros());
+                scene.frame_mut(l0_i, f0_i).executions.push(exec);
+            }
             _ => (),
         }
     }

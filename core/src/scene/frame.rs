@@ -158,17 +158,26 @@ impl Frame {
                     let new_exec = ScriptExecution::execute_program_at(prog, date);
                     new_executions.push(new_exec);
                 }
+                e @ ConcreteEvent::ExecuteLocally(..) => {
+                    next_wait = 0; // Boostrap new execution directly
+                    events.push(e);
+                }
                 _ => events.push(event),
             }
         }
-        // Capture annotations from terminating executions before discarding them
-        for exec in self.executions.iter().filter(|e| e.has_terminated()) {
-            let a = exec.annotations();
-            if !a.is_empty() {
-                self.last_annotations = a;
+        
+        self.executions.retain(|exec| {
+            if !exec.has_terminated() {
+                true
+            } else {
+                // Capture annotations from terminating executions before discarding them
+                let a = exec.annotations();
+                if !a.is_empty() {
+                    self.last_annotations = a;
+                }
+                false
             }
-        }
-        self.executions.retain(|exec| !exec.has_terminated());
+        });
         self.executions.append(&mut new_executions);
         (events, next_wait)
     }

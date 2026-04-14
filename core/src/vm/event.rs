@@ -48,6 +48,7 @@ pub enum ConcreteEvent {
     SetFrame(usize, usize, String, String),
     KillExecutions(usize, usize),
     SetTempo(f64),
+    ExecuteLocally(usize, usize, usize, usize)
 }
 
 impl ConcreteEvent {
@@ -83,7 +84,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineSpeedFactor(..)
             | ConcreteEvent::SetFrame(..)
             | ConcreteEvent::KillExecutions(..)
-            | ConcreteEvent::SetTempo(_) => None,
+            | ConcreteEvent::SetTempo(_)
+            | ConcreteEvent::ExecuteLocally(..) => None,
         }
     }
 
@@ -100,7 +102,8 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineSpeedFactor(..)
             | ConcreteEvent::SetFrame(..)
             | ConcreteEvent::KillExecutions(..)
-            | ConcreteEvent::SetTempo(_) => true,
+            | ConcreteEvent::SetTempo(_)
+            | ConcreteEvent::ExecuteLocally(..) => true,
             _ => false,
         }
     }
@@ -169,6 +172,7 @@ impl fmt::Display for ConcreteEvent {
             ConcreteEvent::SetTempo(t) => {
                 write!(f, "set-tempo {t}")
             }
+            ConcreteEvent::ExecuteLocally(l0_i, f0_i, l_i, f_i) => write!(f, "execute-locally {l_i}:{f_i} at {l0_i}:{f0_i}"),
         }
     }
 }
@@ -220,6 +224,7 @@ pub enum Event {
     SetFrame(Variable, Variable, Variable, Variable),
     KillExecutions(Variable, Variable),
     SetTempo(Variable),
+    ExecuteLocally(Variable, Variable)
 }
 
 impl Event {
@@ -385,7 +390,15 @@ impl Event {
                 ctx.evaluate(l_i).as_integer(ctx) as usize,
                 ctx.evaluate(f_i).as_integer(ctx) as usize,
             ),
-            Event::SetTempo(t) => ConcreteEvent::SetTempo(ctx.evaluate(t).as_float(ctx)),
+            Event::SetTempo(t) => ConcreteEvent::SetTempo(
+                ctx.evaluate(t).as_float(ctx)
+            ),
+            Event::ExecuteLocally(l_i, f_i) => ConcreteEvent::ExecuteLocally(
+                ctx.line_index,
+                ctx.frame_index,
+                ctx.evaluate(l_i).as_integer(ctx) as usize,
+                ctx.evaluate(f_i).as_integer(ctx) as usize,
+            ),
         }
     }
 }
