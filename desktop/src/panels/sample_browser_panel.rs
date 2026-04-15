@@ -93,10 +93,6 @@ impl SampleBrowserPanel {
         if !self.detached {
             return;
         }
-        if !is_hosting && bridge.is_connected() {
-            self.detached = false;
-            return;
-        }
         self.poll(default_path, sample_paths);
         self.open = true;
         // Detached viewport has no panel conflicts — it always owns its input.
@@ -121,6 +117,12 @@ impl SampleBrowserPanel {
         is_hosting: bool,
         input_owner: InputOwner,
     ) {
+        if bridge.is_connected() && !is_hosting {
+            ui.centered_and_justified(|ui| {
+                ui.colored_label(egui::Color32::GRAY, t!("sample_browser.remote_unavailable"));
+            });
+            return;
+        }
         let Some(state) = &mut self.state else {
             ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_paths"));
             return;

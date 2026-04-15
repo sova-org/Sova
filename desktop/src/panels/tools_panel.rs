@@ -77,15 +77,8 @@ impl ToolsPanel {
         // Always keep the sample browser state up to date
         sample_browser.poll(default_path, sample_paths);
 
-        let sample_browser_available = is_hosting || !bridge.is_connected();
-        if self.settings.show_sample_browser && !sample_browser_available {
-            self.settings.show_sample_browser = false;
-            self.sync_open();
-        }
         let show_chat = self.settings.show_chat && !chat.detached;
-        let show_sample_browser = self.settings.show_sample_browser
-            && sample_browser_available
-            && !sample_browser.detached;
+        let show_sample_browser = self.settings.show_sample_browser && !sample_browser.detached;
         if !show_chat && !show_sample_browser {
             return None;
         }
