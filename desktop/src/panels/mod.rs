@@ -1,0 +1,16 @@
+pub mod audio_panel;
+pub mod chat_panel;
+pub mod client_panel;
+pub mod devices_panel;
+pub mod doc_panel;
+pub mod keybindings_window;
+pub mod log_panel;
+pub mod options_panel;
+pub mod sample_browser_panel;
+pub mod scope_bar_panel;
+pub mod scope_panel;
+pub mod server_panel;
+pub mod spectrum_panel;
+pub mod tools_panel;
+pub mod transport_bar;
+pub mod vu_meter_panel;

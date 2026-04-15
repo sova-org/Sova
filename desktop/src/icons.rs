@@ -143,6 +143,7 @@ pub use egui_phosphor::fill::TEXT_INDENT as TRAILING;
 // Status
 pub use egui_phosphor::fill::CIRCLE as CIRCLE_FILLED;
 pub const CIRCLE_LARGE_FILLED: &str = egui_phosphor::fill::CIRCLE;
+pub use egui_phosphor::fill::CHECK;
 pub use egui_phosphor::fill::CIRCLE_DASHED as CIRCLE_LARGE_OUTLINE;
 pub use egui_phosphor::fill::CPU;
 
@@ -188,7 +189,7 @@ pub use egui_phosphor::fill::ARROWS_OUT as FOCUS;
 
 // New icons for text-only buttons
 pub use egui_phosphor::fill::ARROW_COUNTER_CLOCKWISE as REFRESH;
-pub use egui_phosphor::fill::BROOM;
+pub use egui_phosphor::fill::CHAT_CIRCLE_DOTS as CHAT;
 pub use egui_phosphor::fill::KEYBOARD;
 pub use egui_phosphor::fill::MUSIC_NOTE;
 pub use egui_phosphor::fill::PAPER_PLANE_TILT as SEND;

@@ -22,9 +22,9 @@ impl FeedbackEngine {
 
         let devices = Arc::new(DeviceMap::new());
         if let Err(e) = devices.create_virtual_midi_port("Sova (Local)") {
-            eprintln!("Feedback: Failed to create virtual MIDI port: {}", e);
+            sova_core::log_eprintln!("Feedback: Failed to create virtual MIDI port: {}", e);
         } else if let Err(e) = devices.assign_slot(1, "Sova (Local)") {
-            eprintln!("Feedback: Failed to assign Sova (Local) to Slot 1: {}", e);
+            sova_core::log_eprintln!("Feedback: Failed to assign Sova (Local) to Slot 1: {}", e);
         }
 
         let languages = Arc::new(langs::create_language_center());
@@ -71,7 +71,7 @@ impl FeedbackEngine {
     pub fn audio_state(&self) -> AudioEngineState {
         self.audio_engine_state
             .lock()
-            .map(|s| s.clone())
+            .map(|s| (*s).clone())
             .unwrap_or_default()
     }
 

@@ -587,7 +587,8 @@ impl DeviceMap {
 
             // Determine connection status based on presence in connected_map for outputs
             // For system ports discovered but not explicitly connected via Sova, this might show false.
-            let is_connected = connected_outs.contains_key(&name) || connected_ins.contains_key(&name);
+            let is_connected =
+                connected_outs.contains_key(&name) || connected_ins.contains_key(&name);
 
             // Extract address specifically for OSC devices using the provided reference
             let address = device_ref_opt.map(ProtocolDevice::address);
@@ -1121,7 +1122,9 @@ impl DeviceMap {
         if ok {
             Ok(())
         } else {
-            Err(format!("[!] Unable to find an OSC device to remove with name {name} !"))
+            Err(format!(
+                "[!] Unable to find an OSC device to remove with name {name} !"
+            ))
         }
     }
 

@@ -44,7 +44,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Suspended 4th",
         intervals: &[0, 5, 7],
     },
-
     // ----- Power chord -----
     Chord {
         name: "pwr",
@@ -52,7 +51,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Power chord (root + fifth)",
         intervals: &[0, 7],
     },
-
     // ----- Sixth chords -----
     Chord {
         name: "maj6",
@@ -78,7 +76,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor 6/9",
         intervals: &[0, 3, 7, 9, 14],
     },
-
     // ----- Seventh chords -----
     Chord {
         name: "maj7",
@@ -110,7 +107,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Half-diminished (minor 7 flat 5)",
         intervals: &[0, 3, 6, 10],
     },
-
     // ----- Minor-major sevenths -----
     Chord {
         name: "minmaj7",
@@ -118,7 +114,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor-major 7th",
         intervals: &[0, 3, 7, 11],
     },
-
     // ----- Augmented sevenths -----
     Chord {
         name: "aug7",
@@ -132,7 +127,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Augmented major 7th",
         intervals: &[0, 4, 8, 11],
     },
-
     // ----- Ninth chords -----
     Chord {
         name: "dom9",
@@ -152,7 +146,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor 9th",
         intervals: &[0, 3, 7, 10, 14],
     },
-
     // ----- Eleventh chords -----
     Chord {
         name: "dom11",
@@ -172,7 +165,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor 11th",
         intervals: &[0, 3, 7, 10, 14, 17],
     },
-
     // ----- Thirteenth chords -----
     Chord {
         name: "dom13",
@@ -192,7 +184,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor 13th",
         intervals: &[0, 3, 7, 10, 14, 21],
     },
-
     // ----- Add chords -----
     Chord {
         name: "add9",
@@ -212,7 +203,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Minor add 9",
         intervals: &[0, 3, 7, 14],
     },
-
     // ----- Suspended-extended -----
     Chord {
         name: "7sus4",
@@ -232,7 +222,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Dominant 7 suspended 2",
         intervals: &[0, 2, 7, 10],
     },
-
     // ----- Altered dominants -----
     Chord {
         name: "dom7b9",
@@ -294,7 +283,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Altered dominant (root, 3, b7, b9, #9)",
         intervals: &[0, 4, 10, 13, 15],
     },
-
     // ----- Major sharp 11 (Lydian) -----
     Chord {
         name: "maj7s11",
@@ -308,7 +296,6 @@ pub static CHORDS: &[Chord] = &[
         desc: "Major 9 sharp 11",
         intervals: &[0, 4, 7, 11, 14, 18],
     },
-
     // ----- Minor-major extensions -----
     Chord {
         name: "minmaj9",

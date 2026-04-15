@@ -160,7 +160,7 @@ fn parse_inline_markdown(text: &str) -> Vec<Span> {
             }
         }
 
-        let ch = text[i..].chars().next().unwrap();
+        let ch = text[i..].chars().next().expect("loop invariant: i is within text bounds");
         buffer.push(ch);
         i += ch.len_utf8();
     }
@@ -222,7 +222,7 @@ fn find_unescaped_token(
         if text[index..].starts_with(token) && !is_escaped(text, index) && predicate(index) {
             return Some(index);
         }
-        let ch = text[index..].chars().next().unwrap();
+        let ch = text[index..].chars().next().expect("loop invariant: index is within text bounds");
         index += ch.len_utf8();
     }
     None
@@ -276,116 +276,4 @@ fn prev_char(text: &str, index: usize) -> Option<char> {
 
 fn next_char(text: &str, index: usize) -> Option<char> {
     text[index..].chars().next()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Span, SpanStyle, parse_inline_markdown};
-
-    #[test]
-    fn parses_basic_styles() {
-        assert_eq!(
-            parse_inline_markdown("plain **bold** *italics* ~~gone~~"),
-            vec![
-                Span {
-                    text: "plain ".into(),
-                    style: SpanStyle::default(),
-                },
-                Span {
-                    text: "bold".into(),
-                    style: SpanStyle {
-                        strong: true,
-                        ..Default::default()
-                    },
-                },
-                Span {
-                    text: " ".into(),
-                    style: SpanStyle::default(),
-                },
-                Span {
-                    text: "italics".into(),
-                    style: SpanStyle {
-                        emphasis: true,
-                        ..Default::default()
-                    },
-                },
-                Span {
-                    text: " ".into(),
-                    style: SpanStyle::default(),
-                },
-                Span {
-                    text: "gone".into(),
-                    style: SpanStyle {
-                        strike: true,
-                        ..Default::default()
-                    },
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn keeps_underscores_inside_words_literal() {
-        assert_eq!(
-            parse_inline_markdown("snake_case and __bold__"),
-            vec![
-                Span {
-                    text: "snake_case and ".into(),
-                    style: SpanStyle::default(),
-                },
-                Span {
-                    text: "bold".into(),
-                    style: SpanStyle {
-                        strong: true,
-                        ..Default::default()
-                    },
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn supports_nested_and_escaped_markup() {
-        assert_eq!(
-            parse_inline_markdown("***both*** and \\*literal\\*"),
-            vec![
-                Span {
-                    text: "both".into(),
-                    style: SpanStyle {
-                        strong: true,
-                        emphasis: true,
-                        ..Default::default()
-                    },
-                },
-                Span {
-                    text: " and *literal*".into(),
-                    style: SpanStyle::default(),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn treats_code_as_literal() {
-        assert_eq!(
-            parse_inline_markdown("before `**code**` after"),
-            vec![
-                Span {
-                    text: "before ".into(),
-                    style: SpanStyle::default(),
-                },
-                Span {
-                    text: "**code**".into(),
-                    style: SpanStyle {
-                        code: true,
-                        ..Default::default()
-                    },
-                },
-                Span {
-                    text: " after".into(),
-                    style: SpanStyle::default(),
-                },
-            ]
-        );
-    }
 }

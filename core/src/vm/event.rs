@@ -82,9 +82,9 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) 
-            | ConcreteEvent::KillExecutions(..) 
-            | ConcreteEvent::SetTempo(_) 
+            | ConcreteEvent::SetFrame(..)
+            | ConcreteEvent::KillExecutions(..)
+            | ConcreteEvent::SetTempo(_)
             | ConcreteEvent::ExecuteLocally(..) => None,
         }
     }
@@ -100,7 +100,7 @@ impl ConcreteEvent {
             | ConcreteEvent::SetLineTrailing(..)
             | ConcreteEvent::SetLineManual(..)
             | ConcreteEvent::SetLineSpeedFactor(..)
-            | ConcreteEvent::SetFrame(..) 
+            | ConcreteEvent::SetFrame(..)
             | ConcreteEvent::KillExecutions(..)
             | ConcreteEvent::SetTempo(_)
             | ConcreteEvent::ExecuteLocally(..) => true,

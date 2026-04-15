@@ -1,3 +1,8 @@
+mod connection;
+mod presence;
+mod scene_cache;
+mod server_messages;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Instant;
@@ -6,20 +11,22 @@ use eframe::egui;
 use sova_core::error::SovaError;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
-use sova_core::schedule::SovaNotification;
-use sova_core::schedule::{SchedulerMessage, playback::PlaybackState};
 use sova_core::vm::interpreter::Annotation;
-use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
-use sova_server::{
-    AudioEngineState, AudioRestartConfig, ClientMessage, ServerMessage, Snapshot, SovaClient,
-};
+use sova_core::vm::language::LanguageDefinition;
+use sova_server::{AudioEngineState, ClientMessage, ServerMessage};
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::feedback_engine::FeedbackEngine;
-use crate::log_panel::{LogEntry, LogSource};
+use crate::panels::log_panel::LogEntry;
 use crate::widgets::syntax_highlight::CompiledSyntax;
 
+/// (cursor_li, cursor_fi, selection_anchor)
+type PeerCursorState = (usize, usize, Option<(usize, usize)>);
+
 const MAX_CHAT_MESSAGES: usize = 500;
+const COMPILATION_FLASH_SECS: f32 = 1.0;
+const MUTATION_FLASH_SECS: f32 = 1.2;
+const SCENE_HISTORY_CAP: usize = 50;
 
 pub struct ChatMessage {
     pub user: String,
@@ -31,21 +38,38 @@ pub struct ChatMessage {
 fn now_hhmm() -> String {
     let epoch = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
+        .expect("system clock is before UNIX epoch")
         .as_secs();
-    unsafe {
-        let time = epoch as libc::time_t;
+    let time = epoch as libc::time_t;
+    // SAFETY: `tm` is a freshly zero-initialised stack value and we pass
+    // stable references to owned locals. Both `localtime_r` and
+    // `localtime_s` are documented to accept any valid non-null pointer
+    // pair and to not retain the pointers past the call.
+    let tm = unsafe {
         let mut tm: libc::tm = std::mem::zeroed();
         #[cfg(target_os = "windows")]
-        {
-            libc::localtime_s(&mut tm, &time);
-        }
+        libc::localtime_s(&mut tm, &time);
         #[cfg(not(target_os = "windows"))]
-        {
-            libc::localtime_r(&time, &mut tm);
-        }
-        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+        libc::localtime_r(&time, &mut tm);
+        tm
+    };
+    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+}
+
+fn scope_signature(buf: &[f32]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    buf.len().hash(&mut h);
+    if let Some(&first) = buf.first() {
+        first.to_bits().hash(&mut h);
     }
+    if let Some(&last) = buf.last() {
+        last.to_bits().hash(&mut h);
+    }
+    if !buf.is_empty() {
+        buf[buf.len() / 2].to_bits().hash(&mut h);
+    }
+    h.finish()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -87,6 +111,26 @@ enum OutgoingMessage {
     Disconnect,
 }
 
+enum BridgeEvent {
+    Server(Box<ServerMessage>),
+    LocalDisconnected,
+}
+
+// Thin wrapper around mpsc::Sender<BridgeEvent> that hides the wrapping so
+// call sites in `connect()` can still write `event_tx.send(ServerMessage::X)`.
+#[derive(Clone)]
+struct EventSender(mpsc::Sender<BridgeEvent>);
+
+impl EventSender {
+    fn send(&self, msg: ServerMessage) -> Result<(), mpsc::SendError<BridgeEvent>> {
+        self.0.send(BridgeEvent::Server(Box::new(msg)))
+    }
+
+    fn send_local_disconnect(&self) {
+        let _ = self.0.send(BridgeEvent::LocalDisconnected);
+    }
+}
+
 pub struct ClientBridge {
     status: ConnectionStatus,
     error_msg: Option<String>,
@@ -107,7 +151,7 @@ pub struct ClientBridge {
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
-    peer_cursors: HashMap<String, (usize, usize, Option<(usize, usize)>)>,
+    peer_cursors: HashMap<String, PeerCursorState>,
     chat_messages: VecDeque<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
     annotations: Vec<Vec<Vec<Annotation>>>,
@@ -125,12 +169,18 @@ pub struct ClientBridge {
     // Incoming script edits from peers
     pub pending_script_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
 
+    // Scene history for undo/redo
+    scene_history: VecDeque<Scene>,
+    history_index: usize,
+    skip_next_history_push: bool,
+    scene_dirty: bool,
+
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
-    event_rx: Option<mpsc::Receiver<ServerMessage>>,
+    event_rx: Option<mpsc::Receiver<BridgeEvent>>,
 
     runtime: tokio::runtime::Handle,
     ctx: egui::Context,
@@ -170,6 +220,10 @@ impl ClientBridge {
             mutation_flashes: HashMap::new(),
             last_error: None,
             pending_script_edits: Vec::new(),
+            scene_history: VecDeque::new(),
+            history_index: 0,
+            skip_next_history_push: false,
+            scene_dirty: false,
             feedback_engine: None,
             send_tx: None,
             event_rx: None,
@@ -179,795 +233,4 @@ impl ClientBridge {
         }
     }
 
-    pub fn connect(&mut self, ip: &str, port: u16, username: &str, password: &str, feedback: bool) {
-        if matches!(
-            self.status,
-            ConnectionStatus::Connecting | ConnectionStatus::Connected
-        ) {
-            return;
-        }
-
-        let ip = ip.to_owned();
-        let username = username.to_owned();
-        let password = if password.is_empty() {
-            None
-        } else {
-            Some(password.to_owned())
-        };
-        let (send_tx, mut send_rx) = tokio_mpsc::unbounded_channel();
-        let (event_tx, event_rx) = mpsc::channel();
-        let ctx = self.ctx.clone();
-
-        self.send_tx = Some(send_tx);
-        self.event_rx = Some(event_rx);
-        self.status = ConnectionStatus::Connecting;
-        self.error_msg = None;
-
-        self.runtime.spawn(async move {
-            let mut client = SovaClient::new(ip, port);
-
-            match tokio::time::timeout(std::time::Duration::from_secs(5), client.connect()).await {
-                Ok(Err(e)) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                    ctx.request_repaint();
-                    return;
-                }
-                Err(_) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Connection timed out".to_string(),
-                    ));
-                    ctx.request_repaint();
-                    return;
-                }
-                Ok(Ok(())) => {}
-            }
-
-            if let Err(e) = client
-                .send(ClientMessage::SetName {
-                    name: username,
-                    password,
-                })
-                .await
-            {
-                let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                ctx.request_repaint();
-                return;
-            }
-
-            match client.read().await {
-                Ok(Some(msg @ ServerMessage::Hello { .. })) => {
-                    let _ = event_tx.send(msg);
-                    ctx.request_repaint();
-                    if feedback && let Err(e) = client.send(ClientMessage::EnableFeedback).await {
-                        let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                        ctx.request_repaint();
-                        return;
-                    }
-                }
-                Ok(Some(ServerMessage::ConnectionRefused(reason))) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(reason));
-                    ctx.request_repaint();
-                    let _ = client.disconnect().await;
-                    return;
-                }
-                Ok(Some(_)) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Unexpected server response".into(),
-                    ));
-                    ctx.request_repaint();
-                    let _ = client.disconnect().await;
-                    return;
-                }
-                Ok(None) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Failed to deserialize handshake".into(),
-                    ));
-                    ctx.request_repaint();
-                    let _ = client.disconnect().await;
-                    return;
-                }
-                Err(e) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                    ctx.request_repaint();
-                    return;
-                }
-            }
-
-            // Dedicated reader task — never cancelled, so read_wire_frame
-            // can't lose partial reads (which would desync the TCP stream).
-            let mut reader = client.take_reader().unwrap();
-            let read_event_tx = event_tx.clone();
-            let read_ctx = ctx.clone();
-
-            let read_task = tokio::spawn(async move {
-                loop {
-                    match sova_server::read_server_message(&mut reader).await {
-                        Ok(msg) => {
-                            if read_event_tx.send(msg).is_err() {
-                                break;
-                            }
-                            read_ctx.request_repaint();
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
-                        Err(e) => {
-                            let _ =
-                                read_event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                            read_ctx.request_repaint();
-                            break;
-                        }
-                    }
-                }
-            });
-
-            loop {
-                match send_rx.recv().await {
-                    Some(OutgoingMessage::Send(client_msg)) => {
-                        if let Err(e) = client.send(*client_msg).await {
-                            let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
-                            ctx.request_repaint();
-                            break;
-                        }
-                    }
-                    Some(OutgoingMessage::Disconnect) | None => {
-                        let _ = client.disconnect().await;
-                        let _ = event_tx.send(ServerMessage::ConnectionRefused(String::new()));
-                        ctx.request_repaint();
-                        break;
-                    }
-                }
-            }
-
-            read_task.abort();
-        });
-    }
-
-    pub fn disconnect(&mut self) {
-        if let Some(tx) = self.send_tx.take() {
-            let _ = tx.send(OutgoingMessage::Disconnect);
-        }
-        self.event_rx = None;
-        self.status = ConnectionStatus::Disconnected;
-        self.clear_state();
-    }
-
-    pub fn send<T: Into<ClientMessage>>(&self, msg: T) {
-        if let Some(tx) = &self.send_tx {
-            let _ = tx.send(OutgoingMessage::Send(Box::new(msg.into())));
-        }
-    }
-
-    pub fn poll(&mut self) {
-        let Some(rx) = &self.event_rx else { return };
-
-        self.compilation_flashes
-            .retain(|_, (_, t)| t.elapsed().as_secs_f32() < 1.0);
-        self.mutation_flashes
-            .retain(|_, t| t.elapsed().as_secs_f32() < 1.2);
-
-        while let Ok(msg) = rx.try_recv() {
-            match msg {
-                ServerMessage::Hello {
-                    username,
-                    scene,
-                    devices,
-                    peers,
-                    link_state,
-                    is_playing,
-                    languages,
-                    audio_engine_state,
-                    link_enabled,
-                } => {
-                    self.confirmed_username = Some(username);
-                    self.scene = Some(scene);
-                    self.devices = devices;
-                    self.peers = peers;
-                    self.languages = languages;
-                    for lang_def in self.languages.iter() {
-                        if let Some(syn) = &lang_def.syntax
-                            && let Some(compiled) = CompiledSyntax::new(syn)
-                        {
-                            self.syntax_map.insert(lang_def.name.to_owned(), compiled);
-                        }
-                    }
-                    self.clock = ClockState {
-                        tempo: link_state.0,
-                        beat: link_state.1,
-                        phase: 0.0,
-                        quantum: link_state.2,
-                        playing: is_playing,
-                        num_peers: link_state.3,
-                        start_stop_sync: link_state.4,
-                        link_enabled,
-                    };
-                    self.audio_state = audio_engine_state;
-                    self.status = ConnectionStatus::Connected;
-                    self.just_connected = true;
-                }
-                ServerMessage::ConnectionRefused(reason) => {
-                    self.clear_state();
-                    if reason.is_empty() {
-                        self.status = ConnectionStatus::Disconnected;
-                        self.error_msg = None;
-                    } else {
-                        self.status = ConnectionStatus::Error;
-                        self.error_msg = Some(reason);
-                    }
-                    self.send_tx = None;
-                    self.event_rx = None;
-                    return;
-                }
-                ServerMessage::Notification(SovaNotification::UpdatedScene(s)) => {
-                    self.scene = Some(s);
-                    self.errors.clear();
-                    self.annotations.clear();
-                    self.compilation_flashes.clear();
-                    self.mutation_flashes.clear();
-                }
-                ServerMessage::Notification(SovaNotification::AddedLine(idx, line)) => {
-                    if let Some(scene) = &mut self.scene
-                        && idx <= scene.lines.len()
-                    {
-                        let now = Instant::now();
-                        for fi in 0..line.frames.len() {
-                            self.mutation_flashes.insert((idx, fi), now);
-                        }
-                        scene.lines.insert(idx, line);
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::RemovedLine(idx)) => {
-                    if let Some(scene) = &mut self.scene
-                        && idx < scene.lines.len()
-                    {
-                        scene.lines.remove(idx);
-                    }
-                    self.mutation_flashes.retain(|&(li, _), _| li != idx);
-                }
-                ServerMessage::Notification(SovaNotification::AddedFrame(li, fi, frame)) => {
-                    if let Some(line) = self.scene.as_mut().and_then(|s| s.lines.get_mut(li))
-                        && fi <= line.frames.len()
-                    {
-                        line.frames.insert(fi, frame);
-                        self.mutation_flashes.insert((li, fi), Instant::now());
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::RemovedFrame(li, fi)) => {
-                    if let Some(line) = self.scene.as_mut().and_then(|s| s.lines.get_mut(li))
-                        && fi < line.frames.len()
-                    {
-                        line.frames.remove(fi);
-                    }
-                    self.errors.remove(&(li, fi));
-                    self.mutation_flashes.insert((li, fi), Instant::now());
-                }
-                ServerMessage::Notification(SovaNotification::UpdatedFrames(items)) => {
-                    if let Some(scene) = &mut self.scene {
-                        let now = Instant::now();
-                        for (li, fi, frame) in items {
-                            if let Some(f) =
-                                scene.lines.get_mut(li).and_then(|l| l.frames.get_mut(fi))
-                            {
-                                *f = frame;
-                                self.mutation_flashes.insert((li, fi), now);
-                            }
-                        }
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::UpdatedLines(items))
-                | ServerMessage::Notification(SovaNotification::UpdatedLineConfigurations(items)) => {
-                    if let Some(scene) = &mut self.scene {
-                        let now = Instant::now();
-                        for (li, line) in items {
-                            for fi in 0..line.frames.len() {
-                                self.mutation_flashes.insert((li, fi), now);
-                            }
-                            if let Some(l) = scene.lines.get_mut(li) {
-                                *l = line;
-                            }
-                        }
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::UpdatedSceneMode(mode)) => {
-                    if let Some(scene) = &mut self.scene {
-                        scene.mode = mode;
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::UpdatedScenePrelude(scripts)) => {
-                    if let Some(scene) = &mut self.scene {
-                        scene.prelude = scripts;
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::FramePositionChanged(p)) => {
-                    let beat = self.clock.beat;
-                    self.position_start_beat.resize_with(p.len(), Vec::new);
-                    self.position_start_beat.truncate(p.len());
-                    for (li, new_heads) in p.iter().enumerate() {
-                        let old_heads = self.positions.get(li);
-                        let starts = &mut self.position_start_beat[li];
-                        starts.resize(new_heads.len(), beat);
-                        starts.truncate(new_heads.len());
-                        for (hi, new_pos) in new_heads.iter().enumerate() {
-                            if old_heads.and_then(|old| old.get(hi)) != Some(new_pos) {
-                                starts[hi] = beat;
-                            }
-                        }
-                    }
-                    self.positions = p;
-                }
-                ServerMessage::ClockState(tempo, beat, _micros, quantum) => {
-                    self.clock.tempo = tempo;
-                    self.clock.beat = beat;
-                    self.clock.phase = if quantum > 0.0 { beat % quantum } else { 0.0 };
-                    self.clock.quantum = quantum;
-                }
-                ServerMessage::Notification(SovaNotification::PlaybackStateChanged(state)) => {
-                    self.clock.playing = !matches!(state, PlaybackState::Stopped);
-                    if !self.clock.playing {
-                        self.positions.clear();
-                        self.position_start_beat.clear();
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::DeviceListChanged(devices)) => {
-                    self.devices = devices;
-                }
-                ServerMessage::AudioEngineState(state) => {
-                    self.audio_state = state;
-                }
-                ServerMessage::ScopeData(data) => {
-                    self.scope_data = data;
-                    self.scope_generation += 1;
-                    self.audio_state.running = true;
-                }
-                ServerMessage::PeakData(data) => {
-                    self.peak_data = data;
-                    self.audio_state.running = true;
-                }
-                ServerMessage::PeersUpdated(new_peers) => {
-                    let time = now_hhmm();
-                    for p in &new_peers {
-                        if !self.peers.contains(p) {
-                            self.chat_messages.push_back(ChatMessage {
-                                time: time.clone(),
-                                user: String::new(),
-                                message: format!("{p} joined"),
-                                system: true,
-                            });
-                        }
-                    }
-                    for p in &self.peers {
-                        if !new_peers.contains(p) {
-                            self.chat_messages.push_back(ChatMessage {
-                                time: time.clone(),
-                                user: String::new(),
-                                message: format!("{p} left"),
-                                system: true,
-                            });
-                            self.peer_editing.retain(|_, names| {
-                                names.retain(|n| n != p);
-                                !names.is_empty()
-                            });
-                            self.peer_cursors.remove(p);
-                        }
-                    }
-                    self.peers = new_peers;
-                }
-                ServerMessage::Notification(SovaNotification::CompilationUpdated(
-                    li,
-                    fi,
-                    _id,
-                    state,
-                )) => {
-                    self.errors.remove(&(li, fi));
-                    match &state {
-                        CompilationState::Compiled(_) | CompilationState::Parsed(_) => {
-                            self.compilation_flashes
-                                .insert((li, fi), (true, Instant::now()));
-                            self.last_error = None;
-                        }
-                        CompilationState::Error(e) => {
-                            self.compilation_flashes
-                                .insert((li, fi), (false, Instant::now()));
-                            self.last_error =
-                                Some((format!("L{}:F{} — {}", li, fi, e.info), Instant::now()));
-                        }
-                        _ => {}
-                    }
-                    if let Some(scene) = &mut self.scene {
-                        *scene.frame_mut(li, fi).compilation_state_mut() = state;
-                    }
-                }
-                ServerMessage::Notification(SovaNotification::Log(msg)) => {
-                    let _ = self.log_tx.send(LogEntry {
-                        source: LogSource::Client,
-                        message: msg,
-                    });
-                }
-                ServerMessage::Chat(user, message) => {
-                    self.chat_messages.push_back(ChatMessage {
-                        time: now_hhmm(),
-                        user,
-                        message,
-                        system: false,
-                    });
-                }
-                ServerMessage::PeerStartedEditing(name, li, fi) => {
-                    self.peer_editing.entry((li, fi)).or_default().push(name);
-                }
-                ServerMessage::PeerStoppedEditing(name, li, fi) => {
-                    if let Some(names) = self.peer_editing.get_mut(&(li, fi)) {
-                        names.retain(|n| n != &name);
-                        if names.is_empty() {
-                            self.peer_editing.remove(&(li, fi));
-                        }
-                    }
-                }
-                ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
-                    self.peer_cursors.insert(name, (li, fi, tc));
-                }
-                ServerMessage::Notification(SovaNotification::Annotations(a)) => {
-                    self.annotations = a;
-                }
-                ServerMessage::Notification(SovaNotification::Error(e)) => {
-                    self.last_error = Some((
-                        format!("L{}:F{} — {}", e.line, e.frame, e.text),
-                        Instant::now(),
-                    ));
-                    self.errors.insert((e.line, e.frame), e);
-                }
-                ServerMessage::FeedbackEnabled {
-                    scene,
-                    tempo,
-                    quantum,
-                    is_playing,
-                } => {
-                    if let Some(engine) = &self.feedback_engine {
-                        use sova_core::schedule::ActionTiming;
-                        engine.send(SchedulerMessage::SetScene(scene, ActionTiming::Immediate));
-                        engine.send(SchedulerMessage::SetTempo(tempo, ActionTiming::Immediate));
-                        engine.send(SchedulerMessage::SetQuantum(
-                            quantum,
-                            ActionTiming::Immediate,
-                        ));
-                        if is_playing {
-                            engine.send(SchedulerMessage::TransportStart(ActionTiming::Immediate));
-                        }
-                    }
-                }
-                ServerMessage::Feedback(msg) => {
-                    if let Some(engine) = &self.feedback_engine {
-                        engine.send(msg);
-                    }
-                }
-                ServerMessage::HydraCode(sender, code) => {
-                    if self.confirmed_username.as_deref() != Some(&sender) {
-                        self.remote_hydra = Some((sender, code));
-                    }
-                }
-                ServerMessage::ScriptEdit {
-                    sender,
-                    li,
-                    fi,
-                    ops,
-                } => {
-                    if self.confirmed_username.as_deref() != Some(&sender) {
-                        self.pending_script_edits.push((li, fi, ops));
-                    }
-                }
-                ServerMessage::CoreRestarted => {
-                    self.errors.clear();
-                    self.annotations.clear();
-                    self.compilation_flashes.clear();
-                    self.mutation_flashes.clear();
-                    self.positions.clear();
-                    self.position_start_beat.clear();
-                }
-                ServerMessage::LinkState {
-                    enabled,
-                    start_stop_sync,
-                    num_peers,
-                } => {
-                    self.clock.link_enabled = enabled;
-                    self.clock.start_stop_sync = start_stop_sync;
-                    self.clock.num_peers = num_peers;
-                }
-                ServerMessage::Snapshot(snapshot) => {
-                    self.scene = Some(snapshot.scene);
-                    self.clock.tempo = snapshot.tempo;
-                    self.clock.beat = snapshot.beat;
-                    self.clock.quantum = snapshot.quantum;
-                    self.devices = snapshot.devices;
-                    self.errors.clear();
-                    self.annotations.clear();
-                    self.compilation_flashes.clear();
-                    self.mutation_flashes.clear();
-                    self.positions.clear();
-                    self.position_start_beat.clear();
-                }
-                _ => {}
-            }
-        }
-        self.cap_chat();
-
-        if let Some(ref engine) = self.feedback_engine {
-            self.devices = engine.devices().device_list();
-            self.audio_state = engine.audio_state();
-        }
-        if let Some(ref engine) = self.feedback_engine {
-            engine.fill_scope_data(&mut self.scope_data);
-            self.scope_generation += 1;
-        }
-        if let Some(ref engine) = self.feedback_engine {
-            engine.fill_peak_data(&mut self.peak_data);
-        }
-    }
-
-    fn clear_state(&mut self) {
-        self.scene = None;
-        self.positions.clear();
-        self.position_start_beat.clear();
-        self.devices.clear();
-        self.clock = ClockState::default();
-        self.audio_state = AudioEngineState::default();
-        self.scope_data.clear();
-        self.peak_data.clear();
-        self.peers.clear();
-        self.confirmed_username = None;
-        self.languages.clear();
-        self.peer_editing.clear();
-        self.peer_cursors.clear();
-        self.chat_messages.clear();
-        self.annotations.clear();
-        self.remote_hydra = None;
-        self.compilation_flashes.clear();
-        self.mutation_flashes.clear();
-        self.feedback_engine = None;
-    }
-
-    pub fn status(&self) -> ConnectionStatus {
-        self.status
-    }
-
-    pub fn error_msg(&self) -> Option<&str> {
-        self.error_msg.as_deref()
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.status == ConnectionStatus::Connected
-    }
-
-    pub fn scene(&self) -> Option<&Scene> {
-        self.scene.as_ref()
-    }
-
-    pub fn positions(&self) -> &[Vec<(usize, usize)>] {
-        &self.positions
-    }
-
-    pub fn position_start_beat(&self) -> &[Vec<f64>] {
-        &self.position_start_beat
-    }
-
-    pub fn devices(&self) -> &[DeviceInfo] {
-        &self.devices
-    }
-
-    pub fn clock(&self) -> &ClockState {
-        &self.clock
-    }
-
-    pub fn audio_state(&self) -> &AudioEngineState {
-        &self.audio_state
-    }
-
-    pub fn scope_data(&self) -> &[f32] {
-        &self.scope_data
-    }
-
-    pub fn scope_generation(&self) -> u64 {
-        self.scope_generation
-    }
-
-    pub fn peak_data(&self) -> &[f32] {
-        &self.peak_data
-    }
-
-    pub fn start_feedback(&mut self, audio_config: AudioRestartConfig) {
-        match FeedbackEngine::start(audio_config) {
-            Ok(engine) => self.feedback_engine = Some(engine),
-            Err(e) => eprintln!("Failed to start feedback engine: {}", e),
-        }
-    }
-
-    pub fn has_feedback(&self) -> bool {
-        self.feedback_engine.is_some()
-    }
-
-    pub fn restart_audio(&self, config: AudioRestartConfig) {
-        if let Some(engine) = &self.feedback_engine {
-            engine.restart_audio(config);
-        } else {
-            self.send(ClientMessage::RestartAudioEngine(config));
-        }
-    }
-
-    pub fn peers(&self) -> &[String] {
-        &self.peers
-    }
-
-    pub fn confirmed_username(&self) -> Option<&str> {
-        self.confirmed_username.as_deref()
-    }
-
-    pub fn set_confirmed_username(&mut self, name: String) {
-        self.confirmed_username = Some(name);
-    }
-
-    pub fn languages(&self) -> &[LanguageDefinition] {
-        &self.languages
-    }
-
-    pub fn peer_editing(&self) -> &HashMap<(usize, usize), Vec<String>> {
-        &self.peer_editing
-    }
-
-    pub fn peer_cursors(&self) -> &HashMap<String, (usize, usize, Option<(usize, usize)>)> {
-        &self.peer_cursors
-    }
-
-    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(&str, usize, usize)> {
-        self.peer_cursors
-            .iter()
-            .filter_map(|(name, &(pli, pfi, ref tc))| {
-                if pli == li && pfi == fi {
-                    tc.map(|(line, col)| (name.as_str(), line, col))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn compilation_flashes(&self) -> &HashMap<(usize, usize), (bool, Instant)> {
-        &self.compilation_flashes
-    }
-
-    pub fn mutation_flashes(&self) -> &HashMap<(usize, usize), Instant> {
-        &self.mutation_flashes
-    }
-
-    pub fn frame_annotations(&self, li: usize, fi: usize) -> &[Annotation] {
-        self.annotations
-            .get(li)
-            .and_then(|l| l.get(fi))
-            .map_or(&[], |v| v.as_slice())
-    }
-
-    pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
-        self.scene()
-            .and_then(|s| s.frame(li, fi))
-            .map(|f| f.script().compilation_state())
-    }
-
-    pub fn chat_messages(&self) -> &VecDeque<ChatMessage> {
-        &self.chat_messages
-    }
-
-    pub fn push_chat(&mut self, user: String, message: String) {
-        self.chat_messages.push_back(ChatMessage {
-            time: now_hhmm(),
-            user,
-            message,
-            system: false,
-        });
-        self.cap_chat();
-    }
-
-    pub fn send_chat(&self, msg: &str) {
-        self.send(ClientMessage::Chat(msg.to_owned()));
-    }
-
-    fn cap_chat(&mut self) {
-        while self.chat_messages.len() > MAX_CHAT_MESSAGES {
-            self.chat_messages.pop_front();
-        }
-    }
-
-    pub fn connect_midi(&self, name: &str) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().connect_midi_by_name(name);
-        } else {
-            self.send(ClientMessage::ConnectMidiDeviceByName(name.to_owned()));
-        }
-    }
-
-    pub fn disconnect_midi(&self, name: &str) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().disconnect_midi_by_name(name);
-        } else {
-            self.send(ClientMessage::DisconnectMidiDeviceByName(name.to_owned()));
-        }
-    }
-
-    pub fn create_virtual_midi(&self, name: &str) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().create_virtual_midi_port(name);
-        } else {
-            self.send(ClientMessage::CreateVirtualMidiOutput(name.to_owned()));
-        }
-    }
-
-    pub fn assign_slot(&self, slot: usize, name: &str) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().assign_slot(slot, name);
-        } else {
-            self.send(ClientMessage::AssignDeviceToSlot(slot, name.to_owned()));
-        }
-    }
-
-    pub fn unassign_slot(&self, slot: usize) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().unassign_slot(slot);
-        } else {
-            self.send(ClientMessage::UnassignDeviceFromSlot(slot));
-        }
-    }
-
-    pub fn create_osc(&self, name: &str, ip: &str, port: u16) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().create_osc_output_device(name, ip, port);
-        } else {
-            self.send(ClientMessage::CreateOscDevice(
-                name.to_owned(),
-                ip.to_owned(),
-                port,
-            ));
-        }
-    }
-
-    pub fn create_osc_input(&self, name: &str, port: u16) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().create_osc_input_device(name, port);
-        } else {
-            self.send(ClientMessage::CreateOscInputDevice(
-                name.to_owned(),
-                port,
-            ));
-        }
-    }
-
-    pub fn remove_osc(&self, name: &str) {
-        if let Some(engine) = &self.feedback_engine {
-            let _ = engine.devices().remove_output_device(name);
-        } else {
-            self.send(ClientMessage::RemoveOscDevice(name.to_owned()));
-        }
-    }
-
-    pub fn set_latency(&self, name: &str, latency: f64) {
-        if let Some(engine) = &self.feedback_engine {
-            engine.devices().set_latency(name.to_owned(), latency);
-        } else {
-            self.send(ClientMessage::SetDeviceLatency(name.to_owned(), latency));
-        }
-    }
-
-    pub fn take_remote_hydra(&mut self) -> Option<(String, String)> {
-        self.remote_hydra.take()
-    }
-
-    pub fn send_hydra_code(&self, code: &str) {
-        self.send(ClientMessage::HydraCode(code.to_owned()));
-    }
-
-    pub fn build_snapshot(&self) -> Option<Snapshot> {
-        let scene = self.scene.as_ref()?.clone();
-        Some(Snapshot {
-            scene,
-            tempo: self.clock.tempo,
-            beat: self.clock.beat,
-            micros: 0,
-            quantum: self.clock.quantum,
-            devices: self.devices.clone(),
-        })
-    }
 }

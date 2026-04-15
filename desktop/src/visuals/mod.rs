@@ -8,10 +8,9 @@ use eframe::{egui, glow};
 use hydra_rust::renderer::{self, RenderUniforms, ShaderRenderer};
 
 use crate::settings::VisualsSettings;
+use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK};
 use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use crate::widgets::{
-    COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext, EditorSettings,
-};
+use crate::widgets::{CodeEditor, EditorContext, EditorSettings};
 
 pub struct VisualsEngine {
     renderer: Option<ShaderRenderer>,
@@ -19,14 +18,13 @@ pub struct VisualsEngine {
     error: Option<String>,
     pub open: bool,
     code: String,
+    last_compiled: String,
     editor: CodeEditor,
     compiled_syntax: Option<CompiledSyntax>,
-    dirty: bool,
     last_eval: Option<Instant>,
-    last_cursor_line: Option<usize>,
-    last_cursor_col: Option<usize>,
+    last_cursor: Option<(usize, usize)>,
     pub shared: bool,
-    eval_pending_broadcast: bool,
+    pending_broadcast: bool,
     pub remote_sender: Option<String>,
 }
 
@@ -39,20 +37,23 @@ impl VisualsEngine {
             error: None,
             open: false,
             code: settings.code.clone(),
+            last_compiled: String::new(),
             editor: CodeEditor::new(),
             compiled_syntax: CompiledSyntax::new(&syntax::syntax()),
-            dirty: false,
             last_eval: None,
-            last_cursor_line: None,
-            last_cursor_col: None,
+            last_cursor: None,
             shared: settings.shared,
-            eval_pending_broadcast: false,
+            pending_broadcast: false,
             remote_sender: None,
         };
         if !engine.code.is_empty() {
             engine.compile_code();
         }
         engine
+    }
+
+    fn dirty(&self) -> bool {
+        self.code != self.last_compiled
     }
 
     pub fn code(&self) -> &str {
@@ -124,7 +125,7 @@ impl VisualsEngine {
 
                     self.show_compilation_dot(ui);
 
-                    if self.dirty {
+                    if self.dirty() {
                         ui.label(crate::icons::colored(crate::icons::MODIFIED, COLOR_ERROR));
                     }
 
@@ -149,7 +150,7 @@ impl VisualsEngine {
     fn show_compilation_dot(&self, ui: &mut egui::Ui) {
         let (color, tip) = if self.error.is_some() {
             (COLOR_ERROR, t!("visuals.error"))
-        } else if self.last_eval.is_some() || (self.renderer.is_some() && !self.dirty) {
+        } else if self.last_eval.is_some() || (self.renderer.is_some() && !self.dirty()) {
             (COLOR_OK, t!("visuals.compiled"))
         } else {
             (COLOR_MUTED, t!("visuals.title"))
@@ -175,11 +176,7 @@ impl VisualsEngine {
             .auto_shrink(false)
             .show(ui, |ui| {
                 let output = self.editor.show(ui, editor_id, &mut self.code, &ctx);
-                if output.response.changed() {
-                    self.dirty = true;
-                }
-                self.last_cursor_line = output.cursor_line;
-                self.last_cursor_col = output.cursor_col;
+                self.last_cursor = output.cursor_line.zip(output.cursor_col);
             });
     }
 
@@ -197,7 +194,7 @@ impl VisualsEngine {
                 );
             }
 
-            if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
+            if let Some((line, col)) = self.last_cursor {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         egui::RichText::new(format!("Ln {}, Col {}", line + 1, col + 1))
@@ -226,15 +223,14 @@ impl VisualsEngine {
 
     fn evaluate(&mut self) {
         self.compile_code();
-        self.dirty = false;
         self.last_eval = Some(Instant::now());
         if self.shared {
-            self.eval_pending_broadcast = true;
+            self.pending_broadcast = true;
         }
     }
 
     pub fn take_pending_broadcast(&mut self) -> bool {
-        std::mem::replace(&mut self.eval_pending_broadcast, false)
+        std::mem::replace(&mut self.pending_broadcast, false)
     }
 
     pub fn apply_remote_code(&mut self, code: &str) {
@@ -243,7 +239,6 @@ impl VisualsEngine {
         }
         self.code = code.to_owned();
         self.compile_code();
-        self.dirty = false;
         self.last_eval = Some(Instant::now());
     }
 
@@ -251,6 +246,7 @@ impl VisualsEngine {
         let Some(renderer) = &mut self.renderer else {
             return;
         };
+        self.last_compiled = self.code.clone();
         if self.code.is_empty() {
             renderer.compile_buffers(
                 &[
@@ -292,7 +288,7 @@ impl VisualsEngine {
         };
 
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
-        let rect = ctx.available_rect();
+        let rect = ctx.content_rect();
         let time = self.start_time.elapsed().as_secs_f32();
         let ppp = ctx.pixels_per_point();
         let res_w = (rect.width() * ppp) as u32;

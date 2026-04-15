@@ -9,12 +9,8 @@ const MAX_VISIBLE: usize = 8;
 const FADE_SECONDS: f32 = 2.0;
 const MAX_WIDTH: f32 = 400.0;
 
-#[allow(dead_code)]
 pub enum ToastLevel {
     Error,
-    Warning,
-    Info,
-    Success,
     Chat { user: String },
 }
 
@@ -41,9 +37,6 @@ impl ToastStack {
     pub fn push(&mut self, level: ToastLevel, message: impl Into<String>) {
         let duration = match &level {
             ToastLevel::Error => 8.0,
-            ToastLevel::Warning => 6.0,
-            ToastLevel::Info => 5.0,
-            ToastLevel::Success => 5.0,
             ToastLevel::Chat { .. } => 6.0,
         };
         self.toasts.push_back(Toast {
@@ -101,19 +94,13 @@ impl ToastStack {
 
                     let (bg_r, bg_g, bg_b) = match &toast.level {
                         ToastLevel::Error => (40, 10, 10),
-                        ToastLevel::Warning => (40, 30, 10),
-                        ToastLevel::Info => (20, 20, 30),
-                        ToastLevel::Success => (10, 30, 10),
                         ToastLevel::Chat { .. } => (15, 15, 20),
                     };
                     let bg = egui::Color32::from_rgba_unmultiplied(bg_r, bg_g, bg_b, alpha_byte);
 
                     let accent = match &toast.level {
-                        ToastLevel::Error => super::COLOR_ERROR,
-                        ToastLevel::Success => super::COLOR_OK,
-                        ToastLevel::Warning => egui::Color32::from_rgb(200, 150, 50),
-                        ToastLevel::Info => super::COLOR_MUTED,
-                        ToastLevel::Chat { user } => super::username_color(user),
+                        ToastLevel::Error => crate::theme::COLOR_ERROR,
+                        ToastLevel::Chat { user } => crate::theme::username_color(user),
                     }
                     .gamma_multiply(alpha);
 
@@ -136,7 +123,8 @@ impl ToastStack {
                                     ..Default::default()
                                 };
                                 let font = egui::FontId::proportional(13.0);
-                                let name_color = super::username_color(user).gamma_multiply(alpha);
+                                let name_color =
+                                    crate::theme::username_color(user).gamma_multiply(alpha);
                                 let text_color = egui::Color32::from_white_alpha(alpha_byte);
                                 job.append(
                                     &format!("{user}: "),
@@ -165,16 +153,10 @@ impl ToastStack {
                                 );
                                 ui.label(job);
                             }
-                            _ => {
-                                let text_color = match &toast.level {
-                                    ToastLevel::Error => egui::Color32::from_rgba_unmultiplied(
-                                        255, 100, 100, alpha_byte,
-                                    ),
-                                    ToastLevel::Warning => egui::Color32::from_rgba_unmultiplied(
-                                        255, 200, 100, alpha_byte,
-                                    ),
-                                    _ => egui::Color32::from_white_alpha(alpha_byte),
-                                };
+                            ToastLevel::Error => {
+                                let text_color = egui::Color32::from_rgba_unmultiplied(
+                                    255, 100, 100, alpha_byte,
+                                );
                                 ui.label(
                                     egui::RichText::new(&toast.message)
                                         .color(text_color)

@@ -96,7 +96,9 @@ impl World {
                 time = self.clock.micros();
             }
 
-            if next.time <= time && let Some(msg) = self.queue.pop() {
+            if next.time <= time
+                && let Some(msg) = self.queue.pop()
+            {
                 self.execute_message(msg);
             }
             self.refresh_next_timeout();

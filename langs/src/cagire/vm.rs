@@ -6,18 +6,18 @@ use std::sync::{Arc, LazyLock};
 
 use sova_core::clock::SyncTime;
 use sova_core::device_map::DeviceMap;
-use sova_core::protocol::osc::OSCMessage;
 use sova_core::protocol::DeviceKind;
+use sova_core::protocol::osc::OSCMessage;
+use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
-use sova_core::vm::EvaluationContext;
 
-use super::compiler::{compile_script, Dictionary};
+use super::compiler::{Dictionary, compile_script};
 use super::ops::Op;
 use super::pattern;
 use super::theory::chords;
 use super::types::{
-    float_to_value, CagireError, CmdRegister, ResolvedValue, Span, Stack, Tuning, Value,
+    CagireError, CmdRegister, ResolvedValue, Span, Stack, Tuning, Value, float_to_value,
 };
 
 static TWELVE_EDO_TUNING: LazyLock<Arc<Tuning>> = LazyLock::new(|| {
@@ -660,11 +660,7 @@ impl CagireVM {
                     } else {
                         let period = 2 * (count - 1);
                         let raw = counter % period;
-                        if raw < count {
-                            raw
-                        } else {
-                            period - raw
-                        }
+                        if raw < count { raw } else { period - raw }
                     };
                     if let Some(s) = word_span {
                         self.resolved.push((*s, ResolvedValue::Int(idx as i64)));
@@ -1253,8 +1249,7 @@ impl CagireVM {
 
                             cmd.restore_state(&outer_state);
                             cmd.set_param("gate", Value::Float(inner_step_duration));
-                            let highlight_span =
-                                self.pattern_hit_span(origin, hit.start, hit.end);
+                            let highlight_span = self.pattern_hit_span(origin, hit.start, hit.end);
                             if let Some(span) = highlight_span {
                                 self.active_emit_annotations.push(span);
                             }
@@ -1747,11 +1742,17 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let mut args = HashMap::with_capacity(2);
                     args.insert("doux".to_string(), VariableValue::Str("rec".into()));
-                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert(
+                        "sound".to_string(),
+                        VariableValue::Str(at!(name.as_str())?.to_string()),
+                    );
                     let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Dirt { args, device_id: dev },
+                        ConcreteEvent::Dirt {
+                            args,
+                            device_id: dev,
+                        },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1760,12 +1761,18 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let mut args = HashMap::with_capacity(3);
                     args.insert("doux".to_string(), VariableValue::Str("rec".into()));
-                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert(
+                        "sound".to_string(),
+                        VariableValue::Str(at!(name.as_str())?.to_string()),
+                    );
                     args.insert("overdub".to_string(), VariableValue::Str("1".into()));
                     let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Dirt { args, device_id: dev },
+                        ConcreteEvent::Dirt {
+                            args,
+                            device_id: dev,
+                        },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1775,12 +1782,18 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let mut args = HashMap::with_capacity(3);
                     args.insert("doux".to_string(), VariableValue::Str("rec".into()));
-                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert(
+                        "sound".to_string(),
+                        VariableValue::Str(at!(name.as_str())?.to_string()),
+                    );
                     args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
                     let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Dirt { args, device_id: dev },
+                        ConcreteEvent::Dirt {
+                            args,
+                            device_id: dev,
+                        },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -1790,13 +1803,19 @@ impl CagireVM {
                     let name = at!(stack.pop())?;
                     let mut args = HashMap::with_capacity(4);
                     args.insert("doux".to_string(), VariableValue::Str("rec".into()));
-                    args.insert("sound".to_string(), VariableValue::Str(at!(name.as_str())?.to_string()));
+                    args.insert(
+                        "sound".to_string(),
+                        VariableValue::Str(at!(name.as_str())?.to_string()),
+                    );
                     args.insert("overdub".to_string(), VariableValue::Str("1".into()));
                     args.insert("orbit".to_string(), VariableValue::Str(orbit.to_string()));
                     let dev = get_cmd_dev(cmd, ctx);
                     self.push_event(
                         events,
-                        ConcreteEvent::Dirt { args, device_id: dev },
+                        ConcreteEvent::Dirt {
+                            args,
+                            device_id: dev,
+                        },
                         offset_micros(ctx, 0.0),
                     );
                 }
@@ -3384,10 +3403,7 @@ mod tests {
         // Four evenly-spaced subdivisions of a 500_000-micro step.
         let events = eval("0 0.25 0.5 0.75 ( 60 note . ) at");
         assert_eq!(events.len(), 4);
-        assert_eq!(
-            get_event_times(&events),
-            vec![0, 125_000, 250_000, 375_000],
-        );
+        assert_eq!(get_event_times(&events), vec![0, 125_000, 250_000, 375_000],);
     }
 
     #[test]
@@ -3431,10 +3447,7 @@ mod tests {
         // four evenly-spaced events.
         let events = eval("0 0.5 ( 0 0.5 ( 60 note . ) at ) at");
         assert_eq!(events.len(), 4);
-        assert_eq!(
-            get_event_times(&events),
-            vec![0, 125_000, 250_000, 375_000],
-        );
+        assert_eq!(get_event_times(&events), vec![0, 125_000, 250_000, 375_000],);
     }
 
     #[test]
@@ -3455,10 +3468,7 @@ mod tests {
         // sub-step. Result: events at 0, 125_000, 250_000, 375_000.
         let events = eval("0 0.5 ( \"x.x.\" ( 60 note . ) at ) at");
         assert_eq!(events.len(), 4);
-        assert_eq!(
-            get_event_times(&events),
-            vec![0, 125_000, 250_000, 375_000],
-        );
+        assert_eq!(get_event_times(&events), vec![0, 125_000, 250_000, 375_000],);
     }
 
     #[test]
@@ -3473,10 +3483,7 @@ mod tests {
         // step_duration.
         let events = eval("\"x.x.\" ( 0 0.5 ( 60 note . ) at ) at");
         assert_eq!(events.len(), 4);
-        assert_eq!(
-            get_event_times(&events),
-            vec![0, 62_500, 250_000, 312_500],
-        );
+        assert_eq!(get_event_times(&events), vec![0, 62_500, 250_000, 312_500],);
     }
 
     #[test]
@@ -3512,8 +3519,7 @@ mod tests {
         // flattened sequence so each leaf iteration picks the next cycle
         // element. Outer 2 deltas × inner 2 deltas = 4 leaves; cycling
         // through 4 notes should produce them in order.
-        let events =
-            eval("0 0.5 ( 0 0.5 ( [ c4 d4 e4 f4 ] cycle note . ) at ) at");
+        let events = eval("0 0.5 ( 0 0.5 ( [ c4 d4 e4 f4 ] cycle note . ) at ) at");
         assert_eq!(events.len(), 4);
         assert_eq!(get_midi_notes(&events), vec![60, 62, 64, 65]);
     }

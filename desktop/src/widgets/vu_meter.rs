@@ -11,8 +11,6 @@ const YELLOW_DIM: Color32 = Color32::from_rgb(120, 160, 30);
 const YELLOW_BRIGHT: Color32 = Color32::from_rgb(220, 200, 40);
 const RED_DIM: Color32 = Color32::from_rgb(200, 100, 20);
 const RED_BRIGHT: Color32 = Color32::from_rgb(220, 50, 50);
-const LANE_BG: Color32 = Color32::from_rgb(30, 30, 30);
-
 fn dim_color(c: Color32) -> Color32 {
     Color32::from_rgb(
         (c.r() as f32 * 0.4) as u8,
@@ -32,8 +30,14 @@ impl VuMeter {
     }
 
     /// Paint just the gradient bar and peak indicator into the given rect.
-    pub fn paint_bar(&self, painter: &egui::Painter, bar_rect: egui::Rect, accent: Color32) {
-        painter.rect_filled(bar_rect, 0.0, LANE_BG);
+    pub fn paint_bar(
+        &self,
+        painter: &egui::Painter,
+        bar_rect: egui::Rect,
+        accent: Color32,
+        lane_bg: Color32,
+    ) {
+        painter.rect_filled(bar_rect, 0.0, lane_bg);
 
         let accent_dim = dim_color(accent);
         let rms_t = ((self.rms_db - DB_MIN) / DB_RANGE).clamp(0.0, 1.0);

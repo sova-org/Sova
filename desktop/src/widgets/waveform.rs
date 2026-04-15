@@ -1,51 +1,47 @@
 use eframe::egui;
 
+enum WaveformData<'a> {
+    Peaks { samples: &'a [f32], num_bins: usize },
+    Line(&'a [f32]),
+}
+
 pub struct Waveform<'a> {
-    samples: &'a [f32],
+    data: WaveformData<'a>,
     peaks: Option<&'a [(f32, f32)]>,
     fill_peaks: Option<&'a [(f32, f32)]>,
-    line_samples: Option<&'a [f32]>,
     trace: Option<&'a [(f32, f32)]>,
     color: egui::Color32,
     fill_alpha: f32,
     stroke_width: f32,
     normalize: bool,
-    num_bins: usize,
     cursor_pos: Option<f32>,
 }
 
 impl<'a> Waveform<'a> {
     pub fn new(samples: &'a [f32], color: egui::Color32) -> Self {
         Self {
-            samples,
+            data: WaveformData::Peaks { samples, num_bins: 256 },
             peaks: None,
             fill_peaks: None,
-            line_samples: None,
             trace: None,
             color,
             fill_alpha: 0.35,
             stroke_width: 1.0,
             normalize: false,
-            num_bins: 256,
             cursor_pos: None,
         }
     }
 
-    pub fn from_line(
-        line: &'a [f32],
-        color: egui::Color32,
-    ) -> Self {
+    pub fn from_line(line: &'a [f32], color: egui::Color32) -> Self {
         Self {
-            samples: &[],
+            data: WaveformData::Line(line),
             peaks: None,
             fill_peaks: None,
-            line_samples: Some(line),
             trace: None,
             color,
             fill_alpha: 0.35,
             stroke_width: 1.0,
             normalize: false,
-            num_bins: 0,
             cursor_pos: None,
         }
     }
@@ -76,7 +72,9 @@ impl<'a> Waveform<'a> {
     }
 
     pub fn num_bins(mut self, n: usize) -> Self {
-        self.num_bins = n;
+        if let WaveformData::Peaks { ref mut num_bins, .. } = self.data {
+            *num_bins = n;
+        }
         self
     }
 
@@ -85,34 +83,22 @@ impl<'a> Waveform<'a> {
         let desired = egui::vec2(avail.x, avail.y.max(60.0));
         let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click());
         let painter = ui.painter_at(rect);
-        let guide_color = self.color.gamma_multiply(0.08);
 
         let center_y = rect.center().y;
-        painter.line_segment(
-            [
-                egui::pos2(rect.left(), center_y),
-                egui::pos2(rect.right(), center_y),
-            ],
-            egui::Stroke::new(1.0, self.color.gamma_multiply(0.3)),
-        );
-        for t in [0.25_f32, 0.75_f32] {
-            let y = egui::lerp(rect.top()..=rect.bottom(), t);
-            painter.line_segment(
-                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-                egui::Stroke::new(0.5, guide_color),
-            );
-        }
 
-        if let Some(line) = self.line_samples {
-            if line.len() < 2 {
-                return self.handle_click(&resp, rect);
+        match &self.data {
+            WaveformData::Line(line) => {
+                if line.len() < 2 {
+                    return self.handle_click(&resp, rect);
+                }
+                self.draw_line(&painter, rect, center_y, line);
             }
-            self.draw_line(&painter, rect, center_y, line);
-        } else {
-            if self.samples.len() < 2 && self.peaks.is_none_or(|p| p.len() < 2) {
-                return self.handle_click(&resp, rect);
+            WaveformData::Peaks { samples, num_bins } => {
+                if samples.len() < 2 && self.peaks.is_none_or(|p| p.len() < 2) {
+                    return self.handle_click(&resp, rect);
+                }
+                self.draw_peaks(&painter, rect, center_y, samples, *num_bins);
             }
-            self.draw_peaks(&painter, rect, center_y);
         }
 
         if let Some(pos) = self.cursor_pos {
@@ -126,13 +112,7 @@ impl<'a> Waveform<'a> {
         self.handle_click(&resp, rect)
     }
 
-    fn draw_line(
-        &self,
-        painter: &egui::Painter,
-        rect: egui::Rect,
-        center_y: f32,
-        line: &[f32],
-    ) {
+    fn draw_line(&self, painter: &egui::Painter, rect: egui::Rect, center_y: f32, line: &[f32]) {
         let half_h = rect.height() * 0.5;
         let width = rect.width();
         let len = line.len() as f32;
@@ -187,26 +167,33 @@ impl<'a> Waveform<'a> {
         ));
     }
 
-    fn draw_peaks(&self, painter: &egui::Painter, rect: egui::Rect, center_y: f32) {
+    fn draw_peaks(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        center_y: f32,
+        samples: &[f32],
+        num_bins: usize,
+    ) {
         let owned_peaks;
         let peaks = if let Some(peaks) = self.peaks {
             peaks
         } else {
             let gain = if self.normalize {
-                let peak = self.samples.iter().fold(0.0_f32, |mx, &s| mx.max(s.abs()));
+                let peak = samples.iter().fold(0.0_f32, |mx, &s| mx.max(s.abs()));
                 if peak > 0.0 { 1.0 / peak } else { 1.0 }
             } else {
                 1.0
             };
 
-            let num_bins = self.num_bins.min(self.samples.len());
-            let len = self.samples.len() as f32;
+            let num_bins = num_bins.min(samples.len());
+            let len = samples.len() as f32;
             let bins = num_bins as f32;
             owned_peaks = (0..num_bins)
                 .map(|i| {
                     let start = (i as f32 * len / bins) as usize;
                     let end = ((i as f32 + 1.0) * len / bins) as usize;
-                    self.samples[start..end]
+                    samples[start..end]
                         .iter()
                         .fold((f32::MAX, f32::MIN), |(mn, mx), &s| {
                             let s = s * gain;
