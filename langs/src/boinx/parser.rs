@@ -14,6 +14,7 @@ use crate::boinx::ast::{
 use sova_core::{
     clock::{SyncTime, TimeSpan},
     compiler::CompilationError,
+    vm::interpreter::{Annotation, CodePosition},
 };
 
 #[derive(Parser)]
@@ -22,16 +23,14 @@ pub struct BoinxParser;
 
 static BOINX_PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> =
     std::sync::LazyLock::new(|| {
-        use pest::pratt_parser::{Assoc::*, Op};
         use Rule::*;
+        use pest::pratt_parser::{Assoc::*, Op};
         PrattParser::new()
-            .op(
-                Op::infix(compo_op, Right)
-                    | Op::infix(iter_op, Right)
-                    | Op::infix(zip_op, Right)
-                    | Op::infix(each_op, Right)
-                    | Op::infix(super_each_op, Right),
-            )
+            .op(Op::infix(compo_op, Right)
+                | Op::infix(iter_op, Right)
+                | Op::infix(zip_op, Right)
+                | Op::infix(each_op, Right)
+                | Op::infix(super_each_op, Right))
             .op(Op::infix(shr, Left) | Op::infix(shl, Left))
             .op(Op::infix(add, Left) | Op::infix(sub, Left) | Op::infix(rem, Left))
             .op(Op::infix(mul, Left) | Op::infix(div, Left))
@@ -50,13 +49,13 @@ fn parse_note(pairs: Pairs<Rule>) -> i64 {
         match pair.as_rule() {
             Rule::note_letter => {
                 i = match pair.as_str() {
-                    "C" => 0,
-                    "D" => 2,
-                    "E" => 4,
-                    "F" => 5,
-                    "G" => 7,
-                    "A" => 9,
-                    "B" => 11,
+                    "C" | "c" => 0,
+                    "D" | "d" => 2,
+                    "E" | "e" => 4,
+                    "F" | "f" => 5,
+                    "G" | "g" => 7,
+                    "A" | "a" => 9,
+                    "B" | "b" => 11,
                     _ => unreachable!(),
                 }
             }
@@ -94,28 +93,51 @@ fn parse_str(pair: Pair<Rule>) -> String {
     sub.to_owned()
 }
 
+fn highlight_from_pair(pair: &Pair<Rule>) -> Annotation {
+    let (line, col) = pair.line_col();
+    let (line_end, col_end) = pair.as_span().end_pos().line_col();
+    Annotation::Highlight(
+        CodePosition::at(line - 1, col - 1),
+        CodePosition::at(line_end - 1, col_end - 1),
+    )
+}
+
+fn end_pos_from_pair(pair: &Pair<Rule>) -> CodePosition {
+    let (line_end, col_end) = pair.as_span().end_pos().line_col();
+    CodePosition::at(line_end - 1, col_end - 1)
+}
+
 fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
     BOINX_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::int => {
                 let i = primary.as_str().parse().unwrap_or_default();
-                BoinxItem::Note(i).into()
+                let annotation = highlight_from_pair(&primary);
+                BoinxItem::Note(i, Some(annotation)).into()
             }
-            Rule::note => BoinxItem::Note(parse_note(primary.into_inner())).into(),
+            Rule::note => {
+                let annotation = highlight_from_pair(&primary);
+                BoinxItem::Note(parse_note(primary.into_inner()), Some(annotation)).into()
+            }
             Rule::real => {
                 let f = primary.as_str().parse().unwrap_or_default();
-                BoinxItem::Number(f).into()
+                let annotation = highlight_from_pair(&primary);
+                BoinxItem::Number(f, Some(annotation)).into()
             }
             Rule::str => {
                 let is_escape = primary.as_str().starts_with("'");
+                let annotation = highlight_from_pair(&primary);
                 let string = parse_str(primary);
                 if is_escape {
-                    BoinxItem::Escape(Box::new(BoinxItem::Str(string))).into()
+                    BoinxItem::Escape(Box::new(BoinxItem::Str(string, Some(annotation)))).into()
                 } else {
-                    BoinxItem::Str(string).into()
+                    BoinxItem::Str(string, Some(annotation)).into()
                 }
             }
-            Rule::ident => BoinxItem::Identity(parse_ident(primary.into_inner())).into(),
+            Rule::ident => {
+                let pos = end_pos_from_pair(&primary);
+                BoinxItem::Identity(parse_ident(primary.into_inner()), Some(pos)).into()
+            }
             Rule::micros => {
                 let mut inner = primary.into_inner();
                 let inner = inner.next().unwrap();
@@ -144,9 +166,10 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
             Rule::placeholder => BoinxItem::Placeholder.into(),
             Rule::sub_prog => {
                 let prog = parse_prog(primary.into_inner());
-                BoinxItem::SubProg(Box::new(prog)).into()
+                BoinxItem::SubProg(Box::new(prog), None).into()
             }
             Rule::if_else => {
+                let pos = end_pos_from_pair(&primary);
                 let mut inner = primary.into_inner();
                 let condition = inner.next().unwrap().into_inner();
                 let t_block = inner.next().unwrap().into_inner();
@@ -155,6 +178,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     parse_condition(condition),
                     Box::new(parse_prog(t_block)),
                     Box::new(parse_prog(f_block)),
+                    Some(pos),
                 )
                 .into()
             }
@@ -179,12 +203,13 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 BoinxItem::Simultaneous(vec).into()
             }
             Rule::func => {
+                let pos = end_pos_from_pair(&primary);
                 let mut pairs = primary.into_inner();
                 let name = pairs.next().unwrap().as_str().to_owned();
                 let args = pairs
                     .map(|p| parse_compo(p.into_inner()).extract())
                     .collect();
-                BoinxItem::Func(name, args, None).into()
+                BoinxItem::Func(name, args, None, Some(pos)).into()
             }
             Rule::map => {
                 let mut value_map = HashMap::new();
@@ -206,7 +231,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
             Rule::super_each_op => lhs.chain(BoinxCompoOp::SuperEach, rhs),
             Rule::zip_op => lhs.chain(BoinxCompoOp::Zip, rhs),
             _ => {
-                let op = match op.as_rule() {
+                let b_op = match op.as_rule() {
                     Rule::add => BoinxArithmeticOp::Add,
                     Rule::sub => BoinxArithmeticOp::Sub,
                     Rule::mul => BoinxArithmeticOp::Mul,
@@ -217,7 +242,14 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     Rule::pow => BoinxArithmeticOp::Pow,
                     _ => unreachable!(),
                 };
-                BoinxItem::Arithmetic(Box::new(lhs.extract()), op, Box::new(rhs.extract())).into()
+                let pos = end_pos_from_pair(&op);
+                BoinxItem::Arithmetic(
+                    Box::new(lhs.extract()),
+                    b_op,
+                    Box::new(rhs.extract()),
+                    Some(pos),
+                )
+                .into()
             }
         })
         .map_prefix(|op, rhs| match op.as_rule() {

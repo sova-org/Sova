@@ -1,19 +1,16 @@
 use sova_core::clock::ClockServer;
 use sova_core::device_map::DeviceMap;
-use sova_core::scene::{Line, Scene};
 use sova_core::schedule::SovaNotification;
 
 use clap::Parser;
-use tokio_util::sync::CancellationToken;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
-use sova_server::{
-    AudioEngineState, AudioRestartConfig, ClientRegistry, SovaCoreServer,
-};
+use sova_server::{AudioEngineState, AudioRestartConfig, ClientRegistry, SovaCoreServer};
 
 #[cfg(feature = "audio")]
 use sova_server::audio::spawn_audio_thread;
@@ -25,8 +22,6 @@ use sova_server::AudioRestartRequest;
 use std::path::PathBuf;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "Sova";
-pub const DEFAULT_TEMPO: f64 = 120.0;
-pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
  ▗▄▄▖ ▄▄▄  ▄   ▄ ▗▞▀▜▌
 ▐▌   █   █ █   █ ▝▚▄▟▌
@@ -56,12 +51,6 @@ struct Cli {
 
     #[arg(short, long, value_name = "PORT", default_value_t = 8080)]
     port: u16,
-
-    #[arg(short, long, value_name = "BPM", default_value_t = DEFAULT_TEMPO)]
-    tempo: f64,
-
-    #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
-    quantum: f64,
 
     /// Require a password to connect (open access if not set)
     #[arg(long, value_name = "PASSWORD")]
@@ -127,7 +116,8 @@ async fn main() {
 
     greeter();
 
-    let clock_server = Arc::new(ClockServer::new(cli.tempo, cli.quantum));
+    let demo = sova_server::demos::random_demo();
+    let clock_server = Arc::new(ClockServer::new(demo.tempo, demo.quantum));
     clock_server.link.enable(true);
 
     let devices = Arc::new(DeviceMap::new());
@@ -195,8 +185,7 @@ async fn main() {
 
     let languages = Arc::new(langs::create_language_center());
 
-    let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
-    let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
+    let scene_image = Arc::new(Mutex::new(demo.scene));
 
     #[cfg(feature = "audio")]
     let master_gain = audio_thread
@@ -222,7 +211,7 @@ async fn main() {
         cli.password,
         master_gain,
     );
-    
+
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
 
     let token = CancellationToken::new();

@@ -9,15 +9,19 @@ pub struct CodePosition {
 }
 
 impl CodePosition {
-
     pub fn line(line: usize) -> Self {
-        CodePosition { line, ..Default::default() }
+        CodePosition {
+            line,
+            ..Default::default()
+        }
     }
 
     pub fn at(line: usize, col: usize) -> Self {
-        CodePosition { line, col: Some(col) }
+        CodePosition {
+            line,
+            col: Some(col),
+        }
     }
-    
 }
 
 impl Display for CodePosition {

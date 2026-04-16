@@ -29,6 +29,21 @@ pub fn on_hover(ctx: &egui::Context, r: &egui::Response, text: impl Into<String>
     }
 }
 
+/// Render a label + control pair where both sides share the same contextual hint.
+/// Returns the control's `Response` so callers can check `.changed()`.
+pub fn labeled(
+    ui: &mut egui::Ui,
+    label: impl Into<egui::WidgetText>,
+    hint_text: impl Into<String> + Clone,
+    add_control: impl FnOnce(&mut egui::Ui) -> egui::Response,
+) -> egui::Response {
+    let lbl = ui.label(label);
+    on_hover(ui.ctx(), &lbl, hint_text.clone());
+    let r = add_control(ui);
+    on_hover(ui.ctx(), &r, hint_text);
+    r
+}
+
 pub fn current(ctx: &egui::Context) -> Option<String> {
     let pass = ctx.cumulative_pass_nr();
     ctx.data(|d| {

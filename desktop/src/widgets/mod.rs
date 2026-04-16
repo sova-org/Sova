@@ -1,13 +1,18 @@
 mod about_dialog;
 mod bottom_bar;
 mod code_editor;
+pub(crate) mod signal;
+mod combo;
 mod command_palette;
 mod confirm_dialog;
 pub mod hint;
+mod inline_markdown;
 pub mod inline_scene_view;
+mod opacity;
+pub mod shortcut;
 mod spectrum;
+pub mod spectrum_analyzer;
 pub mod syntax_highlight;
-pub mod tip_popup;
 mod toast;
 mod vu_meter;
 mod waveform;
@@ -15,59 +20,61 @@ mod waveform;
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorContext, EditorSettings, PeerCursor};
-pub use syntax_highlight::SyntaxThemePref;
+pub use combo::searchable_string_list as combo_searchable_string_list;
+pub use combo::string_list as combo_string_list;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
+pub use inline_markdown::append_inline_markdown;
+pub use opacity::SceneOpacity;
 pub use spectrum::Spectrum;
+pub use spectrum_analyzer::SpectrumAnalyzer;
+pub use syntax_highlight::SyntaxThemePref;
 pub use toast::{ToastLevel, ToastStack};
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
+pub(crate) use signal::{smooth, decay_peaks, downsample_lttb, apply_trace, align_trigger};
 
-pub fn smooth(buffer: &mut Vec<f32>, source: &[f32], factor: f32) {
-    buffer.resize(source.len(), 0.0);
-    for (b, &s) in buffer.iter_mut().zip(source) {
-        *b = *b * factor + s * (1.0 - factor);
-    }
+/// Returns true when `response` lost focus because `key` was pressed, and
+/// consumes that key so it cannot fall through to other keyboard handlers in
+/// the same frame.
+pub fn consume_key_on_lost_focus(
+    ui: &mut eframe::egui::Ui,
+    response: &eframe::egui::Response,
+    key: eframe::egui::Key,
+) -> bool {
+    response.lost_focus() && ui.input_mut(|i| i.consume_key(eframe::egui::Modifiers::NONE, key))
 }
 
-pub const COLOR_OK: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(100, 200, 100);
-pub const COLOR_ERROR: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(200, 100, 100);
-pub const COLOR_MUTED: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(128, 128, 128);
-
-pub fn username_color(name: &str) -> eframe::egui::Color32 {
-    let mut hash: u32 = 0;
-    for b in name.bytes() {
-        hash = hash.wrapping_mul(31).wrapping_add(b as u32);
+/// Floating window inside the main viewport. Standardises every embedded
+/// panel toggle (scope, spectrum, chat, sample browser, …) so the resizable +
+/// collapsible + default_size + open scaffolding lives in one place.
+///
+/// Pass `frame = Some(...)` only when the default `egui::Window` frame needs
+/// to be overridden (e.g. zero inner margin for the scope waveform).
+pub fn embedded_window(
+    ctx: &eframe::egui::Context,
+    title: impl Into<eframe::egui::WidgetText>,
+    open: &mut bool,
+    default_size: [f32; 2],
+    frame: Option<eframe::egui::Frame>,
+    content: impl FnOnce(&mut eframe::egui::Ui),
+) {
+    use eframe::egui;
+    let mut window = egui::Window::new(title)
+        .open(open)
+        .resizable(true)
+        .collapsible(true)
+        .default_size(default_size);
+    if let Some(f) = frame {
+        window = window.frame(f);
     }
-    let hue = (hash % 360) as f32;
-    let (r, g, b) = hsl_to_rgb(hue, 0.40, 0.60);
-    eframe::egui::Color32::from_rgb(r, g, b)
-}
-
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-    let (r, g, b) = match (h as u32) / 60 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    (
-        ((r + m) * 255.0) as u8,
-        ((g + m) * 255.0) as u8,
-        ((b + m) * 255.0) as u8,
-    )
+    window.show(ctx, content);
 }
 
 pub fn show_detached_viewport(
     ctx: &eframe::egui::Context,
     open: &mut bool,
     detached: &mut bool,
-    viewport_key: &str,
     title: &str,
     size: [f32; 2],
     appearance: &crate::settings::AppearanceSettings,
@@ -75,7 +82,7 @@ pub fn show_detached_viewport(
 ) {
     use eframe::egui;
 
-    let vp_id = egui::ViewportId::from_hash_of(viewport_key);
+    let vp_id = egui::ViewportId::from_hash_of(title);
     let mut content = Some(content);
     ctx.show_viewport_immediate(
         vp_id,
@@ -88,7 +95,7 @@ pub fn show_detached_viewport(
                 return;
             }
 
-            crate::apply_appearance(ctx, appearance);
+            crate::theme::apply_appearance(ctx, appearance);
 
             if ctx.input(|i| i.viewport().close_requested()) {
                 *open = false;
@@ -96,10 +103,10 @@ pub fn show_detached_viewport(
                 return;
             }
 
-            egui::TopBottomPanel::top(format!("{viewport_key}_toolbar")).show(ctx, |ui| {
+            egui::TopBottomPanel::top(egui::Id::new(title).with("toolbar")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     if ui
-                        .button(crate::icons::DOCK)
+                        .button(crate::icons::rich(crate::icons::DOCK))
                         .on_hover_text(t!("common.dock_back").to_string())
                         .clicked()
                     {

@@ -1,33 +1,239 @@
 use std::time::Instant;
 
+use crate::scene_panel::new_frame;
 use eframe::egui;
 use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
-use sova_core::schedule::SchedulerMessage;
-use crate::scene_panel::new_frame;
 use sova_core::schedule::ActionTiming;
+use sova_core::schedule::SchedulerMessage;
 use sova_server::{ClientMessage, TextOp};
 
-use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorContext};
+use super::{CodeEditor, EditorContext};
 use crate::client_bridge::ClientBridge;
+use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, cycled_accent};
+
+/// Full-body language picker grid. Replaces the code editor area with a grid
+/// of clickable language tiles. Returns `Some(lang_name)` when a language is
+/// selected, `None` while browsing or on cancel.
+pub fn show_lang_picker(
+    ui: &mut egui::Ui,
+    picker_open: &mut bool,
+    picker_filter: &mut String,
+    picker_selection: &mut usize,
+    current_lang: &str,
+    accent: egui::Color32,
+    bridge: &ClientBridge,
+) -> Option<String> {
+    let languages = bridge.languages();
+    let filter_lower = picker_filter.to_lowercase();
+    let filtered: Vec<_> = languages
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.name.to_lowercase().contains(&filter_lower))
+        .collect();
+
+    // Clamp selection
+    *picker_selection = (*picker_selection).min(filtered.len().saturating_sub(1));
+
+    // Consume keyboard events
+    let escape = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    let enter = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+    let arrow_left = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft));
+    let arrow_right = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight));
+    let arrow_up = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp));
+    let arrow_down = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown));
+    let backspace = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
+
+    // Number keys 1-9 for instant selection
+    let mut digit_pick: Option<usize> = None;
+    for d in 1..=9u8 {
+        let key = match d {
+            1 => egui::Key::Num1,
+            2 => egui::Key::Num2,
+            3 => egui::Key::Num3,
+            4 => egui::Key::Num4,
+            5 => egui::Key::Num5,
+            6 => egui::Key::Num6,
+            7 => egui::Key::Num7,
+            8 => egui::Key::Num8,
+            9 => egui::Key::Num9,
+            _ => unreachable!(),
+        };
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
+            digit_pick = Some((d - 1) as usize);
+        }
+    }
+
+    // Text input for filtering (consume typed characters)
+    let typed: Vec<char> = ui.input_mut(|i| {
+        let chars: Vec<char> = i
+            .events
+            .iter()
+            .filter_map(|e| {
+                if let egui::Event::Text(s) = e {
+                    s.chars().next()
+                } else {
+                    None
+                }
+            })
+            .collect();
+        i.events.retain(|e| !matches!(e, egui::Event::Text(_)));
+        chars
+    });
+
+    if backspace {
+        picker_filter.pop();
+    }
+    for ch in typed {
+        picker_filter.push(ch);
+    }
+
+    // Escape cancels
+    if escape {
+        *picker_open = false;
+        picker_filter.clear();
+        return None;
+    }
+
+    // Instant digit selection
+    if let Some(idx) = digit_pick
+        && idx < filtered.len()
+    {
+        *picker_open = false;
+        picker_filter.clear();
+        return Some(filtered[idx].1.name.clone());
+    }
+
+    // Arrow navigation
+    let available = ui.available_size();
+    let cols = ((available.x / 140.0) as usize)
+        .max(1)
+        .min(filtered.len().max(1));
+
+    if !filtered.is_empty() {
+        if arrow_left {
+            *picker_selection = picker_selection.saturating_sub(1);
+        }
+        if arrow_right {
+            *picker_selection = (*picker_selection + 1).min(filtered.len() - 1);
+        }
+        if arrow_up {
+            *picker_selection = picker_selection.saturating_sub(cols);
+        }
+        if arrow_down {
+            *picker_selection = (*picker_selection + cols).min(filtered.len() - 1);
+        }
+    }
+
+    // Enter confirms
+    if enter && !filtered.is_empty() {
+        *picker_open = false;
+        picker_filter.clear();
+        return Some(filtered[*picker_selection].1.name.clone());
+    }
+
+    // Fill the entire body with a dark background so the frame's bg doesn't bleed through
+    ui.painter().rect_filled(
+        ui.available_rect_before_wrap(),
+        0.0,
+        ui.visuals().extreme_bg_color,
+    );
+
+    // Render filter hint
+    if !picker_filter.is_empty() {
+        ui.label(
+            egui::RichText::new(format!("filter: {}", picker_filter))
+                .monospace()
+                .color(COLOR_MUTED),
+        );
+    }
+
+    if filtered.is_empty() {
+        ui.centered_and_justified(|ui| {
+            ui.label(egui::RichText::new("No matching languages").color(COLOR_MUTED));
+        });
+        return None;
+    }
+
+    // Compute tile sizes
+    let rows = filtered.len().div_ceil(cols);
+    let spacing = 2.0;
+    let tile_w = (available.x - spacing * (cols as f32 - 1.0)) / cols as f32;
+    let tile_h = ((available.y - spacing * (rows as f32 - 1.0)) / rows as f32).clamp(32.0, 64.0);
+
+    let mut result = None;
+
+    egui::Grid::new("lang_picker_grid")
+        .num_columns(cols)
+        .spacing(egui::vec2(spacing, spacing))
+        .show(ui, |ui| {
+            for (i, &(orig_idx, lang)) in filtered.iter().enumerate() {
+                let is_selected = i == *picker_selection;
+                let is_current = lang.name == current_lang;
+
+                let shortcut = if i < 9 {
+                    format!("[{}] ", i + 1)
+                } else {
+                    String::new()
+                };
+
+                let lang_color = cycled_accent(accent, orig_idx);
+                let (fill, text_color) = if is_selected {
+                    (lang_color, egui::Color32::WHITE)
+                } else if is_current {
+                    (lang_color.linear_multiply(0.4), ui.visuals().text_color())
+                } else {
+                    (lang_color.linear_multiply(0.2), ui.visuals().text_color())
+                };
+
+                let label = format!("{}{}", shortcut, lang.name);
+                let btn = egui::Button::new(egui::RichText::new(label).color(text_color))
+                    .fill(fill)
+                    .corner_radius(0.0)
+                    .min_size(egui::vec2(tile_w, tile_h));
+
+                if ui.add(btn).clicked() {
+                    result = Some(lang.name.clone());
+                }
+
+                if (i + 1) % cols == 0 {
+                    ui.end_row();
+                }
+            }
+        });
+
+    if result.is_some() {
+        *picker_open = false;
+        picker_filter.clear();
+    }
+
+    result
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum FocusRequest {
+    None,
+    Editor,
+    Duration,
+    Repetitions,
+}
 
 pub struct InlineFrameState {
     pub editor: CodeEditor,
     pub content: String,
     pub lang: String,
     pub dirty: bool,
-    pub lang_popup_open: bool,
-    pub lang_filter: String,
-    pub lang_popup_selection: usize,
+    pub lang_picker_open: bool,
+    pub lang_picker_filter: String,
+    pub lang_picker_selection: usize,
     pub last_eval: Option<Instant>,
-    pub last_cursor_line: Option<usize>,
-    pub last_cursor_col: Option<usize>,
+    pub last_cursor: Option<(usize, usize)>,
     pub sent_cursor: Option<(usize, usize)>,
     pub last_cursor_send: Instant,
-    pub header_name_buf: String,
+
     pub editor_has_focus: bool,
-    pub request_focus: bool,
+    pub focus_request: FocusRequest,
     pub escape_pressed: bool,
     pub menu_open: bool,
     pub prev_content: String,
@@ -36,6 +242,7 @@ pub struct InlineFrameState {
     pub has_remote_edits: bool,
     pub height: f32,
     pub collapsed: bool,
+    pub focus_toggled: bool,
 }
 
 impl InlineFrameState {
@@ -47,17 +254,16 @@ impl InlineFrameState {
             content,
             lang: frame.script().lang().to_owned(),
             dirty: false,
-            lang_popup_open: false,
-            lang_filter: String::new(),
-            lang_popup_selection: 0,
+            lang_picker_open: false,
+            lang_picker_filter: String::new(),
+            lang_picker_selection: 0,
             last_eval: None,
-            last_cursor_line: None,
-            last_cursor_col: None,
+            last_cursor: None,
             sent_cursor: None,
             last_cursor_send: Instant::now(),
-            header_name_buf: frame.name.clone().unwrap_or_default(),
+
             editor_has_focus: false,
-            request_focus: false,
+            focus_request: FocusRequest::None,
             escape_pressed: false,
             menu_open: false,
             pending_ops: Vec::new(),
@@ -65,6 +271,7 @@ impl InlineFrameState {
             has_remote_edits: false,
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
+            focus_toggled: false,
         }
     }
 
@@ -75,7 +282,11 @@ impl InlineFrameState {
         let old: Vec<char> = self.prev_content.chars().collect();
         let new: Vec<char> = self.content.chars().collect();
 
-        let prefix = old.iter().zip(new.iter()).take_while(|(a, b)| a == b).count();
+        let prefix = old
+            .iter()
+            .zip(new.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
         let old_rem = old.len() - prefix;
         let new_rem = new.len() - prefix;
         let suffix = old[prefix..]
@@ -93,12 +304,21 @@ impl InlineFrameState {
         let byte_prefix: usize = old.iter().take(prefix).map(|c| c.len_utf8()).sum();
 
         if del_len > 0 {
-            let byte_del: usize = old[prefix..prefix + del_len].iter().map(|c| c.len_utf8()).sum();
-            self.pending_ops.push(TextOp::Delete { pos: byte_prefix, len: byte_del });
+            let byte_del: usize = old[prefix..prefix + del_len]
+                .iter()
+                .map(|c| c.len_utf8())
+                .sum();
+            self.pending_ops.push(TextOp::Delete {
+                pos: byte_prefix,
+                len: byte_del,
+            });
         }
         if ins_len > 0 {
             let ins_text: String = new[prefix..prefix + ins_len].iter().collect();
-            self.pending_ops.push(TextOp::Insert { pos: byte_prefix, text: ins_text });
+            self.pending_ops.push(TextOp::Insert {
+                pos: byte_prefix,
+                text: ins_text,
+            });
         }
 
         self.prev_content = self.content.clone();
@@ -146,7 +366,6 @@ impl InlineFrameState {
                 self.has_remote_edits = false;
                 self.lang = remote_lang.to_owned();
                 self.prev_content = self.content.clone();
-                self.header_name_buf = frame.name.clone().unwrap_or_default();
             }
             return;
         }
@@ -178,14 +397,19 @@ impl InlineFrameState {
         self.last_eval = Some(Instant::now());
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn show_header(
         &mut self,
         ui: &mut egui::Ui,
         li: usize,
         fi: usize,
+        n_frames: usize,
+        playing_fis: &[usize],
+        accent: egui::Color32,
         frame: &Frame,
-        _opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
+        is_focused: bool,
+        is_sequencer: bool,
     ) {
         // Subdued style: transparent backgrounds so the header doesn't compete with the code
         let wv = &mut ui.style_mut().visuals.widgets;
@@ -204,26 +428,28 @@ impl InlineFrameState {
                     }
             });
             if shortcut_pressed {
-                self.lang_popup_open = !self.lang_popup_open;
-                self.lang_filter.clear();
-                self.lang_popup_selection = 0;
+                self.lang_picker_open = !self.lang_picker_open;
+                self.lang_picker_filter.clear();
+                self.lang_picker_selection = 0;
             }
         }
 
-        // Collapse toggle (chevron)
-        let collapse_icon = if self.collapsed {
-            crate::icons::CHEVRON_RIGHT
-        } else {
-            crate::icons::CHEVRON_DOWN
-        };
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new(collapse_icon).color(COLOR_MUTED))
-                    .fill(egui::Color32::TRANSPARENT),
-            )
-            .clicked()
-        {
-            self.collapsed = !self.collapsed;
+        // Collapse toggle (chevron) — not in sequencer editor panel
+        if !is_sequencer {
+            let collapse_icon = if self.collapsed {
+                crate::icons::CHEVRON_RIGHT
+            } else {
+                crate::icons::CHEVRON_DOWN
+            };
+            if ui
+                .add(
+                    egui::Button::new(crate::icons::rich(collapse_icon).color(COLOR_MUTED))
+                        .fill(egui::Color32::TRANSPARENT),
+                )
+                .clicked()
+            {
+                self.collapsed = !self.collapsed;
+            }
         }
 
         // Enabled toggle
@@ -236,7 +462,7 @@ impl InlineFrameState {
         let toggle_color = if enabled { COLOR_OK } else { COLOR_MUTED };
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(toggle_icon).color(toggle_color))
+                egui::Button::new(crate::icons::rich(toggle_icon).color(toggle_color))
                     .fill(egui::Color32::TRANSPARENT),
             )
             .clicked()
@@ -250,27 +476,28 @@ impl InlineFrameState {
         }
 
         // Language selector
-        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
-                egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
+                egui::RichText::new(&self.lang)
                     .small()
-                    .color(weak),
+                    .color(ui.visuals().text_color()),
             )
             .fill(egui::Color32::TRANSPARENT),
         );
         if lang_btn.clicked() {
-            self.lang_popup_open = !self.lang_popup_open;
-            self.lang_filter.clear();
-            self.lang_popup_selection = 0;
+            self.lang_picker_open = !self.lang_picker_open;
+            self.lang_picker_filter.clear();
+            self.lang_picker_selection = 0;
         }
 
-        self.show_lang_popup(ui, &lang_btn, _opacity, bridge);
-
-        ui.separator();
-
-        // Duration
+        // Duration — if a focus request is pending, grab the id the widget is
+        // about to use and request focus on it, so DragValue enters kb edit mode.
         let mut dur = frame.duration;
+        if self.focus_request == FocusRequest::Duration {
+            self.focus_request = FocusRequest::None;
+            let id = ui.next_auto_id();
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         let dur_resp = ui.add(
             egui::DragValue::new(&mut dur)
                 .range(0.001..=f64::MAX)
@@ -289,6 +516,11 @@ impl InlineFrameState {
 
         // Repetitions
         let mut rep = frame.repetitions;
+        if self.focus_request == FocusRequest::Repetitions {
+            self.focus_request = FocusRequest::None;
+            let id = ui.next_auto_id();
+            ui.memory_mut(|m| m.request_focus(id));
+        }
         let rep_resp = ui.add(
             egui::DragValue::new(&mut rep)
                 .range(1..=usize::MAX)
@@ -303,53 +535,39 @@ impl InlineFrameState {
             ));
         }
 
-        // Name (last)
-        let name_id = ui.id().with("hdr_name");
-        let name_focused = ui.memory(|m| m.has_focus(name_id));
-        if !name_focused {
-            self.header_name_buf = frame.name.clone().unwrap_or_default();
-        }
-        let name_resp = ui.add(
-            egui::TextEdit::singleline(&mut self.header_name_buf)
-                .id(name_id)
-                .desired_width(60.0)
-                .hint_text("name")
-                .font(egui::TextStyle::Small),
-        );
-        if name_resp.lost_focus() {
-            let trimmed = self.header_name_buf.trim();
-            let new_name = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_owned())
-            };
-            if new_name != frame.name {
-                let mut f = frame.clone();
-                f.name = new_name;
-                bridge.send(SchedulerMessage::SetFrames(
-                    vec![(li, fi, f)],
-                    ActionTiming::Immediate,
-                ));
-            }
-        }
-
-        // Right-aligned: menu button + dirty indicator
+        // Right-aligned: menu button + dirty indicator + step badge
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Menu button
             let menu_btn = ui.add(
-                egui::Button::new(
-                    egui::RichText::new(crate::icons::CHEVRON_DOWN).small(),
-                )
-                .fill(egui::Color32::TRANSPARENT),
+                egui::Button::new(crate::icons::small(crate::icons::CHEVRON_DOWN))
+                    .fill(egui::Color32::TRANSPARENT),
             );
             if menu_btn.clicked() {
                 self.menu_open = !self.menu_open;
             }
 
+            // Focus toggle (not in sequencer mode)
+            if !is_sequencer {
+                let focus_icon = if is_focused {
+                    crate::icons::UNFOCUS
+                } else {
+                    crate::icons::FOCUS
+                };
+                if ui
+                    .add(
+                        egui::Button::new(crate::icons::small(focus_icon).color(COLOR_MUTED))
+                            .fill(egui::Color32::TRANSPARENT),
+                    )
+                    .clicked()
+                {
+                    self.focus_toggled = true;
+                }
+            }
+
             // Dirty indicator
             if self.dirty {
                 let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                let discard_text = crate::icons::rich(crate::icons::MODIFIED)
                     .small()
                     .color(COLOR_ERROR);
                 if ui
@@ -360,9 +578,37 @@ impl InlineFrameState {
                     self.sync_from_frame(frame);
                 }
             }
+
+            // Step badge
+            if n_frames > 1 {
+                let (badge_bg, badge_fg) = if playing_fis.contains(&fi) {
+                    (accent, egui::Color32::WHITE)
+                } else if playing_fis.iter().any(|&pfi| fi < pfi) {
+                    (
+                        egui::Color32::from_rgba_unmultiplied(
+                            accent.r(),
+                            accent.g(),
+                            accent.b(),
+                            50,
+                        ),
+                        COLOR_MUTED,
+                    )
+                } else {
+                    (ui.visuals().extreme_bg_color, COLOR_MUTED)
+                };
+                crate::widgets::shortcut::badge_text(
+                    ui,
+                    format!("{}/{}", fi + 1, n_frames),
+                    badge_bg,
+                    badge_fg,
+                    10.0,
+                    egui::vec2(5.0, 2.0),
+                );
+            }
         });
     }
 
+    /// Returns `Some((li, fi))` if a new empty frame was inserted (for picker auto-open).
     pub fn show_frame_menu(
         &mut self,
         ui: &mut egui::Ui,
@@ -370,156 +616,66 @@ impl InlineFrameState {
         fi: usize,
         bridge: &ClientBridge,
         default_lang: &str,
-    ) {
-        if ui.button(t!("scene.insert_frame_before")).clicked() {
+    ) -> Option<(usize, usize)> {
+        let mut picker_target = None;
+        let item = |ui: &mut egui::Ui, label: &str| -> bool {
+            ui.add(egui::Button::new(label).fill(egui::Color32::TRANSPARENT))
+                .clicked()
+        };
+
+        if item(ui, &t!("scene.insert_frame_before")) {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
+            picker_target = Some((li, fi));
             self.menu_open = false;
-            ui.close();
         }
-        if ui.button(t!("scene.insert_frame_after")).clicked() {
+        if item(ui, &t!("scene.insert_frame_after")) {
             bridge.send(SchedulerMessage::AddFrame(
-                li, fi + 1, new_frame(default_lang), ActionTiming::Immediate,
+                li,
+                fi + 1,
+                new_frame(default_lang),
+                ActionTiming::Immediate,
             ));
+            picker_target = Some((li, fi + 1));
             self.menu_open = false;
-            ui.close();
         }
-        if ui.button(t!("scene.duplicate_frame")).clicked() {
+        if item(ui, &t!("scene.duplicate_frame")) {
             if let Some(frame) = bridge
                 .scene()
                 .and_then(|s| s.lines.get(li))
                 .and_then(|l| l.frames.get(fi))
             {
                 bridge.send(SchedulerMessage::AddFrame(
-                    li, fi + 1, frame.clone(), ActionTiming::Immediate,
+                    li,
+                    fi + 1,
+                    frame.clone(),
+                    ActionTiming::Immediate,
                 ));
             }
             self.menu_open = false;
-            ui.close();
         }
 
         ui.separator();
 
         if ui
             .add(
-                egui::Button::new(
-                    egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR),
-                ),
+                egui::Button::new(egui::RichText::new(t!("scene.remove_frame")).color(COLOR_ERROR))
+                    .fill(egui::Color32::TRANSPARENT),
             )
             .clicked()
         {
-            bridge.send(SchedulerMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
+            bridge.send(SchedulerMessage::RemoveFrame(
+                li,
+                fi,
+                ActionTiming::Immediate,
+            ));
             self.menu_open = false;
-            ui.close();
         }
-    }
-
-    fn show_lang_popup(
-        &mut self,
-        ui: &mut egui::Ui,
-        lang_btn: &egui::Response,
-        opacity: &crate::scene_panel::SceneOpacity,
-        bridge: &ClientBridge,
-    ) {
-        if !self.lang_popup_open {
-            return;
-        }
-
-        let popup_id = ui.id().with("lang_popup");
-        let languages = bridge.languages();
-        let filter_lower = self.lang_filter.to_lowercase();
-        let filtered: Vec<_> = languages
-            .iter()
-            .filter(|l| l.name.to_lowercase().contains(&filter_lower))
-            .collect();
-
-        let mut close = false;
-        let area_resp = egui::Area::new(popup_id)
-            .order(egui::Order::Foreground)
-            .fixed_pos(lang_btn.rect.left_bottom())
-            .show(ui.ctx(), |ui| {
-                let popup_frame = {
-                    let mut f = egui::Frame::popup(ui.style());
-                    f.fill = opacity.fill(f.fill, 1.0);
-                    f
-                };
-                popup_frame.show(ui, |ui| {
-                    opacity.override_widget_visuals(ui);
-                    ui.set_min_width(160.0);
-                    let filter_id = popup_id.with("filter");
-                    let filter_resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.lang_filter)
-                            .id(filter_id)
-                            .desired_width(150.0)
-                            .hint_text("Filter..."),
-                    );
-                    filter_resp.request_focus();
-
-                    let key_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
-                    let key_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
-                    let key_enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let key_escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
-
-                    if key_escape {
-                        close = true;
-                    }
-
-                    if !filtered.is_empty() {
-                        if key_up {
-                            self.lang_popup_selection =
-                                self.lang_popup_selection.saturating_sub(1);
-                        }
-                        if key_down {
-                            self.lang_popup_selection =
-                                (self.lang_popup_selection + 1).min(filtered.len() - 1);
-                        }
-                        self.lang_popup_selection =
-                            self.lang_popup_selection.min(filtered.len().saturating_sub(1));
-
-                        if key_enter {
-                            let selected = &filtered[self.lang_popup_selection];
-                            if self.lang != selected.name {
-                                self.lang = selected.name.clone();
-                                self.dirty = true;
-                            }
-                            close = true;
-                        }
-                    }
-
-                    ui.separator();
-
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for (i, lang) in filtered.iter().enumerate() {
-                                let selected = i == self.lang_popup_selection;
-                                let resp = ui.selectable_label(selected, &lang.name);
-                                if resp.clicked() {
-                                    if self.lang != lang.name {
-                                        self.lang = lang.name.clone();
-                                        self.dirty = true;
-                                    }
-                                    close = true;
-                                }
-                            }
-                        });
-                });
-            });
-
-        if close
-            || (ui.input(|i| i.pointer.any_pressed())
-                && !area_resp
-                    .response
-                    .rect
-                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default()))
-                && !lang_btn
-                    .rect
-                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())))
-        {
-            self.lang_popup_open = false;
-            self.request_focus = true;
-        }
+        picker_target
     }
 
     pub fn show_body(
@@ -534,8 +690,8 @@ impl InlineFrameState {
         let editor_id_focus = editor_id.with("editor");
 
         // Handle focus request from Nav → Edit mode transition
-        if self.request_focus {
-            self.request_focus = false;
+        if self.focus_request == FocusRequest::Editor {
+            self.focus_request = FocusRequest::None;
             ui.memory_mut(|m| m.request_focus(editor_id_focus));
         }
 
@@ -543,18 +699,12 @@ impl InlineFrameState {
             .id_salt(("editor_scroll", li, fi))
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(
-                    ui,
-                    editor_id,
-                    &mut self.content,
-                    ctx,
-                );
+                let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
                     self.compute_diff_ops();
                 }
-                self.last_cursor_line = output.cursor_line;
-                self.last_cursor_col = output.cursor_col;
+                self.last_cursor = output.cursor_line.zip(output.cursor_col);
             });
 
         // Flush pending CRDT operations (throttled)
@@ -592,15 +742,13 @@ impl InlineFrameState {
         }
 
         // Send text cursor position to peers (throttled)
-        if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
-            let pos = (line, col);
-            if self.sent_cursor != Some(pos)
-                && self.last_cursor_send.elapsed().as_millis() >= 50
-            {
-                self.sent_cursor = Some(pos);
-                self.last_cursor_send = Instant::now();
-                bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
-            }
+        if let Some(pos) = self.last_cursor
+            && self.sent_cursor != Some(pos)
+            && self.last_cursor_send.elapsed().as_millis() >= 50
+        {
+            self.sent_cursor = Some(pos);
+            self.last_cursor_send = Instant::now();
+            bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
         }
 
         // Eval flash
@@ -632,12 +780,13 @@ pub struct InlineScriptState {
     pub content: String,
     pub lang: String,
     pub dirty: bool,
-    pub lang_popup_open: bool,
-    pub lang_filter: String,
-    pub lang_popup_selection: usize,
+    pub lang_picker_open: bool,
+    pub lang_picker_filter: String,
+    pub lang_picker_selection: usize,
     pub height: f32,
     pub editor_has_focus: bool,
     pub request_focus: bool,
+    pub escape_pressed: bool,
     pub last_eval: Option<Instant>,
 }
 
@@ -648,12 +797,13 @@ impl InlineScriptState {
             content: script.content().to_owned(),
             lang: script.lang().to_owned(),
             dirty: false,
-            lang_popup_open: false,
-            lang_filter: String::new(),
-            lang_popup_selection: 0,
+            lang_picker_open: false,
+            lang_picker_filter: String::new(),
+            lang_picker_selection: 0,
             height: crate::scene_panel::CELL_HEIGHT,
             editor_has_focus: false,
             request_focus: false,
+            escape_pressed: false,
             last_eval: None,
         }
     }
@@ -679,7 +829,6 @@ impl InlineScriptState {
         ui: &mut egui::Ui,
         idx: usize,
         prelude_len: usize,
-        opacity: &crate::scene_panel::SceneOpacity,
         bridge: &ClientBridge,
     ) {
         // Subdued style
@@ -692,32 +841,33 @@ impl InlineScriptState {
             let is_mac = ui.ctx().os().is_mac();
             let shortcut_pressed = ui.input(|i| {
                 i.key_pressed(egui::Key::L)
-                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+                    && if is_mac {
+                        i.modifiers.mac_cmd
+                    } else {
+                        i.modifiers.ctrl
+                    }
             });
             if shortcut_pressed {
-                self.lang_popup_open = !self.lang_popup_open;
-                self.lang_filter.clear();
-                self.lang_popup_selection = 0;
+                self.lang_picker_open = !self.lang_picker_open;
+                self.lang_picker_filter.clear();
+                self.lang_picker_selection = 0;
             }
         }
 
         // Language selector
-        let weak = ui.visuals().weak_text_color();
         let lang_btn = ui.add(
             egui::Button::new(
-                egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN))
+                egui::RichText::new(&self.lang)
                     .small()
-                    .color(weak),
+                    .color(ui.visuals().text_color()),
             )
             .fill(egui::Color32::TRANSPARENT),
         );
         if lang_btn.clicked() {
-            self.lang_popup_open = !self.lang_popup_open;
-            self.lang_filter.clear();
-            self.lang_popup_selection = 0;
+            self.lang_picker_open = !self.lang_picker_open;
+            self.lang_picker_filter.clear();
+            self.lang_picker_selection = 0;
         }
-
-        self.show_lang_popup(ui, &lang_btn, opacity, bridge);
 
         // Right-aligned: delete button + dirty indicator
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -725,7 +875,9 @@ impl InlineScriptState {
             if prelude_len > 0 {
                 let del_btn = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(crate::icons::CLOSE).small().color(COLOR_MUTED),
+                        crate::icons::rich(crate::icons::CLOSE)
+                            .small()
+                            .color(COLOR_MUTED),
                     )
                     .fill(egui::Color32::TRANSPARENT),
                 );
@@ -746,132 +898,21 @@ impl InlineScriptState {
             // Dirty indicator
             if self.dirty {
                 let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                let discard_text = egui::RichText::new(crate::icons::MODIFIED)
+                let discard_text = crate::icons::rich(crate::icons::MODIFIED)
                     .small()
                     .color(COLOR_ERROR);
                 if ui
                     .add(egui::Button::new(discard_text).fill(discard_fill))
                     .on_hover_text(t!("step.discard"))
                     .clicked()
+                    && let Some(script) = bridge.scene().and_then(|s| s.prelude.get(idx))
                 {
-                    if let Some(script) = bridge
-                        .scene()
-                        .and_then(|s| s.prelude.get(idx))
-                    {
-                        self.content = script.content().to_owned();
-                        self.lang = script.lang().to_owned();
-                        self.dirty = false;
-                    }
+                    self.content = script.content().to_owned();
+                    self.lang = script.lang().to_owned();
+                    self.dirty = false;
                 }
             }
         });
-    }
-
-    fn show_lang_popup(
-        &mut self,
-        ui: &mut egui::Ui,
-        lang_btn: &egui::Response,
-        opacity: &crate::scene_panel::SceneOpacity,
-        bridge: &ClientBridge,
-    ) {
-        if !self.lang_popup_open {
-            return;
-        }
-
-        let popup_id = ui.id().with("lang_popup");
-        let languages = bridge.languages();
-        let filter_lower = self.lang_filter.to_lowercase();
-        let filtered: Vec<_> = languages
-            .iter()
-            .filter(|l| l.name.to_lowercase().contains(&filter_lower))
-            .collect();
-
-        let mut close = false;
-        let area_resp = egui::Area::new(popup_id)
-            .order(egui::Order::Foreground)
-            .fixed_pos(lang_btn.rect.left_bottom())
-            .show(ui.ctx(), |ui| {
-                let popup_frame = {
-                    let mut f = egui::Frame::popup(ui.style());
-                    f.fill = opacity.fill(f.fill, 1.0);
-                    f
-                };
-                popup_frame.show(ui, |ui| {
-                    opacity.override_widget_visuals(ui);
-                    ui.set_min_width(160.0);
-                    let filter_id = popup_id.with("filter");
-                    let filter_resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.lang_filter)
-                            .id(filter_id)
-                            .desired_width(150.0)
-                            .hint_text("Filter..."),
-                    );
-                    filter_resp.request_focus();
-
-                    let key_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
-                    let key_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
-                    let key_enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let key_escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
-
-                    if key_escape {
-                        close = true;
-                    }
-
-                    if !filtered.is_empty() {
-                        if key_up {
-                            self.lang_popup_selection =
-                                self.lang_popup_selection.saturating_sub(1);
-                        }
-                        if key_down {
-                            self.lang_popup_selection =
-                                (self.lang_popup_selection + 1).min(filtered.len() - 1);
-                        }
-                        self.lang_popup_selection =
-                            self.lang_popup_selection.min(filtered.len().saturating_sub(1));
-
-                        if key_enter {
-                            let selected = &filtered[self.lang_popup_selection];
-                            if self.lang != selected.name {
-                                self.lang = selected.name.clone();
-                                self.dirty = true;
-                            }
-                            close = true;
-                        }
-                    }
-
-                    ui.separator();
-
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for (i, lang) in filtered.iter().enumerate() {
-                                let selected = i == self.lang_popup_selection;
-                                let resp = ui.selectable_label(selected, &lang.name);
-                                if resp.clicked() {
-                                    if self.lang != lang.name {
-                                        self.lang = lang.name.clone();
-                                        self.dirty = true;
-                                    }
-                                    close = true;
-                                }
-                            }
-                        });
-                });
-            });
-
-        if close
-            || (ui.input(|i| i.pointer.any_pressed())
-                && !area_resp
-                    .response
-                    .rect
-                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default()))
-                && !lang_btn
-                    .rect
-                    .contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())))
-        {
-            self.lang_popup_open = false;
-            self.request_focus = true;
-        }
     }
 
     pub fn show_body(
@@ -893,12 +934,7 @@ impl InlineScriptState {
             .id_salt(("prelude_editor_scroll", idx))
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(
-                    ui,
-                    editor_id,
-                    &mut self.content,
-                    ctx,
-                );
+                let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -910,13 +946,18 @@ impl InlineScriptState {
             if escape && !self.editor.is_completion_open() {
                 ui.memory_mut(|m| m.surrender_focus(editor_id_focus));
                 self.editor_has_focus = false;
+                self.escape_pressed = true;
             }
         }
         if self.editor_has_focus {
             let is_mac = ui.ctx().os().is_mac();
             let eval = ui.input(|i| {
                 i.key_pressed(egui::Key::Enter)
-                    && if is_mac { i.modifiers.mac_cmd } else { i.modifiers.ctrl }
+                    && if is_mac {
+                        i.modifiers.mac_cmd
+                    } else {
+                        i.modifiers.ctrl
+                    }
             });
             if eval {
                 self.evaluate(idx, bridge);

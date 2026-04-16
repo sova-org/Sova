@@ -1,10 +1,8 @@
-# Devices
-
-Sova can send MIDI and OSC, with more protocols to come. Notes, control changes, pitch bends and other messages can reach external synthesizers, drum machines, DAWs. Anything that listens can play with Sova. The built-in audio engine is able to produce sound without any external gear. All output flows through numbered slots: code targets a slot, and the device assigned to that slot handles the message. The Devices panel is where connections are made and slots are assigned.
+Sova can send or receive MIDI and OSC, with more protocols planned for addition. Notes, control changes, pitch bends and other messages can reach external synthesizers, drum machines, DAWs. Anything that listens or sends information using these protocols can play with Sova. The built-in audio engine is also able to produce sound without any external gear, and is hooked with Sova as a device. All output flows through numbered slots: code targets a slot, and the device assigned to that slot handles the message. The Devices panel is where connections are made and slots are assigned. The list of all devices assigned to Sova is called the `Device Map`.
 
 ## Slots
 
-There are sixteen device slots by default, numbered from 1 to 16. Each slot holds one device. This device can be a MIDI port, an OSC endpoint or the audio engine itself. A device can only occupy one slot at a time; assigning it elsewhere clears the previous assignment. Events that do not specify a device go to slot 1. Each language has its own syntax for targeting a slot; see the language tabs. There is a special slot, invisible to you: `Slot 0` is the `Log` device used for debugging. It is always present, cannot be reassigned.
+There are sixteen device slots by default, numbered from 1 to 16. Each slot holds one device. This device can be a MIDI output port, an OSC endpoint or the audio engine itself. A device can only occupy one slot at a time. Assigning it elsewhere clears the previous assignment. Events that do not specify a device go to slot 1. Each language has its own syntax for targeting a slot; see the language tabs. There is a special slot, invisible to you: `Slot 0` is the `Log` device used for debugging. It is always present and cannot be reassigned.
 
 ## MIDI output
 
@@ -30,9 +28,9 @@ MIDI input devices do not occupy a slot. They feed data into the system: incomin
 
 There are two mechanisms currently used to compensate for timing delays:
 
-**Per-device latency** is a user-adjustable offset, 20 ms by default. It shifts event timestamps forward to compensate for hardware response time. Adjust it per device in the Devices panel.
+- **Per-device latency** is a user-adjustable offset, 20 ms by default. It shifts event timestamps forward to compensate for hardware response time. Adjust it per device in the Devices panel.
 
-**Protocol lookahead** is a fixed offset applied by the world thread for dispatch precision. MIDI messages are sent 2 ms early. OSC and audio engine messages are sent 20 ms early. These values are not user-adjustable.
+- **Protocol lookahead** is a fixed offset applied by the world thread for dispatch precision. MIDI messages are sent 2 ms early. OSC and audio engine messages are sent 20 ms early. These values are not user-adjustable.
 
 The two combine: per-device latency accounts for your hardware, protocol lookahead ensures the world thread hands off messages early enough for the transport layer to deliver them accurately.
 

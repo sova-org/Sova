@@ -1,0 +1,14 @@
+# cargo-release configuration for Sova
+# Usage: cargo release patch|minor|major [--execute]
+
+allow-branch = ["*"]
+consolidate-commits = true
+tag-prefix = ""
+tag-name = "v{{version}}"
+tag-message = "v{{version}}"
+pre-release-commit-message = "release: v{{version}}"
+publish = false
+push = true
+verify = false
+sign-commit = false
+sign-tag = false

@@ -8,7 +8,8 @@
 use std::{
     collections::BTreeMap,
     io::Write,
-    process::{Command, Stdio}, sync::Arc,
+    process::{Command, Stdio},
+    sync::Arc,
 };
 
 use crate::vm::{Language, Program};
@@ -24,7 +25,7 @@ pub use compilation_state::CompilationState;
 /// Implementors define how source code for a specific language or system
 /// is transformed into the intermediate Sova program representation.
 /// Implementors must be safe to send and share across threads (`Send + Sync`).
-pub trait Compiler : Language + Send + Sync + std::fmt::Debug {
+pub trait Compiler: Language + Send + Sync + std::fmt::Debug {
     /// Compiles the given source code text into a [`Program`].
     ///
     /// # Arguments
@@ -35,7 +36,11 @@ pub trait Compiler : Language + Send + Sync + std::fmt::Debug {
     ///
     /// * `Ok(Program)` if compilation is successful.
     /// * `Err(CompilationError)` if any error occurs during compilation.
-    fn compile(&self, text: &str, args: &BTreeMap<String, String>) -> Result<Program, CompilationError>;
+    fn compile(
+        &self,
+        text: &str,
+        args: &BTreeMap<String, String>,
+    ) -> Result<Program, CompilationError>;
 }
 
 /// A [`Compiler`] implementation that delegates compilation to an external executable.
@@ -49,11 +54,9 @@ pub struct ExternalCompiler {
 }
 
 impl ExternalCompiler {
-    
     pub fn new(name: String, command: String) -> Self {
         Self { name, command }
     }
-
 }
 
 impl Language for ExternalCompiler {
@@ -61,7 +64,7 @@ impl Language for ExternalCompiler {
         &self.name
     }
     fn version(&self) -> (usize, usize, usize) {
-        (1,0,0)
+        (1, 0, 0)
     }
 }
 
@@ -70,15 +73,20 @@ impl Compiler for ExternalCompiler {
     ///
     /// Sends `text` to the process's stdin and expects a JSON representation of
     /// a [`Program`] on the process's stdout.
-    fn compile(&self, text: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
+    fn compile(
+        &self,
+        text: &str,
+        _args: &BTreeMap<String, String>,
+    ) -> Result<Program, CompilationError> {
         let mut compiler = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
         let Some(mut stdin) = compiler.stdin.take() else {
-            return Err(CompilationError::default_error(
-                format!("{} error: Unable to send script content to external process !",self.name.clone()),
-            ));
+            return Err(CompilationError::default_error(format!(
+                "{} error: Unable to send script content to external process !",
+                self.name.clone()
+            )));
         };
         stdin.write_all(text.as_bytes())?;
         let compiled = compiler.wait_with_output()?;

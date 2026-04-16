@@ -40,6 +40,20 @@ impl ConfirmDialog {
 
         let mut action = ConfirmAction::None;
 
+        // Keyboard: Enter confirms, Escape cancels.
+        // consume_key prevents other components from seeing these events.
+        let (enter, escape) = ctx.input_mut(|i| {
+            (
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+            )
+        });
+        if enter {
+            action = ConfirmAction::Confirmed;
+        } else if escape {
+            action = ConfirmAction::Cancelled;
+        }
+
         let response = egui::Modal::new(self.id).show(ctx, |ui| {
             ui.set_width(300.0);
 
@@ -61,6 +75,16 @@ impl ConfirmDialog {
                         action = ConfirmAction::Cancelled;
                     }
                 });
+            });
+
+            // Hint
+            ui.add_space(4.0);
+            ui.vertical_centered(|ui| {
+                ui.weak(format!(
+                    "Enter = {}  Esc = {}",
+                    t!("common.yes"),
+                    t!("common.no")
+                ));
             });
         });
 

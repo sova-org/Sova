@@ -5,15 +5,16 @@ use super::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, mem};
 
-use crate::{error::SovaError, log_eprintln};
 use crate::scene::script::ReturnInfo;
 use crate::{
     clock::TimeSpan,
     vm::{GeneratorModifier, GeneratorShape},
 };
+use crate::{error::SovaError, log_eprintln};
 
 pub const DEFAULT_DEVICE: i64 = 1;
 pub const DEFAULT_CHAN: i64 = 1;
+pub const MAX_CALL_DEPTH: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ControlASM {
@@ -145,7 +146,7 @@ impl ControlASM {
             | ControlASM::Div(x, y, z)
             | ControlASM::Mod(x, y, z)
             | ControlASM::Mul(x, y, z)
-            | ControlASM::Sub(x, y, z) 
+            | ControlASM::Sub(x, y, z)
             | ControlASM::Concat(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
@@ -178,9 +179,7 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Boolean operations (binary)
-            ControlASM::And(x, y, z) 
-            | ControlASM::Or(x, y, z) 
-            | ControlASM::Xor(x, y, z) => {
+            ControlASM::And(x, y, z) | ControlASM::Or(x, y, z) | ControlASM::Xor(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -206,8 +205,7 @@ impl ControlASM {
 
                 // Cast to correct type
                 match &mut x_value {
-                    VariableValue::Integer(_) 
-                    | VariableValue::Bool(_) => (),
+                    VariableValue::Integer(_) | VariableValue::Bool(_) => (),
                     x => x.cast_as_integer(ctx),
                 }
 
@@ -251,7 +249,7 @@ impl ControlASM {
             | ControlASM::BitXor(x, y, z)
             | ControlASM::ShiftLeftA(x, y, z)
             | ControlASM::ShiftLeftL(x, y, z)
-            | ControlASM::ShiftRightA(x, y, z) 
+            | ControlASM::ShiftRightA(x, y, z)
             | ControlASM::ShiftRightL(x, y, z)
             | ControlASM::CircularShiftLeft(x, y, z)
             | ControlASM::CircularShiftRight(x, y, z) => {
@@ -264,7 +262,7 @@ impl ControlASM {
                 match (&mut x_value, &mut y_value) {
                     (VariableValue::Map(_), VariableValue::Map(_))
                     | (VariableValue::Integer(_), VariableValue::Integer(_)) => (),
-                    (x,y) => {
+                    (x, y) => {
                         x.cast_as_integer(ctx);
                         y.cast_as_integer(ctx);
                     }
@@ -276,8 +274,8 @@ impl ControlASM {
                     ControlASM::BitXor(_, _, _) => x_value.bitxor(y_value, ctx),
                     ControlASM::ShiftLeftA(_, _, _) => x_value.arithmetic_shl(y_value, ctx),
                     ControlASM::ShiftLeftL(_, _, _) => x_value.shl(y_value, ctx),
-                    ControlASM::ShiftRightA(_, _, _) => x_value.arithmetic_shr(y_value, ctx), 
-                    ControlASM::ShiftRightL(_, _, _) => x_value.shr(y_value, ctx), 
+                    ControlASM::ShiftRightA(_, _, _) => x_value.arithmetic_shr(y_value, ctx),
+                    ControlASM::ShiftRightL(_, _, _) => x_value.shr(y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -364,17 +362,13 @@ impl ControlASM {
                     }
                     VariableValue::Vec(mut v) => {
                         let index = key.as_integer(ctx) as usize;
-                        if index > v.len() {
-                            todo!()
-                        }
+                        let index = index.min(v.len());
                         v.insert(index, val_value);
                         ctx.set_var(res, VariableValue::Vec(v));
                     }
                     VariableValue::Str(mut s) => {
                         let index = key.as_integer(ctx) as usize;
-                        if index > s.len() {
-                            todo!()
-                        }
+                        let index = index.min(s.len());
                         s.insert_str(index, val_value.as_str(ctx).as_str());
                         ctx.set_var(res, VariableValue::Str(s));
                     }
@@ -385,7 +379,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -422,7 +415,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -453,7 +445,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -518,7 +509,6 @@ impl ControlASM {
                             container
                         );
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                        todo!()
                     }
                 }
 
@@ -759,6 +749,11 @@ impl ControlASM {
             }
             // Calls and returns
             ControlASM::CallFunction(f) => {
+                if return_stack.len() >= MAX_CALL_DEPTH {
+                    ctx.errors
+                        .throw(SovaError::from(&mut *ctx).message("maximum call depth exceeded"));
+                    return ReturnInfo::IndexChange(usize::MAX);
+                }
                 return_stack.push(ReturnInfo::ProgChange(
                     instruction_position + 1,
                     current_prog.clone(),
@@ -871,7 +866,10 @@ impl ControlASM {
                 let control_val = ctx.evaluate(ctrl_var).as_integer(ctx) as i8;
 
                 // Look up device and get CC value
-                let cc_value = if let Some(value) = ctx.device_map.get_input_cc(device_id, control_val, channel_val) {
+                let cc_value = if let Some(value) =
+                    ctx.device_map
+                        .get_input_cc(device_id, control_val, channel_val)
+                {
                     value
                 } else {
                     ctx.errors.throw(SovaError::from(&mut *ctx).message(

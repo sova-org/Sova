@@ -10,7 +10,7 @@ use crate::{
 };
 use crate::{get_logger, log_eprintln};
 
-pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
+pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 10;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
@@ -38,18 +38,30 @@ impl World {
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
-                    Ok(_) => log_eprintln!("World: real-time priority set"),
-                    Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
+                    Ok(_) => log_println!("World: real-time priority set"),
+                    Err(e) => {
+                        log_eprintln!("World: failed to set RT priority: {:?}", e);
+                        #[cfg(target_os = "linux")]
+                        eprintln!(
+                            "[sova] WARNING: Real-time audio priority unavailable. \
+                             Set rtprio in /etc/security/limits.conf or run with CAP_SYS_NICE. \
+                             Audio glitches are likely on this system."
+                        );
+                    }
                 }
                 let mut world = World {
-                    queue: Default::default(),
+                    queue: BinaryHeap::with_capacity(4096),
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
-                    midi_early_threshold: MIDI_EARLY_THRESHOLD, // 2ms for MIDI interface compensation
-                    non_midi_lookahead: NON_MIDI_LOOKAHEAD, // 20ms lookahead for OSC/AudioEngine
+                    midi_early_threshold: MIDI_EARLY_THRESHOLD,
+                    non_midi_lookahead: NON_MIDI_LOOKAHEAD,
                 };
-                world.live();
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    world.live();
+                })) {
+                    log_eprintln!("World thread panicked: {:?}", e);
+                }
             })
             .expect("Unable to start World");
         (handle, tx)
@@ -84,8 +96,9 @@ impl World {
                 time = self.clock.micros();
             }
 
-            if next.time <= time {
-                let msg = self.queue.pop().unwrap();
+            if next.time <= time
+                && let Some(msg) = self.queue.pop()
+            {
                 self.execute_message(msg);
             }
             self.refresh_next_timeout();
@@ -93,7 +106,7 @@ impl World {
         log_println!("[-] Exiting world...");
     }
 
-    /// Add the [TimedMessage] to the priority queue, 
+    /// Add the [TimedMessage] to the priority queue,
     /// eventually subtracting micros to the scheduled date to anticipate latency
     fn handle_timed_message(&mut self, mut timed_message: TimedMessage) {
         // Regular message - add to queue for timed execution

@@ -44,17 +44,15 @@ occupying 4 beats total on the timeline. Default: 1 (no repetition). The total t
 
 ### Line speed
 
-Each line carries a speed factor. Default: 1.0. At 2.0, all frame durations on that line halve (double time). At 0.5, they double (half time). The actual time per frame execution is the frame's duration divided by the line's speed factor. Different speed factors across lines produce polymetric structures. One line at 1.0, another at 1.5, a third at 0.75. Each cycles through its frames at its own rate against the shared tempo. See [The Scene](the-scene) for line properties.
-
-## The clock in practice
+Each line carries a speed factor. Default: 1.0. At 2.0, all frame durations on that line double. At 0.5, they halve. The actual time per frame execution is the frame's duration multiplied by the line's speed factor. Different speed factors across lines produce polymetric structures. One line at 1.0, another at 1.5, a third at 0.75. Each cycles through its frames at its own rate against the shared tempo. See [The Scene](the-scene) for line properties.
 
 ### The transport bar
 
-At the top of the screen: play/stop, BPM, quantum, and the current beat position. Click BPM or quantum to type a new value. The phase bar shows progress through the current cycle, segmented for integer quantum values and continuous otherwise. The execution mode selector determines how lines synchronize at launch. Hush silences all output. Panic sends all-notes-off to every device.
+At the top of the screen you can see buttons to control the palying state, to hush and panic (stop actions), to edit the current BPM and quantum. Click BPM or quantum to input a new value that will take effect immediately. The phase bar shows progress through the current cycle. The execution mode selector determines how lines synchronize at launch.
 
 ### Deferred timing
 
-Not all actions take effect immediately. Tempo changes, transport commands, and scene modifications can be scheduled to land at the next beat, the next downbeat (phase 0), or a specific modulo. The default is the next bar boundary. This prevents jarring mid-beat transitions and keeps changes musically coherent.
+Not all actions take effect immediately. Tempo changes, transport commands, and scene modifications can be scheduled to land at the next beat, the next downbeat (phase 0), or a specific modulo. The default is the next bar boundary. This prevents mid-beat transitions and keeps changes musically coherent.
 
 ### Under the hood
 

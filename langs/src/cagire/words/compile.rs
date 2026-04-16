@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use crate::cagire::ops::Op;
-use crate::cagire::theory;
 use crate::cagire::types::Span;
 
-use super::{lookup_word, WordCompile::*};
+use super::{WordCompile::*, lookup_word};
 
 pub(super) fn simple_op(name: &str) -> Option<Op> {
     Some(match name {
@@ -76,19 +75,20 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "except+" => Op::ExceptOffset(None),
         "bjork" => Op::Bjork(None),
         "pbjork" => Op::PBjork(None),
+        "first" => Op::First(None),
+        "after" => Op::After(None),
+        "once" => Op::Once(None),
         "chance" => Op::ChanceExec(None),
         "prob" => Op::ProbExec(None),
         "coin" => Op::Coin(None),
         "mtof" => Op::Mtof,
         "ftom" => Op::Ftom,
-        "inv" => Op::Invert,
-        "dinv" => Op::DownInvert,
-        "drop2" => Op::VoiceDrop2,
-        "drop3" => Op::VoiceDrop3,
-        "tp" => Op::Transpose,
-        "key!" => Op::SetKey,
-        "all" => Op::EmitAll,
-        "noall" => Op::ClearGlobal,
+        "edo" => Op::Edo,
+        "tuning" => Op::BuildTuning,
+        "scale" => Op::BuildScale,
+        "mode" => Op::Mode,
+        "deg" => Op::Deg,
+        "chord" => Op::SetChord,
         "rec" => Op::Rec,
         "overdub" | "dub" => Op::Overdub,
         "orec" => Op::Orec,
@@ -109,7 +109,6 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "expmap" => Op::ExpMap,
         "map" => Op::Map,
         "loop" => Op::Loop,
-        "oct" => Op::Oct,
         "clear" => Op::ClearCmd,
         ".." => Op::IntRange,
         ".," => Op::StepRange,
@@ -121,12 +120,17 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "swing" => Op::Swing,
         "times" => Op::Times,
         "ccval" => Op::GetMidiCC,
+        "oscin" => Op::GetOscIn,
         "mclock" => Op::MidiClock,
         "mstart" => Op::MidiStart,
         "mstop" => Op::MidiStop,
         "mcont" => Op::MidiContinue,
         "forget" => Op::Forget,
         "print" => Op::Print,
+        "exe" => Op::ExecuteFrame,
+        "prot" => Op::PatRot,
+        "prev" => Op::PatRev,
+        "pinv" => Op::PatInv,
         "lfo" => Op::ModLfo(0),
         "tlfo" => Op::ModLfo(1),
         "wlfo" => Op::ModLfo(2),
@@ -137,6 +141,12 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "islide" => Op::ModSlide(3),
         "oslide" => Op::ModSlide(4),
         "pslide" => Op::ModSlide(5),
+        "slew" => Op::ModSlew(0),
+        "expslew" => Op::ModSlew(1),
+        "sslew" => Op::ModSlew(2),
+        "islew" => Op::ModSlew(3),
+        "oslew" => Op::ModSlew(4),
+        "pslew" => Op::ModSlew(5),
         "jit" => Op::ModRnd(0),
         "sjit" => Op::ModRnd(1),
         "drunk" => Op::ModRnd(2),
@@ -221,20 +231,29 @@ fn parse_french_note_name(name: &str) -> Option<i64> {
 fn parse_interval(name: &str) -> Option<i64> {
     Some(match name {
         "P1" | "unison" => 0,
-        "m2" => 1, "M2" => 2,
-        "m3" => 3, "M3" => 4,
+        "m2" => 1,
+        "M2" => 2,
+        "m3" => 3,
+        "M3" => 4,
         "P4" => 5,
         "aug4" | "dim5" | "tritone" => 6,
         "P5" => 7,
-        "m6" => 8, "M6" => 9,
-        "m7" => 10, "M7" => 11,
+        "m6" => 8,
+        "M6" => 9,
+        "m7" => 10,
+        "M7" => 11,
         "P8" => 12,
-        "m9" => 13, "M9" => 14,
-        "m10" => 15, "M10" => 16,
-        "P11" => 17, "aug11" => 18,
+        "m9" => 13,
+        "M9" => 14,
+        "m10" => 15,
+        "M10" => 16,
+        "P11" => 17,
+        "aug11" => 18,
         "P12" => 19,
-        "m13" => 20, "M13" => 21,
-        "m14" => 22, "M14" => 23,
+        "m13" => 20,
+        "M13" => 21,
+        "m14" => 22,
+        "M14" => 23,
         "P15" => 24,
         _ => return None,
     })
@@ -273,30 +292,6 @@ pub(crate) fn compile_word(
         _ => {}
     }
 
-    if (name == "triad" || name == "seventh")
-        && let Some(Op::Degree(pattern)) = ops.last()
-    {
-        let pattern = *pattern;
-        ops.pop();
-        spans.pop();
-        push(ops, spans, if name == "triad" {
-            Op::DiatonicTriad(pattern)
-        } else {
-            Op::DiatonicSeventh(pattern)
-        }, span);
-        return;
-    }
-
-    if let Some(pattern) = theory::lookup(name) {
-        push(ops, spans, Op::Degree(pattern), span);
-        return;
-    }
-
-    if let Some(intervals) = theory::chords::lookup(name) {
-        push(ops, spans, Op::Chord(intervals), span);
-        return;
-    }
-
     if let Some(word) = lookup_word(name) {
         match &word.compile {
             Simple => {
@@ -305,6 +300,7 @@ pub(crate) fn compile_word(
                     push(ops, spans, op, span);
                 }
             }
+            BuiltinScale(degrees) => push(ops, spans, Op::PushScale(degrees), span),
             Context(ctx) => push(ops, spans, Op::GetContext(ctx), span),
             Param => push(ops, spans, Op::SetParam(word.name), span),
             Probability(p) => {

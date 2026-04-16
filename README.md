@@ -2,6 +2,8 @@
 
 <p align="center"><em>A Polyglot Live Coding Sequencer</em></p>
 
+<p align="center"><a href="https://sova.livecoding.fr">sova.livecoding.fr</a></p>
+
 <p align="center">
   <img src="pictures/sova_gui_real.webp" alt="Sova GUI">
 </p>
@@ -19,19 +21,32 @@ Sova is a sequencer and musical programming environment written in Rust. It is b
 * **Visuals**: Built-in GLSL shader editor with real-time compilation.
 * **Modular**: VM, server and clients are separate components. Use the whole system or just the parts you need.
 
-<p align="center">
-  <img src="pictures/sova_architecture.svg" alt="Sova Architecture">
-</p>
-
 ## Quick Start
 
+### Pre-built binaries
+
+Pre-built binaries are available on [sova.livecoding.fr](https://sova.livecoding.fr).
+
+### Quick build
+
+To build from source:
+
 ```bash
-git clone https://github.com/Bubobubobubobubo/Sova.git
+git clone https://github.com/sova-org/Sova.git
 cd Sova
 cargo run -p sova-desktop --release    # requires Rust (latest stable)
 ```
 
-Pre-built releases are available on the [Releases](https://github.com/Bubobubobubobubo/Sova/releases) page.
+### First steps
+
+When the frontend is running:
+
+- click the "Start Server" button;
+- enter a name in the "User" field;
+- click the "Connect" button;
+- in the "Scene" menu choose a Demo;
+- click the "Play" button or type Ctrl+Shift+Space;
+- tweak the source in the demo frame then type Ctrl+Enter to validate the changes.
 
 ## Build
 
@@ -91,8 +106,8 @@ Sova is distributed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.e
 
 ## Community
 
-- [GitHub Issues](https://github.com/Bubobubobubobubo/Sova/issues) - Bug reports and feature requests.
-- [GitHub Discussions](https://github.com/Bubobubobubobubo/Sova/discussions) - Questions and general discussion.
+- [GitHub Issues](https://github.com/sova-org/Sova/issues) - Bug reports and feature requests.
+- [GitHub Discussions](https://github.com/sova-org/Sova/discussions) - Questions and general discussion.
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to Sova.
 
 ## Acknowledgments

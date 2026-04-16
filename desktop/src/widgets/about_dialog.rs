@@ -17,7 +17,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
         return;
     }
 
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
         *open = false;
         return;
     }
@@ -37,7 +37,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                 if ui
-                    .add(egui::Button::new(crate::icons::CLOSE).frame(false))
+                    .add(egui::Button::new(crate::icons::rich(crate::icons::CLOSE)).frame(false))
                     .clicked()
                 {
                     *open = false;
@@ -82,7 +82,11 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                         };
                         col.with_layout(egui::Layout::top_down(align), |ui| {
                             if ui
-                                .button(format!("{} {}", label, crate::icons::LINK_EXTERNAL))
+                                .button(crate::icons::trailing_text(
+                                    ui,
+                                    label,
+                                    crate::icons::LINK_EXTERNAL,
+                                ))
                                 .clicked()
                             {
                                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
@@ -93,13 +97,11 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
 
                 ui.add_space(8.0);
                 if ui
-                    .link(
-                        egui::RichText::new(format!(
-                            "AGPL-3.0 License {}",
-                            crate::icons::LINK_EXTERNAL
-                        ))
-                        .weak(),
-                    )
+                    .link(crate::icons::trailing_text(
+                        ui,
+                        "AGPL-3.0 License",
+                        crate::icons::LINK_EXTERNAL,
+                    ))
                     .clicked()
                 {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(

@@ -1,7 +1,0 @@
-[ 0 4 5 2 0 ] cycle major triad
-( dinv ) sometimes
-note
-saw snd
-2 decay
-5000 50 1 slide lpf
-.

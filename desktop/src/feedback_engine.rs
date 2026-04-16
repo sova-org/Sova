@@ -1,16 +1,9 @@
-use std::sync::{
-    Arc, Mutex as StdMutex,
-    atomic::Ordering,
-};
+use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering};
 
 use crossbeam_channel::Sender;
-use sova_core::{
-    clock::ClockServer,
-    device_map::DeviceMap,
-    schedule::SchedulerMessage,
-};
-use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
+use sova_core::{clock::ClockServer, device_map::DeviceMap, schedule::SchedulerMessage};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
 
 pub struct FeedbackEngine {
     sched_iface: Sender<SchedulerMessage>,
@@ -29,9 +22,9 @@ impl FeedbackEngine {
 
         let devices = Arc::new(DeviceMap::new());
         if let Err(e) = devices.create_virtual_midi_port("Sova (Local)") {
-            eprintln!("Feedback: Failed to create virtual MIDI port: {}", e);
+            sova_core::log_eprintln!("Feedback: Failed to create virtual MIDI port: {}", e);
         } else if let Err(e) = devices.assign_slot(1, "Sova (Local)") {
-            eprintln!("Feedback: Failed to assign Sova (Local) to Slot 1: {}", e);
+            sova_core::log_eprintln!("Feedback: Failed to assign Sova (Local) to Slot 1: {}", e);
         }
 
         let languages = Arc::new(langs::create_language_center());
@@ -53,9 +46,8 @@ impl FeedbackEngine {
             dummy_registry,
         );
 
-        let notification_drainer = std::thread::spawn(move || {
-            while sched_notifications.recv().is_ok() {}
-        });
+        let notification_drainer =
+            std::thread::spawn(move || while sched_notifications.recv().is_ok() {});
 
         Ok(Self {
             sched_iface,
@@ -79,7 +71,7 @@ impl FeedbackEngine {
     pub fn audio_state(&self) -> AudioEngineState {
         self.audio_engine_state
             .lock()
-            .map(|s| s.clone())
+            .map(|s| (*s).clone())
             .unwrap_or_default()
     }
 

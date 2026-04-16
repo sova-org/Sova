@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -28,6 +29,16 @@ pub enum TimeSpan {
 impl Default for TimeSpan {
     fn default() -> Self {
         TimeSpan::Beats(1.0)
+    }
+}
+
+impl Display for TimeSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TimeSpan::Micros(m) => write!(f, "{m}micros"),
+            TimeSpan::Beats(b) => write!(f, "{b}beats"),
+            TimeSpan::Frames(b) => write!(f, "{b}frames"),
+        }
     }
 }
 
@@ -71,8 +82,7 @@ impl TimeSpan {
     pub fn is_zero(&self) -> bool {
         match self {
             TimeSpan::Micros(m) => *m == 0,
-            TimeSpan::Beats(b) 
-            | TimeSpan::Frames(b) => *b == 0.0,
+            TimeSpan::Beats(b) | TimeSpan::Frames(b) => *b == 0.0,
         }
     }
 
@@ -309,6 +319,14 @@ impl Clock {
         SystemTime::now() + delta
     }
 
+    pub fn from_system_time(&self, date: SystemTime) -> SyncTime {
+        let Ok(delta) = date.duration_since(SystemTime::now()) else {
+            return NEVER;
+        };
+        let now = self.server.link.clock_micros() as SyncTime;
+        now.saturating_add(delta.as_micros() as u64)
+    }
+
     /// Commits the current application session state back to the Ableton Link instance.
     /// This is necessary after modifying tempo or other properties in `session_state`.
     pub fn commit_app_state(&self) {
@@ -346,7 +364,7 @@ impl Clock {
         self.session_state
             .set_is_playing(playing, self.micros() as i64);
         self.commit_app_state();
-    } 
+    }
 
     /// Sets a new tempo for the Ableton Link session.
     ///

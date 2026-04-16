@@ -2,13 +2,13 @@ kick snd
 2 orbit
 .
 
-0 1 0.25 ., at
+0 1 0.25 ., (
 1 orbit
 80 81 freq 2 fm 0.99 fmh
 tri snd .8 gain
 0.0 1.0 rand pan
 .02 .25 rand decay
 0.1 comprelease
-0.0 2.0 rand compattack
+0.0 0.5 rand compattack
 1 comp 2 comporbit
-.
+. ) at

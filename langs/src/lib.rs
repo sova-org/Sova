@@ -16,5 +16,8 @@ pub fn create_language_center() -> LanguageCenter {
     interpreters.add_factory(boinx::BoinxInterpreterFactory);
     interpreters.add_factory(cagire::CagireInterpreterFactory::new());
 
-    LanguageCenter { transcoder, interpreters }
+    LanguageCenter {
+        transcoder,
+        interpreters,
+    }
 }

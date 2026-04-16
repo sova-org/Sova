@@ -130,8 +130,8 @@
 
         <Icon Id='SovaIcon.exe' SourceFile='..\assets\Sova.ico'/>
         <Property Id='ARPPRODUCTICON' Value='SovaIcon.exe'/>
-        <Property Id='ARPHELPLINK' Value='https://github.com/Bubobubobubobubo/Sova'/>
-        <Property Id='ARPURLINFOABOUT' Value='https://github.com/Bubobubobubobubo/Sova'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/sova-org/Sova'/>
+        <Property Id='ARPURLINFOABOUT' Value='https://github.com/sova-org/Sova'/>
 
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>

@@ -1,8 +1,18 @@
-use std::{cell::LazyCell, collections::{BTreeMap, BTreeSet}, fmt::Display};
+use std::{
+    cell::LazyCell,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Display,
+};
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem, funcs::ItemFunc};
 use sova_core::{
-    clock::TimeSpan, error::SovaError, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::Variable}
+    clock::TimeSpan,
+    error::SovaError,
+    vm::{
+        EvaluationContext,
+        language::{LanguageDocumentation, LanguageElement, ReferenceEntry},
+        variable::Variable,
+    },
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -27,133 +37,160 @@ impl Display for BoinxIdentQualif {
     }
 }
 
-const MACROS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
-    use BoinxItem::*;
+const MACROS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     use BoinxArithmeticOp::*;
+    use BoinxItem::*;
     let mut funcs = BTreeMap::new();
-    funcs.insert("maj".to_owned(), ItemFunc::define(
-        "Composable major chord",
-        |_, _| Simultaneous(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ])
-    ));
-    funcs.insert("min".to_owned(), ItemFunc::define(
-        "Composable minor chord",
-        |_, _| Simultaneous(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ])
-    ));
-    funcs.insert("arpmaj".to_owned(), ItemFunc::define(
-        "Composable major chord arpeggio",
-        |_, _| Sequence(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ])
-    ));
-    funcs.insert("arpmin".to_owned(), ItemFunc::define(
-        "Composable minor chord arpeggio",
-        |_, _| Sequence(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-        ])
-    ));
-    funcs.insert("scalemaj".to_owned(), ItemFunc::define(
-        "Composable major scale sequence",
-        |_, _| Sequence(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(9))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(11))),
-        ])
-    ));
-    funcs.insert("scalemin".to_owned(), ItemFunc::define(
-        "Composable minor scale sequence",
-        |_, _| Sequence(vec![
-            Placeholder,
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(8))),
-            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(10))),
-        ])
-    ));
-    funcs.insert("half".to_owned(), ItemFunc::define(
-        "Composable sequence to only use half of length",
-        |_, _| Simultaneous(vec![WithDuration(
-            Box::new(Placeholder),
-            TimeSpan::Frames(0.5),
-        )])
-    ));
-    funcs.insert("stop".to_owned(), ItemFunc::define(
-        "Stops execution of the current line",
-        |_, _| Stop
-    ));
-    funcs.insert("prev".to_owned(), ItemFunc::define(
-        "Evaluates to the previous output value of the line",
-        |_, _| Previous
-    ));
-    funcs.insert("beat".to_owned(), ItemFunc::define(
-        "Evaluates to the current beat",
-        |ctx, _| Number(ctx.clock.beat())
-    ));
-    funcs.insert("micros".to_owned(), ItemFunc::define(
-        "Evaluates to the current microseconds date",
-        |ctx, _| Duration(TimeSpan::Micros(ctx.logic_date))
-    ));
-    funcs.insert("beat".to_owned(), ItemFunc::define(
-        "Evaluates to the current microseconds date",
-        |ctx, _| Duration(TimeSpan::Micros(ctx.logic_date))
-    ));
-    funcs.insert("tempo".to_owned(), ItemFunc::define(
-        "Evaluates to the current tempo",
-        |ctx, _| Number(ctx.clock.tempo())
-    ));
-    funcs.insert("quantum".to_owned(), ItemFunc::define(
-        "Evaluates to the current quantum",
-        |ctx, _| Number(ctx.clock.quantum())
-    ));
-    funcs.insert("rand".to_owned(), ItemFunc::define(
-        "Evaluates to a random float between 0 and 1",
-        |_, _| Number(rand::random())
-    ));
-    funcs.insert("irand".to_owned(), ItemFunc::define(
-        "Evaluates to a random integer",
-        |_, _| Note(rand::random())
-    ));
+    funcs.insert(
+        "maj".to_owned(),
+        ItemFunc::define("Composable major chord", |_, _| {
+            Simultaneous(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "min".to_owned(),
+        ItemFunc::define("Composable minor chord", |_, _| {
+            Simultaneous(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "arpmaj".to_owned(),
+        ItemFunc::define("Composable major chord arpeggio", |_, _| {
+            Sequence(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "arpmin".to_owned(),
+        ItemFunc::define("Composable minor chord arpeggio", |_, _| {
+            Sequence(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "scalemaj".to_owned(),
+        ItemFunc::define("Composable major scale sequence", |_, _| {
+            Sequence(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(9, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(11, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "scalemin".to_owned(),
+        ItemFunc::define("Composable minor scale sequence", |_, _| {
+            Sequence(vec![
+                Placeholder,
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(8, None)), None),
+                Arithmetic(Box::new(Placeholder), Add, Box::new(Note(10, None)), None),
+            ])
+        }),
+    );
+    funcs.insert(
+        "half".to_owned(),
+        ItemFunc::define("Composable sequence to only use half of length", |_, _| {
+            Simultaneous(vec![WithDuration(
+                Box::new(Placeholder),
+                TimeSpan::Frames(0.5),
+            )])
+        }),
+    );
+    funcs.insert(
+        "stop".to_owned(),
+        ItemFunc::define("Stops execution of the current line", |_, _| Stop),
+    );
+    funcs.insert(
+        "prev".to_owned(),
+        ItemFunc::define(
+            "Evaluates to the previous output value of the line",
+            |_, _| Previous,
+        ),
+    );
+    funcs.insert(
+        "beat".to_owned(),
+        ItemFunc::define("Evaluates to the current beat", |ctx, _| {
+            Number(ctx.clock.beat(), None)
+        }),
+    );
+    funcs.insert(
+        "micros".to_owned(),
+        ItemFunc::define("Evaluates to the current microseconds date", |ctx, _| {
+            Duration(TimeSpan::Micros(ctx.logic_date))
+        }),
+    );
+    funcs.insert(
+        "beat".to_owned(),
+        ItemFunc::define("Evaluates to the current microseconds date", |ctx, _| {
+            Duration(TimeSpan::Micros(ctx.logic_date))
+        }),
+    );
+    funcs.insert(
+        "tempo".to_owned(),
+        ItemFunc::define("Evaluates to the current tempo", |ctx, _| {
+            Number(ctx.clock.tempo(), None)
+        }),
+    );
+    funcs.insert(
+        "quantum".to_owned(),
+        ItemFunc::define("Evaluates to the current quantum", |ctx, _| {
+            Number(ctx.clock.quantum(), None)
+        }),
+    );
+    funcs.insert(
+        "rand".to_owned(),
+        ItemFunc::define("Evaluates to a random float between 0 and 1", |_, _| {
+            Number(rand::random(), None)
+        }),
+    );
+    funcs.insert(
+        "irand".to_owned(),
+        ItemFunc::define("Evaluates to a random integer", |_, _| {
+            Note(rand::random(), None)
+        }),
+    );
     funcs
 });
 
-pub fn execute_boinx_macro(
-    ctx: &mut EvaluationContext,
-    name: &str,
-) -> BoinxItem {
+pub fn execute_boinx_macro(ctx: &mut EvaluationContext, name: &str) -> BoinxItem {
     if let Some(func) = MACROS.get(name) {
         func.evaluate(ctx, Vec::new())
     } else {
-        ctx.errors.throw(SovaError::from(ctx).message(
-            format!("Boinx macro '{name}' does not exist !")
-        ));
+        ctx.errors
+            .throw(SovaError::from(ctx).message(format!("Boinx macro '{name}' does not exist !")));
         BoinxItem::Mute
     }
 }
 
-pub fn add_macros_doc(doc : &mut LanguageDocumentation) {
+pub fn add_macros_doc(doc: &mut LanguageDocumentation) {
     for (key, value) in MACROS.iter() {
         doc.reference.insert(
-            LanguageElement::Word(key.clone()), 
+            LanguageElement::Word(key.clone()),
             ReferenceEntry::new(value.doc.clone())
                 .with_category("Macros")
-                .with_example(format!("_{key}"))
+                .with_example(format!("_{key}")),
         );
     }
 }
@@ -173,7 +210,7 @@ impl BoinxIdent {
         }
         let var = self.get_var().unwrap();
         if forbidden.contains(self) || !ctx.has_var(&var) {
-            return BoinxItem::Str(self.0.clone());
+            return BoinxItem::Str(self.0.clone(), None);
         }
         let obj = ctx.evaluate(&var);
         let mut compo = BoinxCompo::from(obj);

@@ -30,9 +30,9 @@ use crate::{
         audio_engine_proxy::AudioEngineProxy,
         log::{LOG_NAME, LogMessage, Severity},
         midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
-        osc::OSCOut,
+        osc::{OSCIn, OSCOut},
     },
-    vm::event::ConcreteEvent,
+    vm::{event::ConcreteEvent, variable::VariableValue},
 };
 
 use midir::{Ignore, MidiInput, MidiOutput};
@@ -64,7 +64,7 @@ pub struct DeviceMap {
     /// Names of devices from snapshot that couldn't be restored (unplugged physical devices).
     /// These are reconstructed as DeviceInfo in device_list() with is_missing: true.
     missing_devices: Mutex<BTreeSet<String>>,
-    latencies: Mutex<BTreeMap<String, f64>>
+    latencies: Mutex<BTreeMap<String, f64>>,
 }
 
 impl DeviceMap {
@@ -128,7 +128,6 @@ impl DeviceMap {
             .lock()
             .unwrap()
             .insert(name, Arc::new(device));
-        
     }
 
     /// Assigns a device (identified by its `device_name`) to a specific slot ID (1-N).
@@ -271,10 +270,7 @@ impl DeviceMap {
 
     /// Sets the latency for the given device name.
     pub fn set_latency(&self, name: String, value: f64) {
-        self.latencies
-            .lock()
-            .unwrap()
-            .insert(name, value);
+        self.latencies.lock().unwrap().insert(name, value);
     }
 
     /// Translate a [ConcreteEvent] to [TimedMessage]s for the given device,
@@ -443,8 +439,7 @@ impl DeviceMap {
         if let Some(device_arc) = input_connections.get(device_name) {
             if let ProtocolDevice::MIDIInDevice(midi_in) = &**device_arc {
                 if let Ok(memory_guard) = midi_in.memory.lock() {
-                    let midi_chan_0_based =
-                        (channel.saturating_sub(1).max(0).min(15)) as i8;
+                    let midi_chan_0_based = (channel.saturating_sub(1).max(0).min(15)) as i8;
                     let control_i8 = (cc.max(0).min(127)) as i8;
                     let cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
                     // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
@@ -482,6 +477,86 @@ impl DeviceMap {
         self.get_input_cc_from_name(&device_name, cc, channel)
     }
 
+    pub fn get_osc_input_values_from_name(
+        &self,
+        device_name: &str,
+        route: &str,
+    ) -> Option<Vec<VariableValue>> {
+        let input_connections = self.input_connections.lock().unwrap();
+        if let Some(device_arc) = input_connections.get(device_name) {
+            if let ProtocolDevice::OSCInDevice(osc_in) = &**device_arc {
+                return Some(osc_in.values(route));
+            } else {
+                log_eprintln!(
+                    "[!] GetOscIn Warning: Device '{}' is not a OSC Input device.",
+                    device_name
+                );
+            }
+        } else {
+            log_eprintln!(
+                "[!] GetOscIn Warning: Device name '{}' not found in registered input connections.",
+                device_name,
+            );
+        }
+        None
+    }
+
+    pub fn get_osc_input_values(
+        &self,
+        device_id: usize,
+        route: &str,
+    ) -> Option<Vec<VariableValue>> {
+        let Some(device_name) = self.get_name_for_slot(device_id) else {
+            log_eprintln!(
+                "[!] GetOscIn Warning: Device slot '{}' not mapped in input connections.",
+                device_id,
+            );
+            return None;
+        };
+        self.get_osc_input_values_from_name(&device_name, route)
+    }
+
+    pub fn get_osc_input_timetag_from_name(
+        &self,
+        device_name: &str,
+        route: &str,
+        clock: &Clock,
+    ) -> Option<SyncTime> {
+        let input_connections = self.input_connections.lock().unwrap();
+        if let Some(device_arc) = input_connections.get(device_name) {
+            if let ProtocolDevice::OSCInDevice(osc_in) = &**device_arc {
+                return osc_in.timetag(route, clock);
+            } else {
+                log_eprintln!(
+                    "[!] GetOscIn Warning: Device '{}' is not a OSC Input device.",
+                    device_name
+                );
+            }
+        } else {
+            log_eprintln!(
+                "[!] GetOscIn Warning: Device name '{}' not found in registered input connections.",
+                device_name,
+            );
+        }
+        None
+    }
+
+    pub fn get_osc_input_timetag(
+        &self,
+        device_id: usize,
+        route: &str,
+        clock: &Clock,
+    ) -> Option<SyncTime> {
+        let Some(device_name) = self.get_name_for_slot(device_id) else {
+            log_eprintln!(
+                "[!] GetOscIn Warning: Device slot '{}' not mapped in input connections.",
+                device_id,
+            );
+            return None;
+        };
+        self.get_osc_input_timetag_from_name(&device_name, route, clock)
+    }
+
     /// Generates a list of discoverable and currently connected devices.
     ///
     /// This function aggregates information from:
@@ -499,7 +574,8 @@ impl DeviceMap {
     /// The internal Log device is excluded from this list.
     pub fn device_list(&self) -> Vec<DeviceInfo> {
         let mut discovered_devices_map: BTreeMap<String, DeviceInfo> = BTreeMap::new();
-        let connected_map = self.output_connections.lock().unwrap(); // Lock output connections once
+        let connected_outs = self.output_connections.lock().unwrap(); // Lock output connections once
+        let connected_ins = self.input_connections.lock().unwrap(); // Lock input connections once
 
         // Helper to create DeviceInfo, checking slot assignment and connection status
         let create_device_info = |name: String,
@@ -511,7 +587,8 @@ impl DeviceMap {
 
             // Determine connection status based on presence in connected_map for outputs
             // For system ports discovered but not explicitly connected via Sova, this might show false.
-            let is_connected = connected_map.contains_key(&name);
+            let is_connected =
+                connected_outs.contains_key(&name) || connected_ins.contains_key(&name);
 
             // Extract address specifically for OSC devices using the provided reference
             let address = device_ref_opt.map(ProtocolDevice::address);
@@ -524,7 +601,7 @@ impl DeviceMap {
                 direction,
                 is_connected,
                 address,
-                latency
+                latency,
             }
         };
 
@@ -574,7 +651,7 @@ impl DeviceMap {
 
         // Add currently connected devices from output_connections, potentially overwriting discovered info
         // This ensures `is_connected` is true and addresses are included for these.
-        for (name, device_arc) in connected_map.iter() {
+        for (name, device_arc) in connected_outs.iter() {
             // Determine kind and get device reference
             let kind = device_arc.kind();
 
@@ -591,7 +668,29 @@ impl DeviceMap {
                 );
             }
         }
-        drop(connected_map); // Release lock
+
+        // Add currently connected devices from output_connections, potentially overwriting discovered info
+        // This ensures `is_connected` is true and addresses are included for these.
+        for (name, device_arc) in connected_ins.iter() {
+            // Determine kind and get device reference
+            let kind = device_arc.kind();
+
+            if kind != DeviceKind::Missing {
+                // Insert or update the entry using create_device_info with the device reference
+                discovered_devices_map.insert(
+                    name.clone(),
+                    create_device_info(
+                        name.clone(),
+                        kind,
+                        DeviceDirection::Input,
+                        Some(&device_arc),
+                    ),
+                );
+            }
+        }
+
+        drop(connected_outs); // Release lock
+        drop(connected_ins); // Release lock
 
         // Add missing devices (from snapshot that couldn't be restored)
         for missing_name in self.missing_devices.lock().unwrap().iter() {
@@ -605,8 +704,8 @@ impl DeviceMap {
                         direction: DeviceDirection::Output,
                         is_connected: false,
                         address: None,
-                        latency: 0.0
-                },
+                        latency: 0.0,
+                    },
                 );
             }
         }
@@ -915,7 +1014,7 @@ impl DeviceMap {
         let mut osc_device = OSCOut {
             name: name.to_string(),
             address: target_socket_addr,
-            socket: None,  // Socket will be created in connect()
+            socket: None, // Socket will be created in connect()
         };
 
         // Attempt to connect (bind local socket)
@@ -944,6 +1043,91 @@ impl DeviceMap {
         }
     }
 
+    /// Creates and registers a new OSC Input device targeting a specific port.
+    ///
+    /// Attempts to bind a local UDP socket for receiving message.
+    ///
+    /// # Arguments
+    /// * `name` - A unique name for this OSC output device.
+    /// * `port` - The target UDP port number.
+    ///
+    /// # Returns
+    /// - `Ok(())` on successful creation, connection (socket binding), and registration.
+    /// - `Err(String)` if the IP address format is invalid, if the name already exists,
+    ///   if another OSC device already targets the same address:port, or if the UDP socket
+    ///   cannot be bound.
+    pub fn create_osc_input_device(&self, name: &str, port: u16) -> Result<(), String> {
+        log_println!(
+            "[✨] Creating OSC Input device: '{}' @ 0.0.0.0:{}",
+            name,
+            port
+        );
+        // Check for existing name or address collision
+        {
+            // Scope for lock
+            let input_connections = self.input_connections.lock().unwrap();
+            for (existing_name, device_arc) in input_connections.iter() {
+                if existing_name == name {
+                    let err_msg =
+                        format!("Cannot create OSC device: Name '{}' already exists.", name);
+                    log_eprintln!("{}", err_msg);
+                    return Err(err_msg);
+                }
+                // Check specifically for OSC address collision
+                if let ProtocolDevice::OSCInDevice(osc_in) = &**device_arc {
+                    if osc_in.port == port {
+                        let err_msg = format!(
+                            "Cannot create OSC device '{}': Another OSC device already targets port '{}'.",
+                            name, port
+                        );
+                        log_eprintln!("{}", err_msg);
+                        return Err(err_msg);
+                    }
+                }
+            }
+        } // Lock released here
+
+        // Create the OSCOutDevice instance
+        let mut osc_device = OSCIn::new(name.to_string(), port);
+
+        // Attempt to connect (bind local socket)
+        match osc_device.connect() {
+            Ok(_) => {
+                log_println!(
+                    "[✅] OSC Input device '{}' socket created successfully.",
+                    name
+                );
+                // Register the now-connected device
+                self.register_input_connection(
+                    name.to_string(),
+                    ProtocolDevice::OSCInDevice(osc_device),
+                );
+                log_println!("[✅] Registered OSC Input device: '{}'", name);
+                Ok(())
+            }
+            Err(e) => {
+                let err_msg = format!(
+                    "Failed to connect/bind socket for OSC device '{}': {:?}",
+                    name, e
+                );
+                log_eprintln!("{}", err_msg);
+                Err(err_msg)
+            }
+        }
+    }
+
+    pub fn remove_osc_device(&self, name: &str) -> Result<(), String> {
+        let mut ok = self.remove_input_device(name).is_ok();
+        ok |= self.remove_output_device(name).is_ok();
+        if ok {
+            Ok(())
+        } else {
+            Err(format!(
+                "[!] Unable to find an OSC device to remove with name {name} !"
+            ))
+        }
+    }
+
     /// Removes an output device by its name.
     ///
     /// Removes the device registration from `output_connections`. The underlying socket
@@ -957,11 +1141,11 @@ impl DeviceMap {
     /// - `Ok(())` on successful removal from registration.
     /// - `Err(String)` if no OSC Output device with the given name is found.
     pub fn remove_input_device(&self, name: &str) -> Result<(), String> {
-        log_println!("[🗑️] Removing OSC Output device: '{}'", name);
+        log_println!("[🗑️] Removing OSC Input device: '{}'", name);
         let mut input_connections = self.input_connections.lock().unwrap();
 
         if input_connections.remove(name).is_some() {
-            log_println!("[✅] Removed OSC Output device registration: '{}'", name);
+            log_println!("[✅] Removed OSC Input device registration: '{}'", name);
             // Release lock before potentially calling another method
             drop(input_connections);
             // Unassign from any slot
@@ -1039,7 +1223,7 @@ impl DeviceMap {
                     is_connected: true,
                     address: Some(device_arc.address()),
                     latency: self.get_latency(name),
-            })
+                })
             })
             .collect()
     }

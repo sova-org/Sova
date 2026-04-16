@@ -1,0 +1,7 @@
+;; pat extracts positions as floats
+"x.x." pat ( kick snd . ) at
+
+clear
+
+;; pattern strings also work directly with at
+"x--x..[xx.]" ( hat snd 0.6 gain . ) at

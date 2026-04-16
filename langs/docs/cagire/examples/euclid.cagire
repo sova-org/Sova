@@ -1,5 +1,5 @@
-3 8 euclid at kick snd .
+3 8 euclid ( kick snd . ) at
 clear
-2 8 euclid at snare snd .
+2 8 euclid ( snare snd . ) at
 clear
-6 8 euclid at hat snd 0.6 gain 0.1 decay .
+6 8 euclid ( hat snd 0.6 gain 0.1 decay . ) at

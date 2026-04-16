@@ -28,7 +28,7 @@ Without `,`, you'd need `dup`:
 
 ## Scopes
 
-By default, variables are **Instance**-scoped — local to the current script execution. Other scripts cannot see them. To share data, use a scope prefix:
+By default, variables are **Instance**-scoped: local to the current script execution. Other scripts cannot see them. To share data, use a scope prefix:
 
 | Prefix | Scope | Visible to |
 |--------|-------|------------|
@@ -53,20 +53,20 @@ The prefix goes between the operator and the variable name:
 
 ### When to use each scope
 
-**Instance** (default) — Scratch values within a single script. Safe, no side effects. Resets each time the script runs.
+**Instance** (default). Scratch values within a single script. Safe, no side effects. Resets each time the script runs.
 
 ```forth
 @i 12 mod note sine snd .   ;; @i is the loop counter, instance-scoped
 ```
 
-**Frame** (`F.`) — State that accumulates across runs of the same frame. Useful for counters and evolving values.
+**Frame** (`F.`). State that accumulates across runs of the same frame. Useful for counters and evolving values.
 
 ```forth
 @F.n 1 + !F.n              ;; increment each time this frame runs
 @F.n 12 mod note sine snd .
 ```
 
-**Line** (`L.`) — Share data between frames in the same line. One frame can set a value that another reads.
+**Line** (`L.`). Share data between frames in the same line. One frame can set a value that another reads.
 
 ```forth
 ;; frame A: pick a root note
@@ -76,7 +76,7 @@ c4 iter 7 mod + !L.root
 @L.root 7 + note sine snd .
 ```
 
-**Global** (`G.`) — Share data across all scripts in the entire session. Use sparingly — any script can overwrite a global.
+**Global** (`G.`). Share data across all scripts in the entire session. Use sparingly: any script can overwrite a global.
 
 ```forth
 ;; any script can set the key
@@ -112,7 +112,7 @@ Store a sound name in a variable, reuse it across frames:
 
 ```forth
 ;; frame A: choose the sound
-"sine" !L.synth
+sine !L.synth
 
 ;; frame B, C, D...
 c4 note @L.synth snd .

@@ -1,7 +1,7 @@
-0 1 0.25 ., at
+0 1 0.25 ., (
 rim sound
 1 amdepth
 ;; shape of modulation
 [ "tri" "square" ] choose amshape
 10 4000 rand am
-.
+. ) at

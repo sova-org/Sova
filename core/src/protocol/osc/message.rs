@@ -1,9 +1,13 @@
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, vm::{event::ConcreteEvent, variable::VariableValue}, protocol::ProtocolPayload};
+use crate::{
+    clock::{Clock, SyncTime},
+    protocol::ProtocolPayload,
+    vm::{event::ConcreteEvent, variable::VariableValue},
+};
 
 /// Represents a single OSC message, consisting of an address pattern and a list of arguments.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -13,7 +17,7 @@ pub struct OSCMessage {
     /// The list of arguments associated with the message.
     pub args: Vec<VariableValue>,
     /// An optional Timetag
-    pub timetag: Option<(u32,u32)>
+    pub timetag: Option<(u32, u32)>,
 }
 
 impl Display for OSCMessage {
@@ -34,11 +38,15 @@ impl OSCMessage {
     /// * `addr` - The OSC address pattern string.
     /// * `args` - A vector containing the `Argument` values for the message.
     pub fn new(addr: String, args: Vec<VariableValue>) -> Self {
-        OSCMessage { addr, args, timetag: None }
+        OSCMessage {
+            addr,
+            args,
+            timetag: None,
+        }
     }
 
     /// Utility function to chain creation and date assignement of an OSCMessage
-    pub fn at_date(mut self, date: Option<(u32,u32)>) -> Self {
+    pub fn at_date(mut self, date: Option<(u32, u32)>) -> Self {
         self.timetag = date;
         self
     }
@@ -84,16 +92,18 @@ impl OSCMessage {
         OSCMessage {
             addr: "/dirt/play".to_string(),
             args,
-            timetag: None
+            timetag: None,
         }
     }
 
-    pub fn generate_messages(event: ConcreteEvent, date: SyncTime, clock: &Clock) 
-        -> Vec<(ProtocolPayload, SyncTime)>
-    {        
+    pub fn generate_messages(
+        event: ConcreteEvent,
+        date: SyncTime,
+        clock: &Clock,
+    ) -> Vec<(ProtocolPayload, SyncTime)> {
         let timetag = match OscTime::try_from(clock.to_system_time(date)) {
             Ok(t) => Some(t.into()),
-            _ => None
+            _ => None,
         };
         match event {
             // Handle Generic OSC Event (pass-through)
@@ -115,90 +125,85 @@ impl OSCMessage {
                 }
 
                 let duration = clock.beats_to_micros(1.0);
-                let dirt_msg = Self::dirt(flat_args, date, duration, clock)
-                    .at_date(timetag);
+                let dirt_msg = Self::dirt(flat_args, date, duration, clock).at_date(timetag);
 
                 vec![(dirt_msg.into(), date)]
             }
             // Legacy MIDI-to-OSC mappings (consider removal/refinement)
             ConcreteEvent::MidiNote(note, vel, chan, _dur, _device_id) => {
-                vec![(OSCMessage {
-                    addr: "/midi/noteon".to_string(),
-                    args: vec![
-                        VariableValue::Integer(note as i64),
-                        VariableValue::Integer(vel as i64),
-                        VariableValue::Integer(chan as i64),
-                    ],
-                    timetag: timetag
-                }.into(), date)]
+                vec![(
+                    OSCMessage {
+                        addr: "/midi/noteon".to_string(),
+                        args: vec![
+                            VariableValue::Integer(note as i64),
+                            VariableValue::Integer(vel as i64),
+                            VariableValue::Integer(chan as i64),
+                        ],
+                        timetag: timetag,
+                    }
+                    .into(),
+                    date,
+                )]
             }
             ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
-                vec![(OSCMessage {
-                    addr: "/midi/cc".to_string(),
-                    args: vec![
-                        VariableValue::Integer(control as i64),
-                        VariableValue::Integer(value as i64),
-                        VariableValue::Integer(chan as i64),
-                    ],
-                    timetag: timetag
-                }.into(), date)]
+                vec![(
+                    OSCMessage {
+                        addr: "/midi/cc".to_string(),
+                        args: vec![
+                            VariableValue::Integer(control as i64),
+                            VariableValue::Integer(value as i64),
+                            VariableValue::Integer(chan as i64),
+                        ],
+                        timetag: timetag,
+                    }
+                    .into(),
+                    date,
+                )]
             }
             ConcreteEvent::MidiProgram(program, chan, _device_id) => {
-                vec![(OSCMessage {
-                    addr: "/midi/program".to_string(),
-                    args: vec![
-                        VariableValue::Integer(program as i64),
-                        VariableValue::Integer(chan as i64),
-                    ],
-                    timetag: timetag
-                }.into(), date)]
+                vec![(
+                    OSCMessage {
+                        addr: "/midi/program".to_string(),
+                        args: vec![
+                            VariableValue::Integer(program as i64),
+                            VariableValue::Integer(chan as i64),
+                        ],
+                        timetag: timetag,
+                    }
+                    .into(),
+                    date,
+                )]
             }
-            ConcreteEvent::Generic(args, duration, channel, _device_id) => {
+            ConcreteEvent::Generic(args, _duration, channel, _device_id) => {
                 let mut flat_args = Vec::new();
-                let mut args = match args {
-                    VariableValue::Map(map) => map,
-                    value @ VariableValue::Str(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), value);
-                        map
+                match args {
+                    VariableValue::Map(map) => {
+                        for (key, value) in map.into_iter() {
+                            flat_args.push(VariableValue::Str(key));
+                            flat_args.push(value);
+                        }
                     }
-                    value @ VariableValue::Integer(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), "sine".to_owned().into());
-                        map.insert("note".to_owned(), value.into());
-                        map
-                    }
-                    value @ VariableValue::Float(_) => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), "sine".to_owned().into());
-                        map.insert("freq".to_owned(), value.into());
-                        map
+                    VariableValue::Vec(v) => {
+                        flat_args = v;
                     }
                     value => {
-                        let mut map = HashMap::new();
-                        map.insert("sound".to_owned(), value);
-                        map
+                        flat_args.push(value);
                     }
                 };
-                if (args.contains_key("s") || args.contains_key("sound")) && !args.contains_key("sustain") {
-                    let dur_s = (duration as f64) / 1_000_000.0;
-                    args.insert("sustain".to_owned(), dur_s.into());
-                }
-                for (key, value) in args.into_iter() {
-                    flat_args.push(VariableValue::Str(key));
-                    flat_args.push(value);
-                }
-                let mut dirt_msg = Self::dirt(flat_args, date, duration, clock)
-                    .at_date(timetag);
 
-                if !channel.is_empty() {
-                    dirt_msg.addr = channel;
-                }
+                //let mut dirt_msg = Self::dirt(flat_args, date, duration, clock).at_date(timetag);
 
-                vec![(dirt_msg.into(), date)]
+                let addr = if !channel.is_empty() {
+                    channel
+                } else {
+                    "/dirt/play".to_string()
+                };
+
+                let msg = OSCMessage::new(addr, flat_args);
+
+                vec![(msg.into(), date)]
             }
             _ => Vec::new(), // Ignore other events for OSC for now
         }
     }
-
 }

@@ -1,8 +1,16 @@
 use std::sync::atomic::Ordering;
 
-use sova_core::{Scene, clock::Clock, schedule::{ActionTiming, SchedulerMessage, SovaNotification}};
+use sova_core::{
+    Scene,
+    clock::Clock,
+    scene::Line,
+    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
+};
 
-use crate::{AudioCommand, AudioRestartRequest, BroadcastItem, ClientMessage, CoreRestartRequest, DEFAULT_CLIENT_NAME, ServerMessage, ServerState, Snapshot, server::broadcast_raw};
+use crate::{
+    AudioCommand, AudioRestartRequest, BroadcastItem, ClientMessage, CoreRestartRequest,
+    DEFAULT_CLIENT_NAME, ServerMessage, ServerState, Snapshot, server::broadcast_raw,
+};
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
     let iface = state.sched_iface.read().unwrap();
@@ -20,13 +28,15 @@ pub async fn on_message(
     msg: ClientMessage,
     state: &ServerState,
     client_name: &mut String,
+    is_host: bool,
 ) -> ServerMessage {
     println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::Chat(client_name.clone(), chat_msg),
+                client_name.clone(),
+                ServerMessage::Chat(client_name.clone(), chat_msg),
             ));
             ServerMessage::Success
         }
@@ -66,9 +76,9 @@ pub async fn on_message(
             let clock = Clock::from(&state.clock_server);
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
         }
-        ClientMessage::GetScene => {
-            ServerMessage::Notification(SovaNotification::UpdatedScene(state.scene_image.lock().await.clone()))
-        }
+        ClientMessage::GetScene => ServerMessage::Notification(SovaNotification::UpdatedScene(
+            state.scene_image.lock().await.clone(),
+        )),
         ClientMessage::GetPeers => ServerMessage::PeersUpdated(state.clients.lock().await.clone()),
         ClientMessage::GetSnapshot => {
             let scene = state.scene_image.lock().await.clone();
@@ -86,36 +96,49 @@ pub async fn on_message(
         }
         ClientMessage::StartedEditingFrame(line_idx, frame_idx) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerStartedEditing(client_name.clone(), line_idx, frame_idx),
+                client_name.clone(),
+                ServerMessage::PeerStartedEditing(client_name.clone(), line_idx, frame_idx),
             ));
             ServerMessage::Success
         }
         ClientMessage::StoppedEditingFrame(line_idx, frame_idx) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerStoppedEditing(client_name.clone(), line_idx, frame_idx),
+                client_name.clone(),
+                ServerMessage::PeerStoppedEditing(client_name.clone(), line_idx, frame_idx),
             ));
             ServerMessage::Success
         }
         ClientMessage::CursorPosition(line_idx, frame_idx, text_cursor) => {
             state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(), ServerMessage::PeerCursorMoved(client_name.clone(), line_idx, frame_idx, text_cursor),
+                client_name.clone(),
+                ServerMessage::PeerCursorMoved(
+                    client_name.clone(),
+                    line_idx,
+                    frame_idx,
+                    text_cursor,
+                ),
             ));
             ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
             println!("[ info ] Client '{}' requested device list.", client_name);
-            ServerMessage::Notification(SovaNotification::DeviceListChanged(state.devices.device_list()))
+            ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                state.devices.device_list(),
+            ))
         }
         ClientMessage::ConnectMidiDeviceByName(device_name) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.connect_midi_by_name(&device_name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -125,15 +148,18 @@ pub async fn on_message(
             }
         }
         ClientMessage::DisconnectMidiDeviceByName(device_name) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.disconnect_midi_by_name(&device_name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -143,15 +169,18 @@ pub async fn on_message(
             }
         }
         ClientMessage::CreateVirtualMidiOutput(device_name) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.create_virtual_midi_port(&device_name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -161,15 +190,18 @@ pub async fn on_message(
             }
         }
         ClientMessage::AssignDeviceToSlot(slot_id, device_name) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.assign_slot(slot_id, &device_name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -179,15 +211,18 @@ pub async fn on_message(
             }
         }
         ClientMessage::UnassignDeviceFromSlot(slot_id) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.unassign_slot(slot_id) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -197,15 +232,18 @@ pub async fn on_message(
             }
         }
         ClientMessage::CreateOscDevice(name, ip, port) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             match state.devices.create_osc_output_device(&name, &ip, port) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
                     msg
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -214,45 +252,80 @@ pub async fn on_message(
                 )),
             }
         }
-        ClientMessage::RemoveOscDevice(name) => match state.devices.remove_output_device(&name) {
-            Ok(_) => {
-                let updated_list = state.devices.device_list();
-                let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
+        ClientMessage::CreateOscInputDevice(name, port) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
             }
-            Err(e) => ServerMessage::InternalError(format!(
-                "Failed to remove OSC device '{}': {}",
-                name, e
-            )),
-        },
+            match state.devices.create_osc_input_device(&name, port) {
+                Ok(_) => {
+                    let updated_list = state.devices.device_list();
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
+                    msg
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to create OSC device '{}': {}",
+                    name, e
+                )),
+            }
+        }
+        ClientMessage::RemoveOscDevice(name) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
+            match state.devices.remove_osc_device(&name) {
+                Ok(_) => {
+                    let updated_list = state.devices.device_list();
+                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(
+                        updated_list,
+                    ));
+                    broadcast_raw(&state.client_registry, &msg, false);
+                    msg
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to remove OSC device '{}': {}",
+                    name, e
+                )),
+            }
+        }
         ClientMessage::SetDeviceLatency(name, latency) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             state.devices.set_latency(name, latency);
             let updated_list = state.devices.device_list();
-            let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
-                    broadcast_raw(
-                        &state.client_registry,
-                        &msg,
-                        false,
-                    );
-                    msg
+            let msg =
+                ServerMessage::Notification(SovaNotification::DeviceListChanged(updated_list));
+            broadcast_raw(&state.client_registry, &msg, false);
+            msg
         }
         ClientMessage::GetLine(line_id) => {
             let scene = state.scene_image.lock().await;
             if let Some(line) = scene.line(line_id) {
-                ServerMessage::Notification(SovaNotification::UpdatedLines(vec![(line_id, line.clone())]))
+                ServerMessage::Notification(SovaNotification::UpdatedLines(vec![(
+                    line_id,
+                    line.clone(),
+                )]))
             } else {
                 ServerMessage::InternalError(format!("No line at index {}", line_id))
             }
         }
         ClientMessage::GetFrame(line_id, frame_id) => {
             let scene = state.scene_image.lock().await;
-            if let Some(frame) = scene.get_frame(line_id, frame_id) {
-                ServerMessage::Notification(SovaNotification::UpdatedFrames(vec![(line_id, frame_id, frame.clone())]))
+            if let Some(frame) = scene.frame(line_id, frame_id) {
+                ServerMessage::Notification(SovaNotification::UpdatedFrames(vec![(
+                    line_id,
+                    frame_id,
+                    frame.clone(),
+                )]))
             } else {
                 ServerMessage::InternalError(format!(
                     "Unable to get frame {} at line {}",
@@ -261,6 +334,11 @@ pub async fn on_message(
             }
         }
         ClientMessage::RestoreDevices(devices) => {
+            if !is_host {
+                return ServerMessage::InternalError(
+                    "Unauthorized to modify devices on host !".to_owned(),
+                );
+            }
             let missing_devices = state.devices.restore_from_snapshot(devices);
             let updated_list = state.devices.device_list();
             broadcast_raw(
@@ -332,12 +410,17 @@ pub async fn on_message(
             }
         }
         ClientMessage::ResetScene(timing) => {
-            send_and_relay(state, SchedulerMessage::SetScene(Scene::default(), timing))
+            let lines = (0..4).map(|_| Line::new(vec![1.0; 8])).collect();
+            send_and_relay(state, SchedulerMessage::SetScene(Scene::new(lines), timing))
         }
         ClientMessage::RestartCore => {
             let restart_tx = state.core_restart_tx.clone();
             let (response_tx, mut response_rx) = tokio::sync::mpsc::channel(1);
-            if restart_tx.send(CoreRestartRequest { response_tx }).await.is_err() {
+            if restart_tx
+                .send(CoreRestartRequest { response_tx })
+                .await
+                .is_err()
+            {
                 return ServerMessage::InternalError("Core restart channel closed".into());
             }
             match response_rx.recv().await {

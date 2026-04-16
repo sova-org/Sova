@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod client;
+pub mod demos;
 mod message;
 mod server;
 
@@ -8,5 +9,5 @@ pub use client::{ClientMessage, SovaClient, TextOp, read_server_message};
 pub use message::ServerMessage;
 pub use server::{
     AudioRestartConfig, AudioRestartRequest, BroadcastItem, ClientRegistry, CoreRestartRequest,
-    DEFAULT_CLIENT_NAME, ServerState, Snapshot, SovaCoreServer
+    DEFAULT_CLIENT_NAME, ServerState, Snapshot, SovaCoreServer,
 };

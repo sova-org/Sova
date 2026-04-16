@@ -1,6 +1,6 @@
 # The Stack
 
-In most languages, you store values in variables and pass them to functions. Forth has a single shared workspace instead: the stack. You put values on it, words take them off and put results back. Everything flows through the stack. There is no assignment, no named arguments — just a sequence of values waiting to be consumed. Learning to think in terms of the stack is the one skill that makes everything else in Cagire click.
+In most languages, you store values in variables and pass them to functions. Forth has a single shared workspace instead: the stack. You put values on it, words take them off and put results back. Everything flows through the stack. There is no assignment, no named arguments, just a sequence of values waiting to be consumed. Learning to think in terms of the stack is the one skill that makes everything else in Cagire click.
 
 ## Pushing Values
 
@@ -31,7 +31,7 @@ This is why Forth uses postfix notation: operands come first, then the operator.
 Documentation describes what words do using stack effect notation:
 
 ```
-( before -- after )
+;; ( before -- after )
 ```
 
 The word `+` has the effect `( a b -- sum )`. It takes two values and leaves one.
@@ -53,7 +53,7 @@ This computes `(3 + 4) * 2`. The parentheses are implicit in the order of operat
 
 ## Rearranging Values
 
-Sometimes you need values in a different order. Stack manipulation words like `dup`, `swap`, `drop`, and `over` let you shuffle things around. Here is a common pattern — you want to use a value twice:
+Sometimes you need values in a different order. Stack manipulation words like `dup`, `swap`, `drop`, and `over` let you shuffle things around. Here is a common pattern: you want to use a value twice.
 
 | Input | Stack |
 |-------|-------|
@@ -63,7 +63,7 @@ Sometimes you need values in a different order. Stack manipulation words like `d
 
 The word `dup` duplicates the top, so `3 dup +` doubles the number.
 
-Another pattern — you have two values but need them swapped:
+Another pattern: you have two values but need them swapped.
 
 | Input | Stack |
 |-------|-------|
@@ -93,3 +93,5 @@ The fix is simple: make sure you push enough values before calling a word. Check
 ```
 
 The `3` was never used. Either it should not be there, or you forgot a word that consumes it.
+
+There are other 'errors' that will not and cannot be caught. It is up to you, most of the time, to make sure that the stack is used correctly.

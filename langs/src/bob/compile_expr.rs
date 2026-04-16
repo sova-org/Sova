@@ -569,9 +569,10 @@ pub(crate) fn compile_expr(
             for instr in compile_expr(list, &list_var, ctx) {
                 labeled.push(LabeledInstr::Instr(instr));
             }
-            labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::Len(list_var.clone(), len_var.clone()),
-            )));
+            labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+                list_var.clone(),
+                len_var.clone(),
+            ))));
             labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
                 zero,
                 i_var.clone(),
@@ -652,9 +653,9 @@ pub(crate) fn compile_expr(
             let mut arg_remapping = HashMap::new();
             for arg in args.iter().rev() {
                 let instance_name = format!("_fn_anon_{arg}");
-                func_code.push(Instruction::Control(ControlASM::Pop(
-                    Variable::Instance(instance_name.clone()),
-                )));
+                func_code.push(Instruction::Control(ControlASM::Pop(Variable::Instance(
+                    instance_name.clone(),
+                ))));
                 arg_remapping.insert(arg.clone(), instance_name);
             }
             let mut func_ctx = CompileContext {
@@ -678,9 +679,9 @@ pub(crate) fn compile_expr(
             let mut arg_remapping = HashMap::new();
             for arg in args.iter().rev() {
                 let instance_name = format!("_fn_{name}_{arg}");
-                func_code.push(Instruction::Control(ControlASM::Pop(
-                    Variable::Instance(instance_name.clone()),
-                )));
+                func_code.push(Instruction::Control(ControlASM::Pop(Variable::Instance(
+                    instance_name.clone(),
+                ))));
                 arg_remapping.insert(arg.clone(), instance_name);
             }
             let mut func_ctx = CompileContext {
@@ -1162,9 +1163,10 @@ fn compile_list_map(
         Variable::Constant(VariableValue::Vec(vec![])),
         result_var.clone(),
     ))));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),
@@ -1234,9 +1236,10 @@ fn compile_filter(
         Variable::Constant(VariableValue::Vec(vec![])),
         result_var.clone(),
     ))));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),
@@ -1306,9 +1309,10 @@ fn compile_reduce(
     for instr in compile_expr(list_expr, &list_var, ctx) {
         labeled.push(LabeledInstr::Instr(instr));
     }
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),

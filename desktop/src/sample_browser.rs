@@ -71,7 +71,14 @@ impl SampleNode {
         }
     }
 
-    fn flatten(&self, depth: u8, parent_folder: &str, file_index: usize, is_default: bool, out: &mut Vec<TreeLine>) {
+    fn flatten(
+        &self,
+        depth: u8,
+        parent_folder: &str,
+        file_index: usize,
+        is_default: bool,
+        out: &mut Vec<TreeLine>,
+    ) {
         let kind = match self {
             SampleNode::Root { expanded, .. } => TreeLineKind::Root {
                 expanded: *expanded,
@@ -136,7 +143,10 @@ impl SampleTree {
             }
         }
 
-        Self { roots, default_root_count }
+        Self {
+            roots,
+            default_root_count,
+        }
     }
 
     fn scan_children(path: &Path) -> Vec<SampleNode> {
@@ -240,6 +250,43 @@ impl SampleTree {
             children,
             expanded: false,
         })
+    }
+
+    /// Collects sample names as doux sees them:
+    /// top-level audio files -> filename (no extension),
+    /// folders with audio files -> folder name (index chosen via `n:`).
+    pub fn sample_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for root in &self.roots {
+            Self::collect_names(root, &mut names);
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn collect_names(node: &SampleNode, out: &mut Vec<String>) {
+        match node {
+            SampleNode::Root { children, .. } => {
+                for child in children {
+                    match child {
+                        SampleNode::File { name } => {
+                            if let Some(stem) = name.rsplit_once('.').map(|(s, _)| s) {
+                                out.push(stem.to_string());
+                            }
+                        }
+                        SampleNode::Folder { name, .. } => {
+                            out.push(name.clone());
+                        }
+                        SampleNode::Root { .. } => {}
+                    }
+                }
+            }
+            SampleNode::Folder { name, .. } => {
+                out.push(name.clone());
+            }
+            SampleNode::File { .. } => {}
+        }
     }
 
     pub fn visible_entries(&self) -> Vec<TreeLine> {
@@ -400,7 +447,8 @@ impl SampleBrowserState {
         match &self.filter {
             Some(names) => {
                 let names = names.clone();
-                self.tree.fill_filtered(&names, false, &mut self.cached_entries);
+                self.tree
+                    .fill_filtered(&names, false, &mut self.cached_entries);
             }
             None => self.tree.fill_visible(&mut self.cached_entries),
         }

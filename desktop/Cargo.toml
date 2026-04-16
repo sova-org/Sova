@@ -1,15 +1,17 @@
 [package]
 name = "sova-desktop"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
+publish = false
 
 [[bin]]
 name = "sova-frontend"
 path = "src/main.rs"
 
 [features]
-default = ["default-samples"]
+default = ["default-samples", "default-soundfont"]
 default-samples = ["sova_server/default-samples"]
+default-soundfont = ["sova_server/default-soundfont"]
 asio = ["doux/asio", "sova_server/asio"]
 
 [dependencies]
@@ -20,11 +22,11 @@ langs = { path = "../langs" }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "macros"] }
 crossbeam-channel = { workspace = true }
 egui_extras = { version = "0.33", default-features = false, features = ["image"] }
-rfd = "0.15"
+egui-file-dialog = "0.12"
 serde = { workspace = true }
 serde_json = { workspace = true }
 confy = "2"
-doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.23", features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.31", features = ["native"] }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
@@ -32,6 +34,8 @@ rust-i18n = "3"
 regex = "1"
 hydra-rust = { git = "https://github.com/sova-org/hydra-rust" }
 font-kit = "0.14.3"
+ab_glyph = "0.2"
+egui-phosphor = { version = "0.11", default-features = false, features = ["fill"] }
 tokio-util = "0.7.18"
 
 [build-dependencies]

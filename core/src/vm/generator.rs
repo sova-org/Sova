@@ -29,9 +29,9 @@ pub struct ValueGenerator {
     pub span: TimeSpan,
     pub started: SyncTime,
     pub state_id: usize,
-    #[serde(skip, default="default_generator_rng")]
+    #[serde(skip, default = "default_generator_rng")]
     pub rng: Mutex<ChaCha20Rng>,
-    seed: Option<u64>
+    seed: Option<u64>,
 }
 
 impl Default for ValueGenerator {
@@ -43,7 +43,7 @@ impl Default for ValueGenerator {
             started: Default::default(),
             state_id: Default::default(),
             rng: default_generator_rng(),
-            seed: Default::default()
+            seed: Default::default(),
         }
     }
 }
@@ -57,7 +57,7 @@ impl Clone for ValueGenerator {
             started: self.started.clone(),
             state_id: self.state_id.clone(),
             rng: Mutex::new(ChaCha20Rng::clone(&self.rng.lock().unwrap())),
-            seed: self.seed.clone()
+            seed: self.seed.clone(),
         }
     }
 }
@@ -65,11 +65,11 @@ impl Clone for ValueGenerator {
 impl PartialEq for ValueGenerator {
     fn eq(&self, other: &Self) -> bool {
         self.shape == other.shape
-        && self.modifiers == other.modifiers
-        && self.span == other.span
-        && self.started == other.started
-        && self.state_id == other.state_id
-        && self.seed == other.seed
+            && self.modifiers == other.modifiers
+            && self.span == other.span
+            && self.started == other.started
+            && self.state_id == other.state_id
+            && self.seed == other.seed
     }
 }
 
@@ -113,5 +113,4 @@ impl ValueGenerator {
             Default::default()
         }
     }
-
 }

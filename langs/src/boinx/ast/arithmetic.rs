@@ -90,6 +90,7 @@ pub fn arithmetic_op(
     use BoinxItem::*;
     match (i1, op, i2) {
         (Stop, _, _) | (_, _, Stop) => Stop,
+        (Mute, _, x) | (x, _, Mute) | (Placeholder, _, x) | (x, _, Placeholder) => x,
         (Escape(e), op, i) => {
             let res = arithmetic_op(ctx, *e, op, i);
             Escape(Box::new(res.unescape()))

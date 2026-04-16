@@ -44,7 +44,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn selected_frame(&self) -> Option<&Frame> {
-        self.scene_image.get_frame(self.selected.0, self.selected.1)
+        self.scene_image.frame(self.selected.0, self.selected.1)
     }
 
     pub fn selected_line(&self) -> Option<&Line> {
@@ -209,19 +209,14 @@ impl App {
                 *frame.compilation_state_mut() = state;
             }
             SovaNotification::PlaybackStateChanged(state) => self.state.playing = state,
-            SovaNotification::FramePositionChanged(positions) => {
-                self.state.positions = positions
-            }
+            SovaNotification::FramePositionChanged(positions) => self.state.positions = positions,
             SovaNotification::Error(e) => {
-                self.state
-                    .events
-                    .send(AppEvent::Negative(e.to_string()));
+                self.state.events.send(AppEvent::Negative(e.to_string()));
             }
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
             SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,
-            SovaNotification::Annotations(_) 
-                => (),
+            SovaNotification::Annotations(_) => (),
         }
         Ok(())
     }

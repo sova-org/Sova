@@ -6,9 +6,9 @@ Live coding is a technique where a programmer writes code in real-time in front 
 
 Sova is designed as a vessel for experimentation. It is a runtime made to experiment with programming languages specialized in music performance and improvisation. We want to encourage musicians to develop a performative and expressive approach to computer programming — to think of the computer and its languages as musical instruments. This is both a technical and a poetical endeavour, and we think the two are better tackled together.
 
-Sova can be considered as a step sequencer. In Sova, each step's behavior is defined by code — a script written in a bespoke programming language. Each script can generate an arbitrary amount of musical events and can be as simple or complex as the moment demands: a single note, or some arcane musical process. Unlike conventional step sequencers, the duration of a step is not fixed. Any step can be very short or infinitely long. For each step, one can choose a different programming language — most likely the one that best suits the task at hand. Scripts can be interrupted, modified, and reprogrammed in real-time.
+Sova can be considered as a step sequencer. In Sova, each step's behavior is defined by code: scripts written in bespoke programming languages. Each script can generate an arbitrary amount of musical events and can be as simple or complex as the moment demands: a single note, or some arcane musical process. Unlike conventional step sequencers, the duration of a step is not fixed. Any step can be very short or infinitely long. For each step, one can choose a different programming language. Scripts can be interrupted, modified, and reprogrammed in real-time.
 
-Sova is accessible to beginners while being flexible enough for experienced musicians and artists. No knowledge of Rust is required to use or extend it. New programming languages, I/O devices, and synthesis options can be added without modifying the core. Sova is designed to evolve naturally with its community, both musicians and developers.
+Sova is accessible to beginners while being flexible enough for experienced musicians and artists. No knowledge of Rust is required to use or extend it. New programming languages, input/output devices and synthesis options can be added without modifying the core. Sova is designed to evolve naturally with its community, both musicians and developers.
 
 ## Polyglot approach
 
@@ -18,8 +18,8 @@ Sova's core and server handle the transformation of all submitted scripts writte
 
 ## Audience
 
-Sova is designed to support students learning programming and/or computer music. The software is accessible to any musician. No prerequisites are necessary to get started. The most dedicated users will soon feel the call to modify the tool itself as a way to extend their practice. Sova is free and open source: it can be freely modified. software is also designed for experienced musicians, artists and researchers. Sova allows for precise control of musical and audiovisual performances. Sova is all at once: an extensible and open source platform, a collaborative and real-time musical sequencer, an algorithmic and reactive musical instrument.
+Sova is designed to support students learning programming and/or computer music. The software is accessible to any musician. No prerequisites are necessary to get started. The most dedicated users will soon feel the call to modify the tool itself as a way to extend their practice. Sova is free and open source: it can be freely modified. Sova is also designed for experienced musicians, artists and researchers. It allows for precise control of musical and audiovisual performances. Sova is all at once: an extensible and open source platform, a collaborative and real-time musical sequencer, an algorithmic and reactive musical instrument.
 
 ## Project
 
-Sova is developed by Raphaël Forment, Loïg Jezequel, and Tanguy Dubois. We try to build libre and open source software where all contributions are welcome, in any form! Sova is licensed under AGPL-3.0.
+Sova is developed by Raphaël Forment, Loïg Jezequel and Tanguy Dubois. We try to build free and open source software where all contributions are welcome! Sova is licensed under AGPL-3.0.

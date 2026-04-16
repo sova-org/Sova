@@ -3,10 +3,16 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{NEVER, SyncTime}, compiler::CompilationState, log_eprintln, scene::script::{Script, ScriptExecution}, vm::{
-        PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory},
+    clock::{NEVER, SyncTime},
+    compiler::CompilationState,
+    log_eprintln,
+    scene::script::{Script, ScriptExecution},
+    vm::{
+        PartialContext,
+        event::ConcreteEvent,
+        interpreter::{Annotation, InterpreterDirectory},
         variable::VariableStore,
-    }
+    },
 };
 
 #[derive(Serialize, Deserialize)]
@@ -33,7 +39,9 @@ pub struct Frame {
     #[serde(skip)]
     pub executions: Vec<ScriptExecution>,
     #[serde(skip)]
-    pub triggers: usize
+    pub triggers: usize,
+    #[serde(skip)]
+    last_annotations: Vec<Annotation>,
 }
 
 impl Frame {
@@ -90,7 +98,7 @@ impl Frame {
             self.script_has_changed = false;
             self.executions.clear();
         }
-        if !self.enabled || self.script().is_empty() {
+        if !self.enabled || self.script().is_empty() || !self.has_duration() {
             return;
         }
         if !self.script().compilation_state().is_ok() {
@@ -106,6 +114,10 @@ impl Frame {
             )
         }
         self.triggers += 1;
+    }
+
+    pub fn has_duration(&self) -> bool {
+        self.duration > 1e-6
     }
 
     pub fn reset(&mut self) {
@@ -146,10 +158,26 @@ impl Frame {
                     let new_exec = ScriptExecution::execute_program_at(prog, date);
                     new_executions.push(new_exec);
                 }
+                e @ ConcreteEvent::ExecuteLocally(..) => {
+                    next_wait = 0; // Boostrap new execution directly
+                    events.push(e);
+                }
                 _ => events.push(event),
             }
         }
-        self.executions.retain(|exec| !exec.has_terminated());
+        
+        self.executions.retain(|exec| {
+            if !exec.has_terminated() {
+                true
+            } else {
+                // Capture annotations from terminating executions before discarding them
+                let a = exec.annotations();
+                if !a.is_empty() {
+                    self.last_annotations = a;
+                }
+                false
+            }
+        });
         self.executions.append(&mut new_executions);
         (events, next_wait)
     }
@@ -170,6 +198,9 @@ impl Frame {
         let mut total = Vec::new();
         for e in self.executions.iter() {
             total.append(&mut e.annotations());
+        }
+        if total.is_empty() {
+            return self.last_annotations.clone();
         }
         total
     }
@@ -212,7 +243,8 @@ impl Default for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
-            triggers: 0
+            triggers: 0,
+            last_annotations: Default::default(),
         }
     }
 }
@@ -228,7 +260,8 @@ impl Clone for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
-            triggers: Default::default()
+            triggers: Default::default(),
+            last_annotations: Default::default(),
         }
     }
 }

@@ -3,16 +3,16 @@ use crate::{
     vm::{EvaluationContext, event::ConcreteEvent},
 };
 
+mod annotation;
 pub mod asm_interpreter;
 mod directory;
 mod factory;
-mod annotation;
 
 pub mod external;
 
+pub use annotation::*;
 pub use directory::InterpreterDirectory;
 pub use factory::InterpreterFactory;
-pub use annotation::*;
 
 pub trait Interpreter {
     fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime);

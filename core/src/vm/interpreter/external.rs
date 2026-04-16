@@ -1,10 +1,25 @@
-use std::{collections::VecDeque, io::{Read, Write}, process::{Child, ChildStdout, Command, Stdio}};
+use std::{
+    collections::VecDeque,
+    io::{Read, Write},
+    process::{Child, ChildStdout, Command, Stdio},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, log_error, scene::script::Script, vm::{EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}}};
+use crate::{
+    clock::{NEVER, SyncTime},
+    compiler::CompilationState,
+    log_error,
+    scene::script::Script,
+    vm::{
+        EvaluationContext, Language,
+        event::ConcreteEvent,
+        interpreter::{Interpreter, InterpreterFactory},
+        variable::{Variable, VariableValue},
+    },
+};
 
-pub const EXTERNAL_DONE_CHAR : u8 = 7;
+pub const EXTERNAL_DONE_CHAR: u8 = 7;
 
 pub struct ExternalInterpreter {
     process: Child,
@@ -13,8 +28,8 @@ pub struct ExternalInterpreter {
 
 impl From<Child> for ExternalInterpreter {
     fn from(value: Child) -> Self {
-        ExternalInterpreter { 
-            process: value, 
+        ExternalInterpreter {
+            process: value,
             terminated: false,
         }
     }
@@ -26,18 +41,23 @@ pub enum ExternalAction {
     Stack(VecDeque<VariableValue>),
     Event(ConcreteEvent),
     Delay(SyncTime),
-    Terminate
+    Terminate,
 }
 
 impl ExternalInterpreter {
-
-    fn parse_stdout(&mut self, ctx: &mut EvaluationContext, stdout: &mut ChildStdout) 
-        -> (Option<ConcreteEvent>, SyncTime)
-    {
+    fn parse_stdout(
+        &mut self,
+        ctx: &mut EvaluationContext,
+        stdout: &mut ChildStdout,
+    ) -> (Option<ConcreteEvent>, SyncTime) {
         let mut buf = Vec::new();
         let mut event = None;
         let mut wait = NEVER;
-        while buf.last().map(|b| *b != EXTERNAL_DONE_CHAR).unwrap_or_default() {
+        while buf
+            .last()
+            .map(|b| *b != EXTERNAL_DONE_CHAR)
+            .unwrap_or_default()
+        {
             if stdout.read_to_end(&mut buf).is_err() {
                 log_error!("Unable to read external interpreter output");
                 return Default::default();
@@ -52,26 +72,21 @@ impl ExternalInterpreter {
             match action {
                 ExternalAction::Var(v, x) => {
                     ctx.set_var(&v, x);
-                },
+                }
                 ExternalAction::Stack(stack) => {
                     *ctx.stack = stack;
-                },
+                }
                 ExternalAction::Event(e) => event = Some(e),
                 ExternalAction::Delay(d) => wait = d,
                 ExternalAction::Terminate => self.stop(),
             }
         }
         (event, wait)
-    } 
-    
+    }
 }
 
 impl Interpreter for ExternalInterpreter {
-
-    fn execute_next(
-        &mut self,
-        ctx : &mut EvaluationContext
-    ) -> (Option<ConcreteEvent>, SyncTime) {
+    fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime) {
         let Ok(mut ctx_bytes) = serde_json::to_vec(ctx) else {
             return Default::default();
         };
@@ -102,7 +117,6 @@ impl Interpreter for ExternalInterpreter {
         let _ = self.process.kill();
         self.terminated = true;
     }
-
 }
 
 impl Language for ExternalInterpreterFactory {
@@ -110,35 +124,32 @@ impl Language for ExternalInterpreterFactory {
         &self.name
     }
     fn version(&self) -> (usize, usize, usize) {
-        (1,0,0)
+        (1, 0, 0)
     }
 }
 
 pub struct ExternalInterpreterFactory {
-    pub name: String, 
+    pub name: String,
     pub command: String,
 }
 
 impl ExternalInterpreterFactory {
-
     pub fn new(name: String, command: String) -> Self {
         Self { name, command }
     }
-
 }
 
 impl InterpreterFactory for ExternalInterpreterFactory {
-
-    fn make_instance(&self, script : &Script) -> Result<Box<dyn Interpreter>, String> {
+    fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
         let process = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn();
-        
+
         match process {
             Ok(mut child) => {
                 if let Some(stdin) = &mut child.stdin {
-                    let mut to_write : Vec<u8> = script.content().as_bytes().to_vec();
+                    let mut to_write: Vec<u8> = script.content().as_bytes().to_vec();
                     to_write.push(EXTERNAL_DONE_CHAR);
                     if stdin.write_all(script.content().as_bytes()).is_err() {
                         return Err("Unable to send script to external process".to_owned());
@@ -149,9 +160,8 @@ impl InterpreterFactory for ExternalInterpreterFactory {
             Err(e) => Err(e.to_string()),
         }
     }
-    
+
     fn check(&self, _script: &Script) -> CompilationState {
         CompilationState::Parsed(None)
     }
-
 }

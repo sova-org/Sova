@@ -1,10 +1,19 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime}, log_eprintln, scene::script::{Script, ScriptExecution}, schedule::ActionTiming, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, interpreter::{Annotation, InterpreterDirectory}, variable::VariableStore}
+    clock::{Clock, NEVER, SyncTime},
+    log_eprintln,
+    scene::script::{Script, ScriptExecution},
+    schedule::ActionTiming,
+    vm::{
+        LanguageCenter, PartialContext,
+        event::ConcreteEvent,
+        interpreter::{Annotation, InterpreterDirectory},
+        variable::VariableStore,
+    },
 };
-use serde::{Deserialize, Serialize};
 use core::f64;
+use serde::{Deserialize, Serialize};
 use std::usize;
 mod frame;
 mod line;
@@ -58,7 +67,7 @@ impl Scene {
             mode: ExecutionMode::default(),
             last_date: default_date(),
             beat_offset: default_offset(),
-            prelude: Vec::new()
+            prelude: Vec::new(),
         }
     }
 
@@ -73,7 +82,7 @@ impl Scene {
         }
     }
 
-    /// Resets the [Scene] to the initial state by calling [Line::reset] on each line 
+    /// Resets the [Scene] to the initial state by calling [Line::reset] on each line
     /// and clearing the variables.
     pub fn reset(&mut self) {
         self.lines.iter_mut().for_each(Line::reset);
@@ -90,13 +99,13 @@ impl Scene {
 
     /// Returns an optionnal reference to the [Frame] at the given index,
     /// or None if there are none.
-    pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
+    pub fn frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
         self.line(line_id).and_then(|line| line.frame(frame_id))
     }
 
     /// Returns a mutable reference to the [Frame] at the given index,
     /// eventually creating necessary lines and frames in order to do so.
-    pub fn get_frame_mut(&mut self, line_id: usize, frame_id: usize) -> &mut Frame {
+    pub fn frame_mut(&mut self, line_id: usize, frame_id: usize) -> &mut Frame {
         self.line_mut(line_id).frame_mut(frame_id)
     }
 
@@ -218,7 +227,11 @@ impl Scene {
     }
 
     /// Iterates over the prelude [Script]s and start an execution at the specified `date`.
-    pub fn trigger_prelude(&mut self, langs: &LanguageCenter, date: SyncTime) -> impl Iterator<Item = ScriptExecution> {
+    pub fn trigger_prelude(
+        &mut self,
+        langs: &LanguageCenter,
+        date: SyncTime,
+    ) -> impl Iterator<Item = ScriptExecution> {
         self.prelude.iter_mut().filter_map(move |script| {
             langs.blocking_process(script);
             let Some(inter) = langs.interpreters.get_interpreter(script) else {
@@ -234,7 +247,7 @@ impl Scene {
     }
 
     /// Update all executions in the scene.
-    /// 
+    ///
     /// # Returns
     /// - Events that have been triggered this iteration,
     /// - The delay until the next update.
@@ -269,18 +282,22 @@ impl Scene {
         }
     }
 
-    /// Computes the time remaining before the next trigge of a [Line] 
+    /// Computes the time remaining before the next trigge of a [Line]
     /// when the execution mode is [ExecutionMode::Free].
     fn handle_free_line(
-        clock: &Clock, 
-        line: &mut Line, 
+        clock: &Clock,
+        line: &mut Line,
         last_date: SyncTime,
         uncorrected: SyncTime,
         date_offset: SyncTime,
         date: &mut SyncTime,
     ) -> SyncTime {
         let len = line.length();
-        let rem = ActionTiming::AtNextModulo(len).remaining(last_date.saturating_sub(date_offset), clock);
+        if len < 1e-6 || line.manual {
+            return NEVER;
+        }
+        let rem =
+            ActionTiming::AtNextModulo(len).remaining(last_date.saturating_sub(date_offset), clock);
         if date.saturating_sub(last_date) >= rem {
             line.start();
             *date = last_date.saturating_add(rem);
@@ -291,7 +308,7 @@ impl Scene {
     /// Perform a step in time to the specified `date`.
     /// The date is corrected according to events that might have been stepped over.
     /// Starts new [Line]s if needed, and each [Line] is also made to step in time at the corrected date.
-    /// 
+    ///
     /// # Returns
     /// - The delay until the next step,
     /// - A flag indicating if a change in position has occured.
@@ -313,36 +330,32 @@ impl Scene {
         let date_offset = clock.beats_to_micros(self.beat_offset);
 
         if !start {
-            let before_start = self.mode.remaining(
-                self, 
-                self.last_date.saturating_sub(date_offset), 
-                clock
-            );
+            let before_start =
+                self.mode
+                    .remaining(self, self.last_date.saturating_sub(date_offset), clock);
             if date.saturating_sub(self.last_date) >= before_start {
                 date = self.last_date.saturating_add(before_start);
                 start = true;
             }
         }
 
-        let mut next_frame_delay = self.mode.remaining(
-            self, 
-            uncorrected.saturating_sub(date_offset), 
-            clock
-        );
+        let mut next_frame_delay =
+            self.mode
+                .remaining(self, uncorrected.saturating_sub(date_offset), clock);
         let mut positions_changed = false;
 
         for line in self.lines.iter_mut() {
             let mut line_date = date;
-            if start {
+            if start && !line.manual {
                 line.start();
             } else if self.mode.is_free() {
                 let rem = Self::handle_free_line(
-                    clock, 
-                    line, 
-                    self.last_date, 
-                    uncorrected, 
-                    date_offset, 
-                    &mut line_date
+                    clock,
+                    line,
+                    self.last_date,
+                    uncorrected,
+                    date_offset,
+                    &mut line_date,
                 );
                 next_frame_delay = std::cmp::min(next_frame_delay, rem);
             }
@@ -358,7 +371,7 @@ impl Scene {
     }
 
     pub fn annotations(&self) -> Vec<Vec<Vec<Annotation>>> {
-        let mut res = vec![ Vec::new() ; self.n_lines() ];
+        let mut res = vec![Vec::new(); self.n_lines()];
         for (i, line) in self.lines.iter().enumerate() {
             res[i] = line.annotations();
         }

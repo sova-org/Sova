@@ -8,6 +8,7 @@ use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, Referen
 
 use super::compiler::Dictionary;
 use super::interpreter::CagireInterpreter;
+use super::theory::chords::CHORDS;
 use super::words::WORDS;
 
 pub struct CagireInterpreterFactory {
@@ -34,21 +35,94 @@ impl Language for CagireInterpreterFactory {
     fn documentation(&self) -> LanguageDocumentation {
         let mut doc = LanguageDocumentation::default();
 
-        doc.articles.push(("Getting Started".into(), include_str!("../../docs/cagire/intro.md").into()));
-        doc.articles.push(("The Stack".into(), include_str!("../../docs/cagire/stack.md").into()));
-        doc.articles.push(("Control Flow".into(), include_str!("../../docs/cagire/control_flow.md").into()));
-        doc.articles.push(("Creating Words".into(), include_str!("../../docs/cagire/definitions.md").into()));
-        doc.articles.push(("Brackets".into(), include_str!("../../docs/cagire/brackets.md").into()));
-        doc.articles.push(("Variables".into(), include_str!("../../docs/cagire/variables.md").into()));
-        doc.articles.push(("Notes & Harmony".into(), include_str!("../../docs/cagire/harmony.md").into()));
-        doc.articles.push(("Generators".into(), include_str!("../../docs/cagire/generators.md").into()));
-        doc.articles.push(("Randomness".into(), include_str!("../../docs/cagire/randomness.md").into()));
-        doc.articles.push(("Timing".into(), include_str!("../../docs/cagire/timing.md").into()));
-        doc.articles.push(("MIDI".into(), include_str!("../../docs/cagire/midi.md").into()));
-        doc.articles.push(("Recording".into(), include_str!("../../docs/cagire/recording.md").into()));
-        doc.articles.push(("Cagire vs Classic Forth".into(), include_str!("../../docs/cagire/differences.md").into()));
-        doc.articles.push(("Language Reference".into(), include_str!("../../docs/cagire/reference.md").into()));
-
+        doc.articles.push((
+            "Hello!".into(),
+            include_str!("../../docs/cagire/intro.md").into(),
+        ));
+        doc.articles.push((
+            "The Stack".into(),
+            include_str!("../../docs/cagire/stack.md").into(),
+        ));
+        doc.articles.push((
+            "Control Flow".into(),
+            include_str!("../../docs/cagire/control_flow.md").into(),
+        ));
+        doc.articles.push((
+            "Creating Words".into(),
+            include_str!("../../docs/cagire/definitions.md").into(),
+        ));
+        doc.articles.push((
+            "Quotations".into(),
+            include_str!("../../docs/cagire/quotations.md").into(),
+        ));
+        doc.articles.push((
+            "Lists".into(),
+            include_str!("../../docs/cagire/lists.md").into(),
+        ));
+        doc.articles.push((
+            "Variables".into(),
+            include_str!("../../docs/cagire/variables.md").into(),
+        ));
+        doc.articles.push((
+            "Audio Engine".into(),
+            include_str!("../../docs/cagire/audio_engine.md").into(),
+        ));
+        doc.articles.push((
+            "Modulations".into(),
+            include_str!("../../docs/cagire/modulations.md").into(),
+        ));
+        doc.articles.push((
+            "Notes".into(),
+            include_str!("../../docs/cagire/notes.md").into(),
+        ));
+        doc.articles.push((
+            "Chords".into(),
+            include_str!("../../docs/cagire/chords.md").into(),
+        ));
+        doc.articles.push((
+            "Tunings".into(),
+            include_str!("../../docs/cagire/tunings.md").into(),
+        ));
+        doc.articles.push((
+            "Scales".into(),
+            include_str!("../../docs/cagire/scales.md").into(),
+        ));
+        doc.articles.push((
+            "Generators".into(),
+            include_str!("../../docs/cagire/generators.md").into(),
+        ));
+        doc.articles.push((
+            "Randomness".into(),
+            include_str!("../../docs/cagire/randomness.md").into(),
+        ));
+        doc.articles.push((
+            "Probability".into(),
+            include_str!("../../docs/cagire/probability.md").into(),
+        ));
+        doc.articles.push((
+            "Cycling".into(),
+            include_str!("../../docs/cagire/cycling.md").into(),
+        ));
+        doc.articles.push((
+            "Periodic Execution".into(),
+            include_str!("../../docs/cagire/periodic.md").into(),
+        ));
+        doc.articles.push((
+            "Timing".into(),
+            include_str!("../../docs/cagire/timing.md").into(),
+        ));
+        doc.articles.push((
+            "MIDI".into(),
+            include_str!("../../docs/cagire/midi.md").into(),
+        ));
+        doc.articles.push((
+            "Recording".into(),
+            include_str!("../../docs/cagire/recording.md").into(),
+        ));
+        doc.articles.push((
+            "Cagire vs Classic Forth".into(),
+            include_str!("../../docs/cagire/differences.md").into(),
+        ));
         for word in WORDS.iter() {
             let mut entry = ReferenceEntry::new(word.desc)
                 .with_signature(word.stack)
@@ -75,7 +149,12 @@ impl Language for CagireInterpreterFactory {
         let mut special_words = Vec::new();
 
         for word in WORDS.iter() {
-            if !word.name.chars().next().is_some_and(|c| c.is_alphanumeric()) {
+            if !word
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric())
+            {
                 continue;
             }
             if word.name.contains('<') {
@@ -83,15 +162,14 @@ impl Language for CagireInterpreterFactory {
             }
 
             let bucket = match word.category {
-                "Stack" | "Arithmetic" | "Comparison" | "Logic" | "Control" | "Definitions" =>
-                    &mut builtin_words,
-                "Sample" | "Oscillator" | "Wavetable" | "FM" | "Modulation"
-                | "Envelope" | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo"
-                | "Mod FX" | "MIDI" | "Context" =>
-                    &mut symbol_words,
-                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord"
-                | "LFO" | "Audio Modulation" | "Debug" =>
-                    &mut special_words,
+                "Stack" | "Arithmetic" | "Comparison" | "Logic" | "Control" | "Definitions" => {
+                    &mut builtin_words
+                }
+                "Sample" | "Oscillator" | "Wavetable" | "FM" | "Modulation" | "Envelope"
+                | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo" | "Mod FX" | "MIDI"
+                | "Context" => &mut symbol_words,
+                "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord" | "Scale"
+                | "LFO" | "Audio Modulation" | "Debug" => &mut special_words,
                 _ => &mut builtin_words,
             };
             bucket.push(word.name);
@@ -132,7 +210,48 @@ impl Language for CagireInterpreterFactory {
             SyntaxRule::new(String, r#""[^"]*""#),
             SyntaxRule::new(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
             SyntaxRule::new(String, r"\b(?:sol|do|r[eé]|mi|fa|la|si|ti|ut)[#b]?[0-9]\b"),
-            SyntaxRule::new(Number, r"-?\.?\d+(?:\.\d+)?"),
+            SyntaxRule::new(
+                String,
+                r"\b(?:unison|aug11|aug4|dim5|M1[034]|m1[034]|M[23679]|m[23679]|P1[125]|P[1458])\b",
+            ),
+        ]);
+
+        // Chord qualities sourced from theory::chords::CHORDS so the highlighter
+        // and the compiler stay in sync. Filtered to word-shaped identifiers so
+        // the \b...\b form is enough, placed after the interval rule so
+        // overlapping short aliases (M7, m7, M6, ...) stay colored as intervals,
+        // and stripped of any name that the WORDS table already claims (e.g.
+        // `min` / `max` are arithmetic words, not the minor chord quality).
+        let mut chord_qualities: Vec<&str> = Vec::new();
+        for chord in CHORDS {
+            for name in std::iter::once(chord.name).chain(chord.aliases.iter().copied()) {
+                let bytes = name.as_bytes();
+                if bytes.len() < 2 {
+                    continue;
+                }
+                if !bytes[0].is_ascii_alphabetic() {
+                    continue;
+                }
+                if !name.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    continue;
+                }
+                if builtin_words.contains(&name)
+                    || symbol_words.contains(&name)
+                    || special_words.contains(&name)
+                {
+                    continue;
+                }
+                if !chord_qualities.contains(&name) {
+                    chord_qualities.push(name);
+                }
+            }
+        }
+        if !chord_qualities.is_empty() {
+            rules.push(SyntaxRule::new(Special, &word_pattern(&chord_qualities)));
+        }
+
+        rules.extend([
+            SyntaxRule::new(Number, r"-?(?:\d+/-?\d+|\.?\d+(?:\.\d+)?)"),
             SyntaxRule::new(Special, r"\."),
             SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
             SyntaxRule::new(Operator, r"\?\B|\?\b|!\?\b"),
@@ -181,7 +300,7 @@ mod tests {
     fn syntax_highlights_all_categories() {
         use TokenCategory::*;
         let tokens = categories_for(
-            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n( 2 distort ) sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter"
+            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n( 2 distort ) sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter",
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
@@ -203,10 +322,18 @@ mod tests {
         assert_eq!(find("gain"), Some(Symbol), "gain should be Symbol (param)");
         assert_eq!(find("lpf"), Some(Symbol), "lpf should be Symbol (param)");
         assert_eq!(find("chan"), Some(Symbol), "chan should be Symbol (MIDI)");
-        assert_eq!(find("step"), Some(Symbol), "step should be Symbol (context)");
+        assert_eq!(
+            find("step"),
+            Some(Symbol),
+            "step should be Symbol (context)"
+        );
         assert_eq!(find("sound"), Some(Special), "sound should be Special");
         assert_eq!(find("dup"), Some(Builtin), "dup should be Builtin (stack)");
-        assert_eq!(find("rand"), Some(Special), "rand should be Special (probability)");
+        assert_eq!(
+            find("rand"),
+            Some(Special),
+            "rand should be Special (probability)"
+        );
     }
 
     #[test]
@@ -219,12 +346,110 @@ mod tests {
     }
 
     #[test]
+    fn syntax_ratio_literals_are_numbers() {
+        use TokenCategory::*;
+        let tokens = categories_for("3/2 / 18/4");
+        assert_eq!(
+            tokens,
+            vec![
+                ("3/2".to_owned(), Number),
+                ("/".to_owned(), Operator),
+                ("18/4".to_owned(), Number),
+            ]
+        );
+    }
+
+    #[test]
+    fn syntax_intervals_are_strings() {
+        use TokenCategory::*;
+        let tokens = categories_for(
+            "P1 unison m2 M2 m3 M3 P4 aug4 dim5 P5 m6 M6 m7 M7 P8 m9 M9 m10 M10 P11 aug11 P12 m13 M13 m14 M14 P15",
+        );
+        let interval_names = [
+            "P1", "unison", "m2", "M2", "m3", "M3", "P4", "aug4", "dim5", "P5", "m6", "M6", "m7",
+            "M7", "P8", "m9", "M9", "m10", "M10", "P11", "aug11", "P12", "m13", "M13", "m14",
+            "M14", "P15",
+        ];
+        for name in interval_names {
+            let found = tokens.iter().find(|(t, _)| t == name);
+            assert!(
+                found.is_some(),
+                "interval {name} should be highlighted as a single token"
+            );
+            assert_eq!(
+                found.unwrap().1,
+                String,
+                "interval {name} should be String (green), got {:?}",
+                found.unwrap().1
+            );
+        }
+    }
+
+    #[test]
     fn syntax_notes_are_strings() {
         use TokenCategory::*;
         let tokens = categories_for("c4 fs4 a3 do4 mib3 sol#3 ré4 si4 ut4 fa5 ti2 la4 re4");
         for (tok, cat) in &tokens {
             assert_eq!(*cat, String, "note {tok} should be String (green)");
         }
+    }
+
+    #[test]
+    fn syntax_chord_qualities_are_special() {
+        use TokenCategory::*;
+        // `min` is intentionally absent: it is also the arithmetic word
+        // (minimum of two numbers) and is kept on Builtin so the editor
+        // reflects its primary meaning. Use `minor` or `m` for minor chords.
+        let chord_names = [
+            "maj", "major", "minor", "dim", "aug", "sus2", "sus4", "maj6", "min6", "maj7", "min7",
+            "dom7", "dim7", "aug7", "minmaj7", "dom9", "maj9", "min9", "dom11", "maj11", "min11",
+            "dom13", "maj13", "min13", "add9", "madd9", "dom7b9", "dom7s11", "maj7s11", "alt",
+            "pwr", "m7b5",
+        ];
+        let tokens = categories_for(&chord_names.join(" "));
+        for name in chord_names {
+            let found = tokens.iter().find(|(t, _)| t == name);
+            assert!(
+                found.is_some(),
+                "chord quality {name} should be highlighted as a single token"
+            );
+            assert_eq!(
+                found.unwrap().1,
+                Special,
+                "chord quality {name} should be Special, got {:?}",
+                found.unwrap().1
+            );
+        }
+
+        // Overlapping aliases with interval names must stay on the interval rule
+        // so `c4 M7 +` keeps reading as "c4, major seventh interval, plus".
+        // (M11/m11 are not in the interval regex, so they fall through to the
+        // chord rule and are not checked here.)
+        let tokens = categories_for("M6 m6 M7 m7 M9 m9 M13 m13");
+        for (tok, cat) in &tokens {
+            assert_eq!(
+                *cat, String,
+                "{tok} should stay as an interval (String), not be stolen by the chord rule"
+            );
+        }
+
+        // Numeric chord aliases (5, 6, 7, 9, 11, 13) must stay as Number,
+        // not be stolen by the chord rule.
+        let tokens = categories_for("5 6 7 9 11 13");
+        for (tok, cat) in &tokens {
+            assert_eq!(
+                *cat, Number,
+                "{tok} should stay as a Number, not be stolen by the chord rule"
+            );
+        }
+
+        // `min` is an arithmetic word and must stay on Builtin.
+        let tokens = categories_for("min");
+        let min = tokens.iter().find(|(t, _)| t == "min").expect("min token");
+        assert_eq!(
+            min.1, Builtin,
+            "min should stay Builtin (arithmetic word), not become a chord quality"
+        );
     }
 }
 

@@ -1,7 +1,8 @@
 [package]
 name = "sova-server"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
+publish = false
 
 [lib]
 name = "sova_server"
@@ -12,11 +13,12 @@ name = "sova_server"
 path = "src/main.rs"
 
 [features]
-default = ["audio", "soundfont", "default-samples"]
+default = ["audio", "soundfont", "default-samples", "default-soundfont"]
 audio = ["dep:doux-sova"]
 soundfont = ["audio", "doux-sova/soundfont"]
 asio = ["doux-sova/asio"]
 default-samples = ["audio", "dep:include_dir", "dep:dirs"]
+default-soundfont = ["soundfont", "dep:include_dir", "dep:dirs"]
 
 [dependencies]
 sova_core = { path = "../core", package = "core" }
@@ -25,11 +27,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "net", "sync", "macro
 clap = { version = "4.5.34", features = ["derive"] }
 thread-priority = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 rmp-serde = "1"
 crc32fast = "1"
 crossbeam-channel = { workspace = true }
 socket2 = "0.5"
-doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.23", package = "doux-sova", optional = true }
+doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.31", package = "doux-sova", optional = true }
 include_dir = { version = "0.7", optional = true }
 dirs = { version = "6", optional = true }
 tokio-util = "0.7.18"

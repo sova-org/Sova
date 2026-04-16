@@ -1,39 +1,49 @@
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, thread};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+};
 
 use crossbeam_channel::Receiver;
-use sova_core::{Scene, clock::Clock, schedule::{SovaNotification, playback::PlaybackState}, vm::interpreter::Annotation};
-use tokio::sync::Mutex;
+use sova_core::{
+    Scene,
+    clock::Clock,
+    schedule::{SovaNotification, playback::PlaybackState},
+};
 
-use crate::{ClientRegistry, ServerMessage, server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw}};
+use crate::{
+    ClientRegistry, ServerMessage,
+    server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
+};
 
 fn notification_to_server_message(
     notif: SovaNotification,
     clock: &mut Clock,
-    annotations: &Mutex<Vec<Vec<Vec<Annotation>>>>,
 ) -> Option<ServerMessage> {
     match notif {
         SovaNotification::Tick
         | SovaNotification::QuantumChanged(_)
         | SovaNotification::TempoChanged(_) => {
             clock.capture_app_state();
-            Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
+            Some(ServerMessage::ClockState(
+                clock.tempo(),
+                clock.beat(),
+                clock.micros(),
+                clock.quantum(),
+            ))
         }
-        SovaNotification::Annotations(a) => {
-            *annotations.blocking_lock() = a;
-            None
-        }
-        notif => Some(ServerMessage::Notification(notif))
-        
+        notif => Some(ServerMessage::Notification(notif)),
     }
 }
 
 pub fn start_image_maintainer(
     scheduler_notifications: Receiver<SovaNotification>,
-    scene_image: Arc<Mutex<Scene>>,
+    scene_image: Arc<tokio::sync::Mutex<Scene>>,
     client_registry: ClientRegistry,
     is_playing: Arc<AtomicBool>,
-    annotations: Arc<Mutex<Vec<Vec<Vec<Annotation>>>>>,
-    mut clock: Clock
+    mut clock: Clock,
 ) {
     thread::spawn(move || {
         let position_broadcast_interval =
@@ -106,14 +116,14 @@ pub fn start_image_maintainer(
                     };
 
                     if should_broadcast {
-                        let Some(msg) = notification_to_server_message(p, &mut clock, &annotations) else {
+                        let Some(msg) = notification_to_server_message(p, &mut clock) else {
                             continue;
                         };
                         let droppable = matches!(
-                            &msg, 
+                            &msg,
                             ServerMessage::Notification(SovaNotification::FramePositionChanged(_))
-                            | ServerMessage::Notification(SovaNotification::Annotations(_))
-                            | ServerMessage::ClockState(..)
+                                | ServerMessage::Notification(SovaNotification::Annotations(_))
+                                | ServerMessage::ClockState(..)
                         );
                         broadcast_raw(&client_registry, &msg, droppable);
                     }

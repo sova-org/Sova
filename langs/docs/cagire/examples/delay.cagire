@@ -1,4 +1,4 @@
-0 0.5 at
+0 0.5 (
 tri snd
 0 8 rand pentatonic note
 0.0 1.0 rand pan
@@ -8,4 +8,4 @@ tri snd
 0.5 delay 0.125 delaytime
 0.2 triangle delayfeedback
 0.8 verb 0 verbpredelay
-.
+. ) at

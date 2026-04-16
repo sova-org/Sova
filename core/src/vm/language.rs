@@ -19,9 +19,15 @@ pub enum TokenCategory {
 impl TokenCategory {
     pub const COUNT: usize = 10;
     pub const ALL: [TokenCategory; Self::COUNT] = [
-        TokenCategory::Keyword, TokenCategory::Builtin, TokenCategory::Operator,
-        TokenCategory::Number, TokenCategory::String, TokenCategory::Comment,
-        TokenCategory::Variable, TokenCategory::Symbol, TokenCategory::Special,
+        TokenCategory::Keyword,
+        TokenCategory::Builtin,
+        TokenCategory::Operator,
+        TokenCategory::Number,
+        TokenCategory::String,
+        TokenCategory::Comment,
+        TokenCategory::Variable,
+        TokenCategory::Symbol,
+        TokenCategory::Special,
         TokenCategory::Punctuation,
     ];
 }
@@ -34,7 +40,10 @@ pub struct SyntaxRule {
 
 impl SyntaxRule {
     pub fn new(category: TokenCategory, pattern: &str) -> Self {
-        Self { category, pattern: pattern.to_owned() }
+        Self {
+            category,
+            pattern: pattern.to_owned(),
+        }
     }
 }
 
@@ -60,7 +69,13 @@ pub struct ReferenceEntry {
 
 impl ReferenceEntry {
     pub fn new(description: impl Into<String>) -> Self {
-        Self { description: description.into(), signature: None, example: None, category: None, aliases: Vec::new() }
+        Self {
+            description: description.into(),
+            signature: None,
+            example: None,
+            category: None,
+            aliases: Vec::new(),
+        }
     }
     pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
         self.signature = Some(signature.into());
@@ -96,40 +111,40 @@ impl From<&str> for ReferenceEntry {
 pub struct LanguageDocumentation {
     pub articles: Vec<(String, String)>,
     pub reference: BTreeMap<LanguageElement, ReferenceEntry>,
-    pub escape: Vec<(String, String)>
+    pub escape: Vec<(String, String)>,
 }
 
 impl LanguageDocumentation {
-
     pub fn is_empty(&self) -> bool {
         self.articles.is_empty() && self.reference.is_empty()
     }
-
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LanguageDefinition {
-    pub name: String, 
-    pub documentation: LanguageDocumentation, 
-    pub syntax: Option<LanguageSyntax> 
+    pub name: String,
+    pub documentation: LanguageDocumentation,
+    pub syntax: Option<LanguageSyntax>,
 }
 
 pub trait Language {
-
     fn name(&self) -> &str;
 
     fn version(&self) -> (usize, usize, usize);
 
-    fn documentation(&self) -> LanguageDocumentation { Default::default() }
-
-    fn syntax(&self) -> Option<LanguageSyntax> { None }
-
-    fn definition(&self) -> LanguageDefinition {
-        LanguageDefinition { 
-            name: self.name().to_owned(), 
-            documentation: self.documentation(), 
-            syntax: self.syntax()
-        }
+    fn documentation(&self) -> LanguageDocumentation {
+        Default::default()
     }
 
+    fn syntax(&self) -> Option<LanguageSyntax> {
+        None
+    }
+
+    fn definition(&self) -> LanguageDefinition {
+        LanguageDefinition {
+            name: self.name().to_owned(),
+            documentation: self.documentation(),
+            syntax: self.syntax(),
+        }
+    }
 }

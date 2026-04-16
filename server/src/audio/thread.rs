@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -7,10 +8,10 @@ use sova_core::device_map::DeviceMap;
 use sova_core::schedule::SovaNotification;
 
 use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture};
+use crate::AudioRestartRequest;
 use crate::client::serialize_to_wire_frame;
 use crate::message::ServerMessage;
 use crate::server::{AudioRestartConfig, BroadcastItem, ClientRegistry};
-use crate::AudioRestartRequest;
 
 pub struct AudioThread {
     pub restart_tx: Sender<AudioRestartRequest>,
@@ -62,7 +63,9 @@ pub fn spawn_audio_thread(
                             if let Err(e) = devices.assign_slot(1, "Doux") {
                                 eprintln!("Failed to assign Doux to Slot 1: {}", e);
                             }
-                            let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(devices.device_list()));
+                            let msg = ServerMessage::Notification(
+                                SovaNotification::DeviceListChanged(devices.device_list()),
+                            );
                             if let Ok(bytes) = serialize_to_wire_frame(&msg) {
                                 client_registry.broadcast(BroadcastItem::Raw {
                                     bytes: Arc::new(bytes),
@@ -79,7 +82,9 @@ pub fn spawn_audio_thread(
                                 *slot = mgr.peak_capture();
                             }
                             #[cfg(feature = "soundfont")]
-                            mgr.load_soundfont_from_paths(&initial_config.sample_paths);
+                            mgr.load_soundfont_from_paths(&resolve_soundfont_paths(
+                                &initial_config.sample_paths,
+                            ));
                             Some(mgr)
                         }
                     }
@@ -124,8 +129,7 @@ pub fn spawn_audio_thread(
                                     manager = None;
                                     if let Ok(mut state) = state_cache.lock() {
                                         state.running = false;
-                                        state.error =
-                                            Some(format!("Failed to register: {}", e));
+                                        state.error = Some(format!("Failed to register: {}", e));
                                     }
                                     Err(format!("Failed to register audio engine: {}", e))
                                 } else {
@@ -135,7 +139,9 @@ pub fn spawn_audio_thread(
                                     if let Err(e) = devices.assign_slot(1, "Doux") {
                                         eprintln!("Failed to assign Doux to Slot 1: {}", e);
                                     }
-                                    let msg = ServerMessage::Notification(SovaNotification::DeviceListChanged(devices.device_list()));
+                                    let msg = ServerMessage::Notification(
+                                        SovaNotification::DeviceListChanged(devices.device_list()),
+                                    );
                                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
                                         client_registry.broadcast(BroadcastItem::Raw {
                                             bytes: Arc::new(bytes),
@@ -153,7 +159,9 @@ pub fn spawn_audio_thread(
                                         *slot = new_mgr.peak_capture();
                                     }
                                     #[cfg(feature = "soundfont")]
-                                    new_mgr.load_soundfont_from_paths(&request.config.sample_paths);
+                                    new_mgr.load_soundfont_from_paths(&resolve_soundfont_paths(
+                                        &request.config.sample_paths,
+                                    ));
                                     manager = Some(new_mgr);
                                     println!("[ audio ] Restart successful");
                                     Ok(new_state)
@@ -298,3 +306,17 @@ fn build_doux_config(cfg: &AudioRestartConfig) -> DouxConfig {
     config
 }
 
+/// Determines which paths to scan for soundfonts.
+/// If the user's sample paths already contain an `.sf2`, use those as-is.
+/// Otherwise, prepend the default embedded soundfont directory.
+#[cfg(feature = "soundfont")]
+fn resolve_soundfont_paths(sample_paths: &[PathBuf]) -> Vec<PathBuf> {
+    #[cfg(feature = "default-soundfont")]
+    if !super::default_soundfont::user_has_soundfont(sample_paths) {
+        let default = super::default_soundfont::ensure_default_soundfont();
+        let mut paths = vec![default];
+        paths.extend_from_slice(sample_paths);
+        return paths;
+    }
+    sample_paths.to_vec()
+}

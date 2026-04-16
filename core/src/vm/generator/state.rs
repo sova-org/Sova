@@ -7,5 +7,5 @@ pub struct GeneratorState {
     pub seed: VariableValue,
     pub start_date: SyncTime,
     pub shape_state: VariableValue,
-    pub modifier_states: Vec<VariableValue>
+    pub modifier_states: Vec<VariableValue>,
 }

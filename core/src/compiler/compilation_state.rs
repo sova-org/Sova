@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{compiler::CompilationError, vm::{Program, variable::VariableValue}};
+use crate::{
+    compiler::CompilationError,
+    vm::{Program, variable::VariableValue},
+};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum CompilationState {
@@ -11,36 +14,35 @@ pub enum CompilationState {
     Compiling,
     Compiled(#[serde(skip)] Program),
     Parsed(#[serde(skip)] Option<VariableValue>),
-    Error(CompilationError)
+    Error(CompilationError),
 }
 
 impl CompilationState {
     pub fn is_compiled(&self) -> bool {
         match self {
             CompilationState::Compiled(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_ok(&self) -> bool {
         match self {
-            CompilationState::Compiled(_) | CompilationState::Parsed(_)
-                => true,
-            _ => false
+            CompilationState::Compiled(_) | CompilationState::Parsed(_) => true,
+            _ => false,
         }
     }
 
     pub fn is_err(&self) -> bool {
         match self {
             CompilationState::Error(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn lightened(&self) -> Self {
         match self {
             Self::Compiled(_) => Self::Compiled(Default::default()),
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
 
@@ -55,14 +57,14 @@ impl CompilationState {
     pub fn program(&self) -> Option<&Program> {
         match self {
             CompilationState::Compiled(prog) => Some(prog),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn cache(&self) -> Option<&VariableValue> {
         match self {
             CompilationState::Parsed(cache) => cache.as_ref(),
-            _ => None
+            _ => None,
         }
     }
 }

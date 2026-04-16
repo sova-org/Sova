@@ -14,7 +14,7 @@ If you've used the original standalone Cagire, here are the key differences in S
 
 ### Unified Output
 
-Standalone Cagire uses `m.` for MIDI output and `.` for audio output. Sova unifies both under `.` — the device slot (set with `dev`) determines where events route. There is no `m.` word in Sova.
+Standalone Cagire uses `m.` for MIDI output and `.` for audio output. Sova unifies both under `.`. The device slot (set with `dev`) determines where events route. There is no `m.` word in Sova.
 
 ```forth
 60 note 100 velocity .       ;; MIDI note on device slot 1 (default)
@@ -26,9 +26,9 @@ Standalone Cagire uses `m.` for MIDI output and `.` for audio output. Sova unifi
 
 Original Cagire variables are global. In Sova, the default scope is **Instance** (local to the script). Use prefixes to share data:
 
-- `!G.x` / `@G.x` — Global (all scripts in the session)
-- `!L.x` / `@L.x` — Line (all frames in the same line)
-- `!F.x` / `@F.x` — Frame (persists across runs of the same frame)
+- `!G.x` / `@G.x`: Global (all scripts in the session)
+- `!L.x` / `@L.x`: Line (all frames in the same line)
+- `!F.x` / `@F.x`: Frame (persists across runs of the same frame)
 
 See the **Variables** article for details.
 
@@ -42,7 +42,7 @@ Standalone Cagire has project and bank preludes (scripts that run before playbac
 
 ### Timing with at
 
-Sova's `at` is a looping block where each delta iteration gets independent state. Nondeterministic ops (`rand`, `choose`, `coin`) roll fresh values per delta. Close an `at` block with `.` (emit sound) or `done` (no emit).
+Sova's `at` is quotation-based. It pops a quotation from the stack, then drains remaining values as timing deltas, and loops the quotation once per delta. Each delta iteration gets independent state. Nondeterministic ops (`rand`, `choose`, `coin`) roll fresh values per delta. To emit sound, put `.` inside the quotation. To run side-effects without emitting, leave `.` out.
 
 ### Tempo and Speed
 
@@ -58,7 +58,7 @@ Cagire uses double semicolons for comments:
 ;; this is a comment
 ```
 
-Everything after `;;` until the end of the line is ignored. Curly braces `{ }` are silently ignored — they have no effect and can be used as visual separators if you like, but they carry no semantic meaning.
+Everything after `;;` until the end of the line is ignored. Curly braces `{ }` are silently ignored. They have no effect and can be used as visual separators if you like, but they carry no semantic meaning.
 
 ## Quotations
 
@@ -158,7 +158,7 @@ Cagire uses a quotation-based loop with `times`:
 The loop counter is stored in the variable `i`, accessed with `@i`.
 
 ```forth
-4 ( @i 4 / at hat snd . ) times    ;; hat at 0, 0.25, 0.5, 0.75
+4 ( @i 4 / ( hat snd . ) at ) times    ;; hat at 0, 0.25, 0.5, 0.75
 4 ( c4 @i + note sine snd . ) times ;; ascending notes
 ```
 
@@ -240,8 +240,8 @@ Each time the frame runs, a different note is selected.
 
 Two cycling words exist:
 
-- `cycle` — selects based on `runs` (how many times this frame has triggered)
-- `pcycle` — selects based on `iter` (how many times the line has looped)
+- `cycle`: selects based on `runs` (how many times this frame has triggered)
+- `pcycle`: selects based on `iter` (how many times the line has looped)
 
 When the selected value is a quotation, it gets executed. When it is a plain value, it gets pushed onto the stack.
 

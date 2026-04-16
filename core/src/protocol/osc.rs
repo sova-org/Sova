@@ -1,13 +1,69 @@
 use rosc::{OscBundle, OscMessage, OscPacket, OscTime, OscType};
+use std::collections::HashMap;
 use std::fmt;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
 use crate::clock::TimeSpan;
-use crate::vm::variable::VariableValue;
 use crate::protocol::error::ProtocolError;
+use crate::vm::variable::VariableValue;
 
 mod message;
 pub use message::*;
+
+mod osc_input;
+pub use osc_input::*;
+
+pub fn variable_from_osc(value: OscType) -> Option<VariableValue> {
+    match value {
+        OscType::Int(i) => Some(VariableValue::Integer(i as i64)),
+        OscType::Float(f) => Some(VariableValue::Float(f as f64)),
+        OscType::String(s) => Some(VariableValue::Str(s)),
+        OscType::Blob(items) => Some(VariableValue::Blob(items)),
+        OscType::Time(_osc_time) => None,
+        OscType::Long(i) => Some(VariableValue::Integer(i)),
+        OscType::Double(d) => Some(VariableValue::Float(d)),
+        OscType::Char(c) => Some(VariableValue::Str(c.to_string())),
+        OscType::Midi(midi) => {
+            let mut map = HashMap::new();
+            map.insert("port".to_owned(), (midi.port as i64).into());
+            map.insert("data1".to_owned(), (midi.data1 as i64).into());
+            map.insert("data2".to_owned(), (midi.data2 as i64).into());
+            Some(VariableValue::Map(map))
+        }
+        OscType::Bool(b) => Some(VariableValue::Bool(b)),
+        OscType::Array(osc_array) => {
+            let values = osc_array
+                .content
+                .into_iter()
+                .filter_map(|x| variable_from_osc(x))
+                .collect();
+            Some(VariableValue::Vec(values))
+        }
+        _ => None,
+    }
+}
+
+pub fn osc_from_variable(value: VariableValue) -> Option<OscType> {
+    match value {
+        VariableValue::Integer(i) => Some(OscType::Int(i as i32)),
+        VariableValue::Float(f) => Some(OscType::Float(f as f32)),
+        VariableValue::Decimal(d) => {
+            let f = f64::from(d);
+            Some(OscType::Float(f as f32))
+        }
+        VariableValue::Str(s) => Some(OscType::String(s)),
+        VariableValue::Blob(b) => Some(OscType::Blob(b)),
+        VariableValue::Dur(t) => {
+            let TimeSpan::Micros(t) = t else { return None };
+            let secs = t / 1_000_000;
+            Some(OscType::Time(OscTime {
+                seconds: secs as u32,
+                fractional: (t - secs) as u32,
+            }))
+        }
+        _ => None,
+    }
+}
 
 pub struct OSCOut {
     /// User-defined name to identify this device.
@@ -19,36 +75,47 @@ pub struct OSCOut {
 }
 
 impl OSCOut {
-
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
         crate::log_println!(
             "[~] connect() called for OSCOutDevice '{}' @ {}",
-            self.name, self.address
+            self.name,
+            self.address
         );
         if self.socket.is_some() {
             crate::log_println!("    Already connected.");
-            Ok(())
-        } else {
-            // Bind to any available local port for sending
-            let local_addr: SocketAddr = "0.0.0.0:0"
-                .parse()
-                .expect("Failed to parse local UDP bind address");
-            match UdpSocket::bind(local_addr) {
-                Ok(udp_socket) => {
-                    crate::log_println!(
-                        "    Created UDP socket bound to {}",
-                        udp_socket.local_addr()?
-                    );
-                    self.socket = Some(udp_socket);
-                    Ok(())
+            return Ok(());
+        }
+        // Bind to any available local port for sending
+        let local_addr: SocketAddr = "0.0.0.0:0"
+            .parse()
+            .expect("Failed to parse local UDP bind address");
+        match UdpSocket::bind(local_addr) {
+            Ok(udp_socket) => {
+                if self.address.ip() == Ipv4Addr::new(255, 255, 255, 255) {
+                    if udp_socket.set_broadcast(true).is_err() {
+                        let e = format!("[!] Unable to create broadcast socket {}", self.address);
+                        crate::log_eprintln!("{e}");
+                        return Err(ProtocolError(format!(
+                            "[!] Unable to connect socket to {}",
+                            self.address
+                        )));
+                    }
                 }
-                Err(e) => {
-                    crate::log_eprintln!(
-                        "[!] Failed to bind UDP socket for OSCOutDevice '{}': {}",
-                        self.name, e
-                    );
-                    Err(ProtocolError::from(e))
-                }
+
+                crate::log_println!(
+                    "    Created UDP socket bound to {}",
+                    udp_socket.local_addr()?
+                );
+                self.socket = Some(udp_socket);
+                Ok(())
+            }
+            Err(e) => {
+                crate::log_eprintln!(
+                    "[!] Failed to bind UDP socket for OSCOutDevice '{}': {}",
+                    self.name,
+                    e
+                );
+                Err(ProtocolError::from(e))
             }
         }
     }
@@ -60,27 +127,9 @@ impl OSCOut {
                 .args
                 .into_iter()
                 .map(|arg| {
-                    match arg {
-                        VariableValue::Integer(i) => Ok(OscType::Int(i as i32)),
-                        VariableValue::Float(f) => Ok(OscType::Float(f as f32)),
-                        VariableValue::Decimal(d) => {
-                            let f = f64::from(d);
-                            Ok(OscType::Float(f as f32))
-                        }
-                        VariableValue::Str(s) => Ok(OscType::String(s)),
-                        VariableValue::Blob(b) => Ok(OscType::Blob(b)),
-                        VariableValue::Dur(t) => {
-                            let TimeSpan::Micros(t) = t else {
-                                return Err(rosc::OscError::Unimplemented);
-                            };
-                            Ok(OscType::Time(OscTime {
-                                seconds: (t >> 32) as u32,
-                                fractional: (t & 0xFFFFFFFF) as u32,
-                            }))
-                        },
-                        _ => Err(rosc::OscError::Unimplemented)
-                        // ... etc.
-                    }
+                    osc_from_variable(arg)
+                        .map(|x| Ok(x))
+                        .unwrap_or(Err(rosc::OscError::Unimplemented))
                 })
                 .collect();
             let rosc_args = rosc_args?; // Propagate potential conversion errors
@@ -92,7 +141,6 @@ impl OSCOut {
             let rosc_msg = OscPacket::Message(rosc_msg);
 
             let packet = if let Some(timetag) = message.timetag {
-
                 // Create an OSC bundle containing the single message with the calculated timetag
                 OscPacket::Bundle(OscBundle {
                     timetag: timetag.into(),
@@ -105,7 +153,8 @@ impl OSCOut {
             match rosc::encoder::encode(&packet) {
                 Ok(buf) => {
                     // Send the encoded buffer to the target address
-                    sock.send_to(&buf, self.address).map_err(ProtocolError::from)?; // Convert IO error
+                    sock.send_to(&buf, self.address)
+                        .map_err(ProtocolError::from)?; // Convert IO error
                     Ok(())
                 }
                 Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error
@@ -117,7 +166,6 @@ impl OSCOut {
             )))
         }
     }
-
 }
 
 impl fmt::Debug for OSCOut {

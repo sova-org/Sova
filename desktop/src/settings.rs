@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
+use sova_core::log_eprintln;
 use std::path::PathBuf;
 
 use crate::widgets::EditorSettings;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AppSettings {
     pub windows: WindowSettings,
@@ -17,8 +18,8 @@ pub struct AppSettings {
     pub visuals: VisualsSettings,
     pub doc: DocSettings,
     pub scene: SceneSettings,
+    pub tools: ToolsSettings,
     pub recent_scenes: Vec<PathBuf>,
-    pub dismissed_tips: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub enum DocTrigger {
     Hover,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DocSettings {
     pub side: DocSide,
@@ -59,33 +60,27 @@ impl Default for DocSettings {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScopeSettings {
-    pub smoothing: f32,
-    pub stroke_width: f32,
-    pub fill_alpha: f32,
-    pub glow: f32,
+    pub persistence: f32,
     pub detached: bool,
 }
 
 impl Default for ScopeSettings {
     fn default() -> Self {
         Self {
-            smoothing: 0.0,
-            stroke_width: 1.0,
-            fill_alpha: 0.35,
-            glow: 0.5,
+            persistence: 0.65,
             detached: false,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SpectrumSettings {
     pub smoothing: f32,
-    pub bar_gap: f32,
+    pub peak_decay: f32,
     pub gradient_strength: f32,
     pub detached: bool,
 }
@@ -94,14 +89,14 @@ impl Default for SpectrumSettings {
     fn default() -> Self {
         Self {
             smoothing: 0.85,
-            bar_gap: 0.0,
+            peak_decay: 0.92,
             gradient_strength: 0.3,
             detached: false,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppearanceSettings {
     pub zoom: f32,
@@ -130,24 +125,43 @@ impl Default for AppearanceSettings {
             animation_time: 0.15,
             ui_font: String::new(),
             editor_font: String::new(),
-            bg_brightness: 20,
+            bg_brightness: 0,
         }
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VisualsSettings {
     pub code: String,
     pub shared: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScopeBarMode {
+    #[default]
+    Scope,
+    Spectrogram,
+    Both,
+}
+
+impl ScopeBarMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Scope => Self::Spectrogram,
+            Self::Spectrogram => Self::Both,
+            Self::Both => Self::Scope,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
     pub scope_bar_height: f32,
+    pub scope_bar_mode: ScopeBarMode,
 }
 
 impl Default for WindowSettings {
@@ -156,32 +170,56 @@ impl Default for WindowSettings {
             chat_detached: false,
             sample_browser_detached: false,
             scope_bar_height: 64.0,
+            scope_bar_mode: ScopeBarMode::default(),
         }
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolsTab {
+    Chat,
+    SampleBrowser,
+}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ToolsSettings {
+    pub open: bool,
+    pub show_chat: bool,
+    pub show_sample_browser: bool,
+    pub active_tab: Option<ToolsTab>,
+    pub width: f32,
+}
+
+impl Default for ToolsSettings {
+    fn default() -> Self {
+        Self {
+            open: false,
+            show_chat: false,
+            show_sample_browser: false,
+            active_tab: None,
+            width: 360.0,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerSettings {
     pub ip: String,
     pub port: String,
-    pub tempo: String,
-    pub quantum: String,
 }
 
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {
-            ip: "127.0.0.1".into(),
+            ip: "0.0.0.0".into(),
             port: "8080".into(),
-            tempo: "120".into(),
-            quantum: "4".into(),
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClientSettings {
     pub ip: String,
@@ -201,7 +239,7 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioSettings {
     pub host: String,
@@ -229,11 +267,13 @@ impl Default for AudioSettings {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SceneSettings {
     pub prelude_collapsed: bool,
     pub prelude_col_width: f32,
+    pub view_mode: u8,
+    pub show_phase_bar: bool,
 }
 
 impl Default for SceneSettings {
@@ -241,6 +281,8 @@ impl Default for SceneSettings {
         Self {
             prelude_collapsed: true,
             prelude_col_width: 300.0,
+            view_mode: 0,
+            show_phase_bar: true,
         }
     }
 }
@@ -251,6 +293,6 @@ pub fn load() -> AppSettings {
 
 pub fn save(settings: &AppSettings) {
     if let Err(e) = confy::store("sova", None, settings) {
-        eprintln!("Failed to save settings: {e}");
+        log_eprintln!("Failed to save settings: {e}");
     }
 }
