@@ -11,7 +11,7 @@ use crate::{
     error::SovaError,
     log_eprintln,
     util::decimal_operations::Decimal,
-    vm::{Program, ValueGenerator},
+    vm::{Program, ValueGenerator, control_asm::ControlASM},
 };
 
 use super::{EvaluationContext, environment_func::EnvironmentFunc};
@@ -109,7 +109,10 @@ impl VariableValue {
             VariableValue::Bool(_) => Self::Bool(false),
             VariableValue::Str(_) => Self::Str("".to_owned()),
             VariableValue::Dur(_) => Self::Dur(TimeSpan::Micros(0)),
-            VariableValue::Func(_) => todo!(),
+            VariableValue::Func(_) => Self::Func(vec![
+                ControlASM::Push(Default::default()).into(),
+                ControlASM::Return.into(),
+            ]),
             VariableValue::Map(_) => Self::Map(HashMap::new()),
             VariableValue::Vec(_) => Self::Vec(Vec::new()),
             VariableValue::Blob(_) => Self::Blob(Vec::new()),

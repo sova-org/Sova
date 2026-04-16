@@ -3,7 +3,7 @@ use super::{
     variable::{Variable, VariableValue},
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, mem};
+use std::{any::Any, fmt::Debug, mem};
 
 use crate::scene::script::ReturnInfo;
 use crate::{
@@ -45,6 +45,7 @@ pub enum ControlASM {
     Min(Variable, Variable, Variable),
     Max(Variable, Variable, Variable),
     Quantize(Variable, Variable, Variable),
+    TypeEqual(Variable, Variable, Variable),
     // Bitwise operations
     BitAnd(Variable, Variable, Variable),
     BitOr(Variable, Variable, Variable),
@@ -241,6 +242,15 @@ impl ControlASM {
 
                 ctx.set_var(z, res_value);
 
+                ReturnInfo::None
+            }
+            ControlASM::TypeEqual(x, y, z) => {
+                let (Some(x_value), Some(y_value)) = (ctx.value_ref(&x), ctx.value_ref(&y)) else {
+                    ctx.set_var(z, false);
+                    return ReturnInfo::None;
+                };
+                let eq = std::mem::discriminant(x_value) == std::mem::discriminant(y_value);
+                ctx.set_var(z, eq);
                 ReturnInfo::None
             }
             // Bitwise operations (binary)
