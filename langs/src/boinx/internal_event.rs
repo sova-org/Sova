@@ -18,7 +18,9 @@ pub fn make_internal_event(ctx: &EvaluationContext, item: BoinxItem) -> Option<C
             }
         })
         .collect();
-    let cmd = map.remove("sched").unwrap().as_str(ctx);
+    let Some(cmd) = map.remove("sched").map(|v| v.as_str(ctx)) else {
+        return None;
+    };
     match cmd.as_str() {
         "exe" => {
             let l_i = map.remove("line").unwrap_or_default().as_integer(ctx) as usize;
