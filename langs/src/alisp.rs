@@ -8,6 +8,11 @@ mod parser;
 mod ast;
 mod words;
 
+const CONTEXT_REG : usize = 0;
+const LIST_LEN_REG : usize = 1;
+const FLAG_REG: usize = 2;
+const INDEX_REG: usize = 3;
+
 #[derive(Debug, Clone)]
 pub struct ALispCompiler;
 

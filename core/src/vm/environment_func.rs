@@ -7,6 +7,8 @@ pub enum EnvironmentFunc {
     RandomFloat,
     RandomDecInBounds(Box<Variable>, Box<Variable>),
     FrameLen(Box<Variable>, Box<Variable>),
+    FrameTriggers,
+    StackLen,
 }
 
 use super::{
@@ -39,6 +41,8 @@ impl EnvironmentFunc {
                 let dur = ctx.structure.get(line_i).and_then(|l| l.get(frame_i));
                 dur.cloned().unwrap_or(0.0).into()
             }
+            EnvironmentFunc::FrameTriggers => (ctx.frame_triggers as i64).into(),
+            EnvironmentFunc::StackLen => (ctx.stack.len() as i64).into()
         }
     }
 }

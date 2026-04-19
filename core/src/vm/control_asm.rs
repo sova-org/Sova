@@ -3,7 +3,7 @@ use super::{
     variable::{Variable, VariableValue},
 };
 use serde::{Deserialize, Serialize};
-use std::{any::Any, fmt::Debug, mem};
+use std::{fmt::Debug, mem};
 
 use crate::scene::script::ReturnInfo;
 use crate::{
@@ -45,7 +45,19 @@ pub enum ControlASM {
     Min(Variable, Variable, Variable),
     Max(Variable, Variable, Variable),
     Quantize(Variable, Variable, Variable),
+    // Type checking
     TypeEqual(Variable, Variable, Variable),
+    IsInt(Variable, Variable),
+    IsFloat(Variable, Variable),
+    IsBool(Variable, Variable),
+    IsDecimal(Variable, Variable),
+    IsDuration(Variable, Variable),
+    IsString(Variable, Variable),
+    IsVec(Variable, Variable),
+    IsMap(Variable, Variable),
+    IsFunction(Variable, Variable),
+    IsGenerator(Variable, Variable),
+    IsBlob(Variable, Variable),
     // Bitwise operations
     BitAnd(Variable, Variable, Variable),
     BitOr(Variable, Variable, Variable),
@@ -82,7 +94,6 @@ pub enum ControlASM {
     Pop(Variable),
     PushFront(Variable),
     PopFront(Variable),
-    StackLen(Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
@@ -253,6 +264,61 @@ impl ControlASM {
                 ctx.set_var(z, eq);
                 ReturnInfo::None
             }
+            ControlASM::IsInt(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_int()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsFloat(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_float()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsBool(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_bool()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsDecimal(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_decimal()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsDuration(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_dur()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsString(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_str()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsVec(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_vec()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsMap(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_map()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsFunction(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_func()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsGenerator(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_generator()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::IsBlob(x, z) => {
+                let res = ctx.value_ref(&x).map(|v| v.is_blob()).unwrap_or(false);
+                ctx.set_var(z, res);
+                ReturnInfo::None
+            }
             // Bitwise operations (binary)
             ControlASM::BitAnd(x, y, z)
             | ControlASM::BitOr(x, y, z)
@@ -353,11 +419,6 @@ impl ControlASM {
                 } else {
                     log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
-                ReturnInfo::None
-            }
-            ControlASM::StackLen(x) => {
-                let len = ctx.stack.len() as i64;
-                ctx.set_var(x, len);
                 ReturnInfo::None
             }
             ControlASM::Insert(cont, key, val, res) => {
@@ -772,7 +833,10 @@ impl ControlASM {
                 let f_value = ctx.evaluate(f);
                 let next_prog = match f_value {
                     VariableValue::Func(p) => p,
-                    _ => vec![Instruction::Control(ControlASM::Return)],
+                    x => vec![
+                        Instruction::Control(ControlASM::Push(x.into())),
+                        Instruction::Control(ControlASM::Return)
+                    ],
                 };
                 ReturnInfo::ProgChange(0, next_prog)
             }

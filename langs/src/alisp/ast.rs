@@ -1,7 +1,6 @@
-use sova_core::vm::{Program, control_asm::ControlASM, variable::Variable};
+use sova_core::vm::{Instruction, Program, control_asm::ControlASM, variable::Variable};
 
-pub const CONTEXT_REG : usize = 0;
-pub const LIST_LEN_REG : usize = 1;
+use crate::alisp::{FLAG_REG, LIST_LEN_REG};
 
 #[derive(Debug, Default, Clone)]
 pub enum ALispAtom {
@@ -10,7 +9,7 @@ pub enum ALispAtom {
     Int(i64),
     Float(f64),
     Str(String),
-    Call(String),
+    Word(String),
 }
 
 impl ALispAtom {
@@ -33,10 +32,17 @@ impl ALispAST {
                 alisp_atom.push(prog);
             }
             ALispAST::List(nodes) => {
+                use ControlASM::*;
                 let len = nodes.len() as i64;
                 if len == 0 {
                     todo!()
                 }
+                let instr : Vec<Instruction> = vec![
+                    IsFunction(Variable::StackBack, Variable::reg(FLAG_REG)).into(),
+                    RelJumpIfNot(Variable::reg(FLAG_REG), 2).into(),
+                    CallFunction(Variable::StackBack).into(),
+                    Return.into()
+                ];
                 prog.push(ControlASM::Mov(len.into(), Variable::reg(LIST_LEN_REG)).into());
                 for node in nodes.into_iter().rev() {
                     node.push_expr(prog);

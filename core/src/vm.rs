@@ -77,6 +77,12 @@ impl From<ControlASM> for Instruction {
     }
 }
 
+impl From<(Event, Variable)> for Instruction {
+    fn from((e, v): (Event, Variable)) -> Self {
+        Instruction::Effect(e, v)
+    }
+}
+
 impl Default for Instruction {
     fn default() -> Self {
         ControlASM::default().into()
