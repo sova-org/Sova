@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use sova_core::{compiler::{CompilationError, Compiler}, vm::{Language, Program, language::{LanguageDocumentation, LanguageSyntax}}};
+use sova_core::{compiler::{CompilationError, Compiler}, vm::{Instruction, Language, Program, control_asm::ControlASM, language::{LanguageDocumentation, LanguageSyntax}, variable::Variable}};
 
 use crate::alisp::parser::parse_alisp;
 
@@ -10,8 +10,11 @@ mod words;
 
 const CONTEXT_REG : usize = 0;
 const LIST_LEN_REG : usize = 1;
-const FLAG_REG: usize = 2;
-const INDEX_REG: usize = 3;
+const FLAG_REG : usize = 2;
+const INDEX_REG : usize = 3;
+const DICTIONARY_REG : usize = 4;
+
+const EXECUTE_ELEM_ADDR : usize = 1;
 
 #[derive(Debug, Clone)]
 pub struct ALispCompiler;
@@ -32,7 +35,16 @@ impl Language for ALispCompiler {
 
 impl Compiler for ALispCompiler {
     fn compile(&self, text: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
+        use ControlASM::*;
         let ast = parse_alisp(text)?;
+        let exec_prog : Vec<Instruction> = vec![
+            IsMap(Variable::StackBack, Variable::reg(FLAG_REG)).into(),
+            RelJumpIfNot(Variable::reg(FLAG_REG), 4).into(),
+            Contains(String::from("_sym").into(), Variable::StackBack, Variable::reg(FLAG_REG)).into(),
+            RelJumpIfNot(Variable::reg(FLAG_REG), 2).into(),
+            CallFunction(Variable::StackBack).into(),
+            Return.into()
+        ];
         todo!()
     }
 }

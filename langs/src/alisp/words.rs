@@ -3,6 +3,7 @@ use std::cell::LazyCell;
 use sova_core::vm::{Program, variable::VariableValue};
 
 pub mod generative;
+pub mod memory;
 
 pub struct Word {
     name: &'static str,

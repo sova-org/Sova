@@ -94,6 +94,7 @@ pub enum ControlASM {
     Pop(Variable),
     PushFront(Variable),
     PopFront(Variable),
+    PopList(Variable, Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
@@ -419,6 +420,16 @@ impl ControlASM {
                 } else {
                     log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
+                ReturnInfo::None
+            }
+            ControlASM::PopList(n, z) => {
+                let n = ctx.evaluate(n).as_integer(ctx) as usize;
+                let stack_len = ctx.stack.len();
+                let mut res = vec![VariableValue::default() ; n];
+                for i in 0..std::cmp::min(n, stack_len) {
+                    res[i] = ctx.stack.pop_back().unwrap();
+                }
+                ctx.set_var(z, res);
                 ReturnInfo::None
             }
             ControlASM::Insert(cont, key, val, res) => {
