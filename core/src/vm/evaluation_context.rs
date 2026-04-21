@@ -85,6 +85,30 @@ impl<'a> EvaluationContext<'a> {
         };
     }
 
+    pub fn remove_var(&mut self, var: &Variable) {
+        match var {
+            Variable::Global(n) => {
+                self.global_vars.remove(n);
+            }
+            Variable::Line(n) => {
+                self.line_vars.remove(n);
+            }
+            Variable::Frame(n) => {
+                self.frame_vars.remove(n);
+            }
+            Variable::Instance(n) => {
+                self.instance_vars.remove(n);
+            }
+            Variable::StackBack => {
+                self.stack.pop_back();
+            }
+            Variable::StackFront => {
+                self.stack.pop_front();
+            }
+            _ => (),
+        };
+    }
+
     pub fn evaluate(&mut self, var: &Variable) -> VariableValue {
         let res = match var {
             Variable::Global(n) => self.global_vars.get(n),

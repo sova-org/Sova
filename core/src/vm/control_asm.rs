@@ -89,11 +89,21 @@ pub enum ControlASM {
     /// Moves 0 into 1 while erasing 1's type
     Redefine(Variable, Variable),
     IsSet(Variable, Variable),
+    Delete(Variable),
+    Load(Variable, Variable),
+    Set(Variable, Variable),
+    FrameLoad(Variable, Variable),
+    FrameSet(Variable, Variable),
+    LineLoad(Variable, Variable),
+    LineSet(Variable, Variable),
+    GlobalLoad(Variable, Variable),
+    GlobalSet(Variable, Variable),
     // Stack operations
     Push(Variable),
     Pop(Variable),
     PushFront(Variable),
     PopFront(Variable),
+    PushList(Variable),
     PopList(Variable, Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
@@ -396,6 +406,66 @@ impl ControlASM {
                 ctx.set_var(z, exists);
                 ReturnInfo::None
             }
+            ControlASM::Delete(x) => {
+                ctx.remove_var(x);
+                ReturnInfo::None
+            }
+            ControlASM::Load(x, y) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let var = Variable::Instance(name);
+                let value = ctx.evaluate(&var);
+                ctx.set_var(y, value);
+                ReturnInfo::None
+            }
+            ControlASM::Set(x, y) => {
+                let value = ctx.evaluate(x);
+                let name = ctx.evaluate(y).as_str(ctx);
+                let var = Variable::Instance(name);
+                ctx.set_var(&var, value);
+                ReturnInfo::None
+            }
+            ControlASM::FrameLoad(x, y) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let var = Variable::Frame(name);
+                let value = ctx.evaluate(&var);
+                ctx.set_var(y, value);
+                ReturnInfo::None
+            }
+            ControlASM::FrameSet(x, y) => {
+                let value = ctx.evaluate(x);
+                let name = ctx.evaluate(y).as_str(ctx);
+                let var = Variable::Frame(name);
+                ctx.set_var(&var, value);
+                ReturnInfo::None
+            }
+            ControlASM::LineLoad(x, y) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let var = Variable::Line(name);
+                let value = ctx.evaluate(&var);
+                ctx.set_var(y, value);
+                ReturnInfo::None
+            }
+            ControlASM::LineSet(x, y) => {
+                let value = ctx.evaluate(x);
+                let name = ctx.evaluate(y).as_str(ctx);
+                let var = Variable::Line(name);
+                ctx.set_var(&var, value);
+                ReturnInfo::None
+            }
+            ControlASM::GlobalLoad(x, y) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let var = Variable::Global(name);
+                let value = ctx.evaluate(&var);
+                ctx.set_var(y, value);
+                ReturnInfo::None
+            }
+            ControlASM::GlobalSet(x, y) => {
+                let value = ctx.evaluate(x);
+                let name = ctx.evaluate(y).as_str(ctx);
+                let var = Variable::Global(name);
+                ctx.set_var(&var, value);
+                ReturnInfo::None
+            }
             ControlASM::Push(x) => {
                 let value = ctx.evaluate(x);
                 ctx.stack.push_back(value);
@@ -419,6 +489,13 @@ impl ControlASM {
                     ctx.set_var(x, value);
                 } else {
                     log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                }
+                ReturnInfo::None
+            }
+            ControlASM::PushList(x) => {
+                let l = ctx.evaluate(x).as_vec(ctx);
+                for i in l.into_iter().rev() {
+                    ctx.stack.push_back(i);
                 }
                 ReturnInfo::None
             }

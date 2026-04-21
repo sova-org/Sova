@@ -8,11 +8,12 @@ mod parser;
 mod ast;
 mod words;
 
-const CONTEXT_REG : usize = 0;
-const LIST_LEN_REG : usize = 1;
-const FLAG_REG : usize = 2;
-const INDEX_REG : usize = 3;
-const DICTIONARY_REG : usize = 4;
+const CONTEXT_REG       : usize = 0;
+const LIST_LEN_REG      : usize = 1;
+const FLAG_REG          : usize = 2;
+const INDEX_REG         : usize = 3;
+const DICTIONARY_REG    : usize = 4;
+const FN_DESC_REG       : usize = 5;
 
 const EXECUTE_ELEM_ADDR : usize = 1;
 
@@ -38,10 +39,19 @@ impl Compiler for ALispCompiler {
         use ControlASM::*;
         let ast = parse_alisp(text)?;
         let exec_prog : Vec<Instruction> = vec![
+            IsVec(Variable::StackBack, Variable::reg(FLAG_REG)).into(),
+            RelJumpIfNot(Variable::reg(FLAG_REG), 2).into(),
+            Return.into(),
+            PushList(Variable::StackBack).into(),
+            CallProcedure(EXECUTE_ELEM_ADDR).into(),
             IsMap(Variable::StackBack, Variable::reg(FLAG_REG)).into(),
             RelJumpIfNot(Variable::reg(FLAG_REG), 4).into(),
-            Contains(String::from("_sym").into(), Variable::StackBack, Variable::reg(FLAG_REG)).into(),
+            Contains(Variable::StackBack, String::from("_sym").into(), Variable::reg(FLAG_REG)).into(),
             RelJumpIfNot(Variable::reg(FLAG_REG), 2).into(),
+
+            Pop(Variable::reg(FN_DESC_REG)).into(),
+
+
             CallFunction(Variable::StackBack).into(),
             Return.into()
         ];
