@@ -90,14 +90,15 @@ pub enum ControlASM {
     Redefine(Variable, Variable),
     IsSet(Variable, Variable),
     Delete(Variable),
-    Load(Variable, Variable),
-    Set(Variable, Variable),
-    FrameLoad(Variable, Variable),
-    FrameSet(Variable, Variable),
-    LineLoad(Variable, Variable),
-    LineSet(Variable, Variable),
-    GlobalLoad(Variable, Variable),
-    GlobalSet(Variable, Variable),
+    // Dynamic memory operations: (name, scope) instead of var
+    DynMov(Variable, Variable, Variable, Variable),
+    DynRedefine(Variable, Variable, Variable, Variable), 
+    DynSrcMov(Variable, Variable, Variable),
+    DynSrcRedefine(Variable, Variable, Variable),
+    DynDstMov(Variable, Variable, Variable),
+    DynDstRedefine(Variable, Variable, Variable),
+    DynIsSet(Variable, Variable, Variable),
+    DynDelete(Variable, Variable),
     // Stack operations
     Push(Variable),
     Pop(Variable),
@@ -137,6 +138,7 @@ pub enum ControlASM {
     Return, // Only exit at the moment
     // Midi
     GetMidiCC(Variable, Variable, Variable, Variable), // device_var | _use_context_device, channel_var | _use_context_channel, ctrl_var, result_dest_var
+    Error(Vec<Variable>),
 }
 
 impl ControlASM {
@@ -410,60 +412,73 @@ impl ControlASM {
                 ctx.remove_var(x);
                 ReturnInfo::None
             }
-            ControlASM::Load(x, y) => {
-                let name = ctx.evaluate(x).as_str(ctx);
-                let var = Variable::Instance(name);
-                let value = ctx.evaluate(&var);
-                ctx.set_var(y, value);
+            ControlASM::DynMov(x1, y1, x2, y2) => {
+                let src_name = ctx.evaluate(x1).as_str(ctx);
+                let src_scope = ctx.evaluate(y1).as_integer(ctx);
+                let dst_name = ctx.evaluate(x2).as_str(ctx);
+                let dst_scope = ctx.evaluate(y2).as_integer(ctx);
+                let src = Variable::from_dyn_definition(src_name, src_scope);
+                let value = ctx.evaluate(&src);
+                let dst = Variable::from_dyn_definition(dst_name, dst_scope);
+                ctx.set_var(&dst, value);
                 ReturnInfo::None
             }
-            ControlASM::Set(x, y) => {
+            ControlASM::DynRedefine(x1, y1, x2, y2) => {
+                let src_name = ctx.evaluate(x1).as_str(ctx);
+                let src_scope = ctx.evaluate(y1).as_integer(ctx);
+                let dst_name = ctx.evaluate(x2).as_str(ctx);
+                let dst_scope = ctx.evaluate(y2).as_integer(ctx);
+                let src = Variable::from_dyn_definition(src_name, src_scope);
+                let value = ctx.evaluate(&src);
+                let dst = Variable::from_dyn_definition(dst_name, dst_scope);
+                ctx.redefine(&dst, value);
+                ReturnInfo::None
+            }
+            ControlASM::DynSrcMov(x, y, z) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let scope = ctx.evaluate(y).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
+                let value = ctx.evaluate(&var);
+                ctx.set_var(z, value);
+                ReturnInfo::None
+            }
+            ControlASM::DynSrcRedefine(x, y, z) => {
+                let name = ctx.evaluate(x).as_str(ctx);
+                let scope = ctx.evaluate(y).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
+                let value = ctx.evaluate(&var);
+                ctx.redefine(z, value);
+                ReturnInfo::None
+            }
+            ControlASM::DynDstMov(x, y, z) => {
                 let value = ctx.evaluate(x);
                 let name = ctx.evaluate(y).as_str(ctx);
-                let var = Variable::Instance(name);
+                let scope = ctx.evaluate(z).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
                 ctx.set_var(&var, value);
                 ReturnInfo::None
             }
-            ControlASM::FrameLoad(x, y) => {
-                let name = ctx.evaluate(x).as_str(ctx);
-                let var = Variable::Frame(name);
-                let value = ctx.evaluate(&var);
-                ctx.set_var(y, value);
-                ReturnInfo::None
-            }
-            ControlASM::FrameSet(x, y) => {
+            ControlASM::DynDstRedefine(x, y, z) => {
                 let value = ctx.evaluate(x);
                 let name = ctx.evaluate(y).as_str(ctx);
-                let var = Variable::Frame(name);
-                ctx.set_var(&var, value);
+                let scope = ctx.evaluate(z).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
+                ctx.redefine(&var, value);
                 ReturnInfo::None
             }
-            ControlASM::LineLoad(x, y) => {
+            ControlASM::DynIsSet(x, y, z) => {
                 let name = ctx.evaluate(x).as_str(ctx);
-                let var = Variable::Line(name);
-                let value = ctx.evaluate(&var);
-                ctx.set_var(y, value);
+                let scope = ctx.evaluate(y).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
+                let value = ctx.has_var(&var);
+                ctx.set_var(z, value);
                 ReturnInfo::None
             }
-            ControlASM::LineSet(x, y) => {
-                let value = ctx.evaluate(x);
-                let name = ctx.evaluate(y).as_str(ctx);
-                let var = Variable::Line(name);
-                ctx.set_var(&var, value);
-                ReturnInfo::None
-            }
-            ControlASM::GlobalLoad(x, y) => {
+            ControlASM::DynDelete(x, y) => {
                 let name = ctx.evaluate(x).as_str(ctx);
-                let var = Variable::Global(name);
-                let value = ctx.evaluate(&var);
-                ctx.set_var(y, value);
-                ReturnInfo::None
-            }
-            ControlASM::GlobalSet(x, y) => {
-                let value = ctx.evaluate(x);
-                let name = ctx.evaluate(y).as_str(ctx);
-                let var = Variable::Global(name);
-                ctx.set_var(&var, value);
+                let scope = ctx.evaluate(y).as_integer(ctx);
+                let var = Variable::from_dyn_definition(name, scope);
+                ctx.remove_var(&var);
                 ReturnInfo::None
             }
             ControlASM::Push(x) => {
@@ -475,7 +490,8 @@ impl ControlASM {
                 if let Some(value) = ctx.stack.pop_back() {
                     ctx.set_var(x, value);
                 } else {
-                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                    let err = SovaError::from(&*ctx).message(format!("[!] Runtime Error: Pop from empty stack into Var {:?}", x));
+                    ctx.errors.throw(err);
                 }
                 ReturnInfo::None
             }
@@ -488,7 +504,8 @@ impl ControlASM {
                 if let Some(value) = ctx.stack.pop_front() {
                     ctx.set_var(x, value);
                 } else {
-                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                    let err = SovaError::from(&*ctx).message(format!("[!] Runtime Error: Pop from empty stack into Var {:?}", x));
+                    ctx.errors.throw(err);
                 }
                 ReturnInfo::None
             }
@@ -532,11 +549,12 @@ impl ControlASM {
                         ctx.set_var(res, VariableValue::Str(s));
                     }
                     _ => {
-                        log_eprintln!(
+                        let err = SovaError::from(&*ctx).message(format!(
                             "[!] Runtime Error: Insert expected a container variable for {:?}, got {:?}",
                             cont,
                             container
-                        );
+                        ));
+                        ctx.errors.throw(err);
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
                     }
                 }
@@ -568,11 +586,12 @@ impl ControlASM {
                         ctx.set_var(res, value.unwrap_or_default());
                     }
                     _ => {
-                        log_eprintln!(
+                        let err = SovaError::from(&*ctx).message(format!(
                             "[!] Runtime Error: Index expected a container variable for {:?}, got {:?}",
                             cont,
                             container
-                        );
+                        ));
+                        ctx.errors.throw(err);
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
                     }
                 }
@@ -598,11 +617,12 @@ impl ControlASM {
                         ctx.set_var(res, value.unwrap_or_default());
                     }
                     _ => {
-                        log_eprintln!(
+                        let err = SovaError::from(&*ctx).message(format!(
                             "[!] Runtime Error: Contains expected a container variable for {:?}, got {:?}",
                             cont,
                             container
-                        );
+                        ));
+                        ctx.errors.throw(err);
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
                     }
                 }
@@ -662,11 +682,12 @@ impl ControlASM {
                         ctx.set_var(removed, value);
                     }
                     _ => {
-                        log_eprintln!(
-                            "[!] Runtime Error: Insert expected a container variable for {:?}, got {:?}",
+                        let err = SovaError::from(&*ctx).message(format!(
+                            "[!] Runtime Error: Remove expected a container variable for {:?}, got {:?}",
                             cont,
                             container
-                        );
+                        ));
+                        ctx.errors.throw(err);
                         ctx.set_var(res, VariableValue::Vec(Vec::new()));
                     }
                 }
@@ -1042,6 +1063,15 @@ impl ControlASM {
 
                 // Store the result
                 ctx.set_var(result_var, VariableValue::Integer(cc_value));
+                ReturnInfo::None
+            }
+            ControlASM::Error(vars) => {
+                let display : Vec<String> = vars.into_iter().map(|var| {
+                    ctx.evaluate(var).as_str(ctx)
+                }).collect();
+                let display = display.join("");
+                let error = SovaError::from(&*ctx).message(display);
+                ctx.errors.throw(error);
                 ReturnInfo::None
             }
         }

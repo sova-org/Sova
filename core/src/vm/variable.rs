@@ -64,6 +64,11 @@ impl From<String> for VariableValue {
         VariableValue::Str(value)
     }
 }
+impl From<&str> for VariableValue {
+    fn from(value: &str) -> Self {
+        VariableValue::Str(value.to_owned())
+    }
+}
 impl From<Decimal> for VariableValue {
     fn from(value: Decimal) -> Self {
         VariableValue::Decimal(value)
@@ -1265,6 +1270,11 @@ impl VariableValue {
     }
 }
 
+pub const SCOPE_INSTANCE    : i64 = 0;
+pub const SCOPE_FRAME       : i64 = 1;
+pub const SCOPE_LINE        : i64 = 2;
+pub const SCOPE_GLOBAL      : i64 = 3;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Variable {
     Environment(EnvironmentFunc),
@@ -1294,6 +1304,15 @@ impl Variable {
     /// Simple way to access register variables : instance variables with integer names.
     pub fn reg(n: usize) -> Self {
         Variable::Instance(n.to_string())
+    }
+
+    pub fn from_dyn_definition(name: String, scope: i64) -> Variable {
+        match scope {
+            ..=SCOPE_INSTANCE => Variable::Instance(name),
+            SCOPE_FRAME => Variable::Frame(name),
+            SCOPE_LINE => Variable::Line(name),
+            SCOPE_GLOBAL.. => Variable::Global(name),
+        }
     }
 }
 
