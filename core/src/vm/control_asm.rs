@@ -132,6 +132,9 @@ pub enum ControlASM {
     RelJumpIfEqual(Variable, Variable, i64),
     RelJumpIfLess(Variable, Variable, i64),
     RelJumpIfLessOrEqual(Variable, Variable, i64),
+    // Goto (replaced at interpretation)
+    GoTo(String),
+    Symbol(String),
     // Calls and returns
     CallFunction(Variable),
     CallProcedure(usize),
@@ -925,6 +928,18 @@ impl ControlASM {
                     _ => unreachable!(),
                 }
 
+                ReturnInfo::None
+            }
+            // Goto (Should be resolved before)
+            ControlASM::Symbol(_) => { 
+                ReturnInfo::None
+            }
+            ControlASM::GoTo(s) => { 
+                for (i, instr) in current_prog.iter().enumerate() {
+                    if let Instruction::Control(ControlASM::Symbol(sym)) = instr && s == sym {
+                        return ReturnInfo::IndexChange(i);
+                    }
+                }
                 ReturnInfo::None
             }
             // Calls and returns

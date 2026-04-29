@@ -1,5 +1,3 @@
-use std::cell::LazyCell;
-
 use crate::alisp::{EXECUTE_ELEM_ADDR, INDEX_REG, LIST_LEN_REG, words::Word};
 
 use sova_core::vm::{EnvironmentFunc::*, control_asm::ControlASM::*, variable::Variable};
@@ -25,3 +23,5 @@ pub const CHOICE : Word = Word {
         Return.into()
     ]
 };
+
+pub const GENERATIVE_WORDS : [Word ; 2] = [CHOICE, ALTERNATIVE];

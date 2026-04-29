@@ -1,9 +1,6 @@
 /// A compiler is a trait that defines any piece of software that can compile
 /// a textual representation of a program into a program.
-use crate::compiler::{CompilationState, Compiler, CompilerCollection};
-use crate::log_eprintln;
-use crate::scene::script::Script;
-use std::collections::BTreeMap;
+use crate::compiler::{Compiler, CompilerCollection};
 use std::sync::Arc;
 
 /// The transcoder is a repository of compilers. It allows to add, remove and
@@ -58,43 +55,6 @@ impl Transcoder {
 
     pub fn get_compiler(&self, lang: &str) -> Option<Arc<dyn Compiler>> {
         self.compilers.get(lang).map(Arc::clone)
-    }
-
-    /// Compile a program from a string.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the program to compile.
-    /// * `lang` - The language of the compiler to use.
-    ///
-    /// # Returns
-    ///
-    /// The compiled program, or an error if the compiler was not found or the compilation failed.
-    pub fn compile(
-        &self,
-        content: &str,
-        lang: &str,
-        args: &BTreeMap<String, String>,
-    ) -> CompilationState {
-        let Some(compiler) = self.compilers.get(lang) else {
-            return CompilationState::NotCompiled;
-        };
-        match compiler.compile(content, args) {
-            Ok(prog) => CompilationState::Compiled(prog),
-            Err(err) => CompilationState::Error(err),
-        }
-    }
-
-    pub fn compile_script(&self, script: &mut Script) -> bool {
-        if let CompilationState::Compiled(prog) =
-            self.compile(script.content(), script.lang(), &script.args)
-        {
-            script.compiled = CompilationState::Compiled(prog);
-            true
-        } else {
-            log_eprintln!("Scheduler: unable to compile script !");
-            false
-        }
     }
 
     /// Returns a list of names of the available compilers.

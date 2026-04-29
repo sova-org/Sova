@@ -1,5 +1,7 @@
 //! Defines the core language elements, instructions, and program structure.
 
+use std::collections::BTreeMap;
+
 use crate::log_println;
 use control_asm::ControlASM;
 use event::Event;
@@ -91,6 +93,24 @@ impl Default for Instruction {
 
 /// Represents a sequence of instructions forming a complete program or function body.
 pub type Program = Vec<Instruction>;
+
+pub fn resolve_gotos(mut prog: Program) -> Program {
+    let mut map = BTreeMap::new();
+    for (i, instr) in prog.iter().enumerate() {
+        if let Instruction::Control(ControlASM::Symbol(s)) = instr {
+            if !map.contains_key(s) {
+                map.insert(s.clone(), i);
+            }
+        }
+    }
+    for instr in prog.iter_mut() {
+        if let Instruction::Control(ControlASM::GoTo(s)) = instr {
+            let dst = map.get(s).copied().unwrap_or_default();
+            *instr = Instruction::Control(ControlASM::Jump(dst))
+        }
+    }
+    prog
+}
 
 pub fn debug_print(prog: &Program, about: String, begin: String) {
     let info = format!("INTERNAL {} CONTENT", about);

@@ -1,5 +1,3 @@
-use std::cell::LazyCell;
-
 use crate::alisp::{EXECUTE_ELEM_ADDR, INDEX_REG, LIST_LEN_REG, words::Word};
 
 use sova_core::vm::{EnvironmentFunc::*, control_asm::ControlASM::*, variable::Variable};
@@ -14,3 +12,5 @@ pub const LET : Word = Word {
         Return.into()
     ]
 };
+
+pub const MEMORY_WORDS : [Word ; 1] = [LET];

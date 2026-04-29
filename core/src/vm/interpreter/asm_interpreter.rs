@@ -108,7 +108,9 @@ pub struct ASMInterpreterFactory;
 impl ASMInterpreterFactory {
     pub fn make_instance(&self, script: &Script) -> Option<Box<dyn Interpreter>> {
         match &script.compiled {
-            CompilationState::Compiled(prog) => Some(Box::new(ASMInterpreter::new(prog.clone()))),
+            CompilationState::Compiled(prog) => {
+                Some(Box::new(ASMInterpreter::new(prog.clone())))
+            }
             _ => None,
         }
     }

@@ -70,7 +70,7 @@ impl LanguageCenter {
         let lang = script.lang();
         let state = if let Some(compiler) = self.transcoder.get_compiler(lang) {
             let script = script.clone();
-            match compiler.compile(script.content(), &script.args) {
+            match compiler.compile_resolve(script.content(), &script.args) {
                 Ok(prog) => CompilationState::Compiled(prog),
                 Err(err) => CompilationState::Error(err),
             }
@@ -103,7 +103,7 @@ impl LanguageCenter {
         ));
         if let Some(compiler) = self.transcoder.get_compiler(lang) {
             thread::spawn(move || {
-                let state = match compiler.compile(script.content(), &script.args) {
+                let state = match compiler.compile_resolve(script.content(), &script.args) {
                     Ok(prog) => CompilationState::Compiled(prog),
                     Err(err) => CompilationState::Error(err),
                 };
