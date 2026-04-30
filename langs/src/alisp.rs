@@ -30,9 +30,7 @@ const APPLY_CTX : LazyCell<Program> = LazyCell::new(|| {
         Delete(reg!(COMPUTE_REG)),
         Pop(reg!(COMPUTE_REG)),
 
-        PushFront(reg!(CONTEXT_REG)),
         CallProcedure(EXECUTE_ELEM_ADDR), // Execute first item
-        PopFront(reg!(CONTEXT_REG)),
 
         Insert(reg!(CONTEXT_REG), reg!(COMPUTE_REG), StackBack, reg!(CONTEXT_REG)),
 
@@ -100,7 +98,7 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
         Error(vec!["Cannot find a value for word: ".into(), reg!(FN_NAME_REG)]),
         GoTo("quit".to_string()),
         Index(reg!(DICTIONARY_REG), reg!(FN_NAME_REG), StackBack),
-        
+
         CallFunction(StackBack),
 
         Symbol("quit".to_string()),
