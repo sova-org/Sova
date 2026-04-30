@@ -107,10 +107,25 @@ pub fn resolve_gotos(mut prog: Program) -> Program {
     for instr in prog.iter_mut() {
         if let Instruction::Control(ControlASM::GoTo(s)) = instr {
             let dst = map.get(s).copied().unwrap_or_default();
-            *instr = ControlASM::Jump(dst).into();
+            *instr = ControlASM::Jump(dst + 1).into();
         }
     }
     prog
+}
+
+#[macro_export]
+macro_rules! sova_prog {
+    ( $( $x:expr ),* ) => {
+        {
+            use sova_core::vm::control_asm::ControlASM::*;
+            use Variable::*;
+            let mut prog : sova_core::vm::Program = Vec::new();
+            $(
+                prog.push($x.into());
+            )*
+            prog
+        }
+    };
 }
 
 pub fn debug_print(prog: &Program, about: String, begin: String) {
