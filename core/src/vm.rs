@@ -118,12 +118,21 @@ macro_rules! sova_prog {
     ( $( $x:expr ),* ) => {
         {
             use sova_core::vm::control_asm::ControlASM::*;
-            use Variable::*;
+            use sova_core::vm::variable::Variable::*;
             let mut prog : sova_core::vm::Program = Vec::new();
             $(
                 prog.push($x.into());
             )*
             prog
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! reg {
+    ( $r:expr ) => {
+        {
+            sova_core::vm::variable::Variable::reg($r)
         }
     };
 }
