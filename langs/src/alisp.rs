@@ -1,7 +1,7 @@
 use std::{cell::LazyCell, collections::BTreeMap};
 
 use pest::Stack;
-use sova_core::{compiler::{CompilationError, Compiler}, vm::{Instruction, Language, Program, control_asm::ControlASM, language::{LanguageDocumentation, LanguageSyntax}, variable::Variable}};
+use sova_core::{compiler::{CompilationError, Compiler}, vm::{Instruction, Language, Program, control_asm::ControlASM, language::{LanguageDocumentation, LanguageSyntax}, resolve_gotos, variable::Variable}};
 
 use crate::alisp::parser::parse_alisp;
 
@@ -108,7 +108,7 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
     ];
     let size = main.len();
     main.insert(0, Jump(1 + size).into());
-    main
+    resolve_gotos(main)
 });
 
 #[derive(Debug, Clone)]

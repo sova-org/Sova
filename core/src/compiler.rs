@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::vm::{Language, Program, resolve_gotos};
+use crate::vm::{Language, Program};
 
 mod compilation_error;
 pub use compilation_error::CompilationError;
@@ -41,15 +41,6 @@ pub trait Compiler: Language + Send + Sync + std::fmt::Debug {
         text: &str,
         args: &BTreeMap<String, String>,
     ) -> Result<Program, CompilationError>;
-
-    fn compile_resolve(
-        &self,
-        text: &str,
-        args: &BTreeMap<String, String>,
-    ) -> Result<Program, CompilationError> {
-        self.compile(text, args)
-            .map(|prog| resolve_gotos(prog))
-    }
 }
 
 /// A [`Compiler`] implementation that delegates compilation to an external executable.

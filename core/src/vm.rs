@@ -96,17 +96,18 @@ pub type Program = Vec<Instruction>;
 
 pub fn resolve_gotos(mut prog: Program) -> Program {
     let mut map = BTreeMap::new();
-    for (i, instr) in prog.iter().enumerate() {
+    for (i, instr) in prog.iter_mut().enumerate() {
         if let Instruction::Control(ControlASM::Symbol(s)) = instr {
             if !map.contains_key(s) {
                 map.insert(s.clone(), i);
             }
+            *instr = ControlASM::Nop.into();
         }
     }
     for instr in prog.iter_mut() {
         if let Instruction::Control(ControlASM::GoTo(s)) = instr {
             let dst = map.get(s).copied().unwrap_or_default();
-            *instr = Instruction::Control(ControlASM::Jump(dst))
+            *instr = ControlASM::Jump(dst).into();
         }
     }
     prog
