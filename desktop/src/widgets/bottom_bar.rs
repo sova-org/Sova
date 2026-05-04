@@ -1,6 +1,7 @@
 use crate::panels::client_panel::ClientInfo;
 use crate::icons;
 use crate::panels::server_panel::ServerInfo;
+use crate::scene_panel::ViewMode;
 use crate::theme::COLOR_OK;
 use crate::widgets::shortcut::{self, Key, Shortcut};
 use eframe::egui;
@@ -10,6 +11,7 @@ pub struct BottomBarResponse {
     pub open_palette: bool,
     pub toggle_chat: bool,
     pub toggle_sample_browser: bool,
+    pub toggle_view_mode: bool,
 }
 
 pub fn bottom_bar(
@@ -19,11 +21,13 @@ pub fn bottom_bar(
     chat_active: bool,
     sample_browser_active: bool,
     sample_browser_available: bool,
+    view_mode: ViewMode,
 ) -> BottomBarResponse {
     let mut disconnect = false;
     let mut open_palette = false;
     let mut toggle_chat = false;
     let mut toggle_sample_browser = false;
+    let mut toggle_view_mode = false;
     ui.horizontal(|ui| {
         if server.running {
             ui.colored_label(COLOR_OK, icons::rich(icons::CIRCLE_FILLED));
@@ -90,6 +94,30 @@ pub fn bottom_bar(
                 super::hint::set(ui.ctx(), t!("bottom.chat").to_string());
             }
 
+            ui.separator();
+
+            // Scene view-mode toggle: two segments, the active one highlighted.
+            // Clicking either segment selects it; clicking the already-active
+            // segment is a no-op.
+            let classic_active = view_mode == ViewMode::Classic;
+            let sequencer_active = view_mode == ViewMode::Sequencer;
+            let classic_btn =
+                ui.selectable_label(classic_active, t!("options.scene_view_mode.classic"));
+            if classic_btn.clicked() && !classic_active {
+                toggle_view_mode = true;
+            }
+            if classic_btn.hovered() {
+                super::hint::set(ui.ctx(), t!("bottom.view_mode").to_string());
+            }
+            let sequencer_btn =
+                ui.selectable_label(sequencer_active, t!("options.scene_view_mode.sequencer"));
+            if sequencer_btn.clicked() && !sequencer_active {
+                toggle_view_mode = true;
+            }
+            if sequencer_btn.hovered() {
+                super::hint::set(ui.ctx(), t!("bottom.view_mode").to_string());
+            }
+
             if let Some(hint) = super::hint::current(ui.ctx()) {
                 ui.weak(hint);
             }
@@ -100,5 +128,6 @@ pub fn bottom_bar(
         open_palette,
         toggle_chat,
         toggle_sample_browser,
+        toggle_view_mode,
     }
 }

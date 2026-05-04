@@ -290,6 +290,7 @@ impl SovaApp {
                     self.panels.tools.settings.show_chat,
                     sample_browser_available && self.panels.tools.settings.show_sample_browser,
                     sample_browser_available,
+                    self.panels.scene.view_mode,
                 )
             })
             .inner;
@@ -307,6 +308,9 @@ impl SovaApp {
             if available {
                 self.panels.tools.toggle_sample_browser();
             }
+        }
+        if bar.toggle_view_mode {
+            self.dispatch(widgets::CommandId::ToggleViewMode);
         }
 
         // Preprocess visualization data once for all panels

@@ -421,6 +421,7 @@ bottom.audio_feedback: "Retour audio"
 bottom.command_palette: "Ouvrir la palette de commandes"
 bottom.chat: "Afficher ou masquer le chat"
 bottom.sample_browser: "Afficher ou masquer l'explorateur"
+bottom.view_mode: "Basculer la vue (V)"
 
 # Command palette
 cmd.type_command: "Saisir une commande..."
@@ -478,6 +479,8 @@ cmd.zoom_out: "Zoom arrière"
 cmd.zoom_out.desc: "Diminuer l'échelle de l'interface"
 cmd.zoom_reset: "Réinitialiser le zoom"
 cmd.zoom_reset.desc: "Remettre l'échelle à 100%"
+cmd.toggle_view_mode: "Basculer la vue de la scène"
+cmd.toggle_view_mode.desc: "Alterner entre les vues Séquenceur et Classique"
 
 # Keybindings window
 kb.title: "Raccourcis clavier"

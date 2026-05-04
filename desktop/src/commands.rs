@@ -163,6 +163,13 @@ impl SovaApp {
             ZoomReset => {
                 self.prefs.appearance.zoom = 1.0;
             }
+            ToggleViewMode => {
+                use crate::scene_panel::ViewMode;
+                self.panels.scene.view_mode = match self.panels.scene.view_mode {
+                    ViewMode::Classic => ViewMode::Sequencer,
+                    ViewMode::Sequencer => ViewMode::Classic,
+                };
+            }
         }
     }
 }

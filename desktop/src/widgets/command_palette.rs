@@ -34,6 +34,7 @@ pub enum CommandId {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    ToggleViewMode,
 }
 
 pub enum PaletteAction {
@@ -254,6 +255,15 @@ fn commands() -> Vec<Command> {
             category: t!("cmd.category.view").into(),
             desc: t!("cmd.zoom_reset.desc").into(),
             shortcut: Some(Shortcut::cmd(Key::Char('0'))),
+            active: false,
+        },
+        Command {
+            id: CommandId::ToggleViewMode,
+            icon: Some(icons::SWAP),
+            label: t!("cmd.toggle_view_mode").into(),
+            category: t!("cmd.category.view").into(),
+            desc: t!("cmd.toggle_view_mode.desc").into(),
+            shortcut: Some(Shortcut::plain(Key::Char('V'))),
             active: false,
         },
     ]

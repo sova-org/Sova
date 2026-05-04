@@ -432,6 +432,7 @@ bottom.audio_feedback: "Audio feedback"
 bottom.command_palette: "Open command palette"
 bottom.chat: "Toggle chat"
 bottom.sample_browser: "Toggle sample browser"
+bottom.view_mode: "Toggle scene view (V)"
 
 # Command palette
 cmd.type_command: "Type a command..."
@@ -489,6 +490,8 @@ cmd.zoom_out: "Zoom Out"
 cmd.zoom_out.desc: "Decrease UI scale"
 cmd.zoom_reset: "Reset Zoom"
 cmd.zoom_reset.desc: "Reset UI scale to 100%"
+cmd.toggle_view_mode: "Toggle scene view"
+cmd.toggle_view_mode.desc: "Switch between Sequencer and Classic scene views"
 
 # Keybindings window
 kb.title: "Keybindings"

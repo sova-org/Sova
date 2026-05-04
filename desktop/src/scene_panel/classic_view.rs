@@ -328,6 +328,7 @@ impl super::ScenePanel {
         ui.interact(pre_rect, hdr_bg_id, egui::Sense::click());
 
         let resp = header_frame.show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.set_height(LINE_HEADER_HEIGHT - 4.0);
             ctx.opacity.override_widget_visuals(ui);
             ui.horizontal_centered(|ui| {
