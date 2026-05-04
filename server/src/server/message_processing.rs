@@ -475,7 +475,7 @@ pub async fn on_message(
                     fi,
                     ops,
                 },
-                true,
+                false,
             );
             ServerMessage::Success
         }

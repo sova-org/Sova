@@ -4,8 +4,8 @@ use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
 
 use super::prelude::{
-    HeadPlayback, frame_playback, horizontal_resize_handle, playing_frame_indices,
-    vertical_resize_handle,
+    HeadPlayback, frame_playback, horizontal_resize_handle, paint_progress_fill,
+    playing_frame_indices, vertical_resize_handle,
 };
 use super::{
     CELL_HEIGHT, ContextTarget, DRAG_HANDLE_HEIGHT, GAP, HEADER_HEIGHT, LINE_HEADER_HEIGHT,
@@ -15,10 +15,10 @@ use super::{
 pub(super) const MIN_COL_WIDTH: f32 = 120.0;
 pub(super) const MAX_COL_WIDTH: f32 = 800.0;
 const DRAG_HANDLE_WIDTH: f32 = 6.0;
-use crate::theme::{COLOR_MUTED, COLOR_OK, STROKE_EMPHASIS, username_color};
-use crate::widgets::inline_scene_view::{InlineFrameState, show_lang_picker};
-use crate::widgets::{EditorContext, PeerCursor};
 use super::SceneRenderCtx;
+use crate::theme::{COLOR_MUTED, COLOR_OK, STROKE_EMPHASIS, username_color};
+use crate::widgets::inline_scene_view::InlineFrameState;
+use crate::widgets::{EditorContext, PeerCursor};
 
 pub(crate) struct FrameCellCtx<'a> {
     pub pos: (usize, usize),
@@ -393,12 +393,16 @@ impl super::ScenePanel {
                 // Peer editing this line indicator
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let any_peer_editing =
-                        ctx.bridge.peer_cursors().iter().any(|(name, &(pli, _, _))| {
-                            pli == li
-                                && ctx.bridge
-                                    .confirmed_username()
-                                    .is_none_or(|my| my != name.as_str())
-                        });
+                        ctx.bridge
+                            .peer_cursors()
+                            .iter()
+                            .any(|(name, &(pli, _, _))| {
+                                pli == li
+                                    && ctx
+                                        .bridge
+                                        .confirmed_username()
+                                        .is_none_or(|my| my != name.as_str())
+                            });
                     if any_peer_editing {
                         ui.add(
                             egui::Label::new(
@@ -536,18 +540,7 @@ impl super::ScenePanel {
 
                 // Progress fill behind header widgets
                 if frame_ctx.is_playing && frame.enabled {
-                    let header_rect = egui::Rect::from_min_size(
-                        ui.min_rect().min,
-                        egui::vec2(ui.available_width() * frame_ctx.progress, HEADER_HEIGHT),
-                    );
-                    let blend = |a: u8, b: u8| -> u8 { ((a as u16 * 2 + b as u16) / 3) as u8 };
-                    let fill = egui::Color32::from_rgb(
-                        blend(frame_ctx.accent.r(), bg.r()),
-                        blend(frame_ctx.accent.g(), bg.g()),
-                        blend(frame_ctx.accent.b(), bg.b()),
-                    );
-                    ui.painter().rect_filled(header_rect, 0.0, fill);
-                    ui.ctx().request_repaint();
+                    paint_progress_fill(ui, frame_ctx.accent, bg, frame_ctx.progress);
                 }
 
                 // Header
@@ -586,7 +579,13 @@ impl super::ScenePanel {
                                 ui.set_min_width(150.0);
                                 let picker_target =
                                     self.frame_states.get_mut(&(li, fi)).and_then(|state| {
-                                        state.show_frame_menu(ui, li, fi, ctx.bridge, ctx.default_lang)
+                                        state.show_frame_menu(
+                                            ui,
+                                            li,
+                                            fi,
+                                            ctx.bridge,
+                                            ctx.default_lang,
+                                        )
                                     });
                                 if let Some(target) = picker_target {
                                     self.navigate_to_frame(target, ctx.bridge);
@@ -617,25 +616,11 @@ impl super::ScenePanel {
                         .is_some_and(|s| s.lang_picker_open);
 
                     if picker_is_open {
-                        if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                            if let Some(lang) = show_lang_picker(
-                                ui,
-                                &mut state.lang_picker_open,
-                                &mut state.lang_picker_filter,
-                                &mut state.lang_picker_selection,
-                                &state.lang,
-                                frame_ctx.accent,
-                                ctx.bridge,
-                            ) {
-                                state.lang = lang;
-                                state.dirty = true;
-                                state.focus_request =
-                                    crate::widgets::inline_scene_view::FocusRequest::Editor;
-                            }
-                            if !state.lang_picker_open {
-                                state.focus_request =
-                                    crate::widgets::inline_scene_view::FocusRequest::Editor;
-                            }
+                        if let Some(state) = self.frame_states.get_mut(&(li, fi))
+                            && state.show_inline_lang_picker(ui, frame_ctx.accent, ctx.bridge)
+                        {
+                            state.focus_request =
+                                crate::widgets::inline_scene_view::FocusRequest::Editor;
                         }
                     } else {
                         // Body (code editor)
@@ -647,7 +632,8 @@ impl super::ScenePanel {
                         );
                         let syntax_pair = syntax.map(|cs| (cs, ctx.theme));
 
-                        let reference = ctx.bridge
+                        let reference = ctx
+                            .bridge
                             .languages()
                             .iter()
                             .find(|l| {
@@ -658,7 +644,8 @@ impl super::ScenePanel {
                             .filter(|l| !l.documentation.reference.is_empty())
                             .map(|l| &l.documentation.reference);
 
-                        let mut cursors: Vec<PeerCursor> = ctx.bridge
+                        let mut cursors: Vec<PeerCursor> = ctx
+                            .bridge
                             .text_cursors_for_frame(li, fi)
                             .into_iter()
                             .map(|(name, line, col)| PeerCursor {
@@ -736,7 +723,9 @@ impl super::ScenePanel {
             }
 
             // Local user cursor
-            if frame_ctx.is_cursor && let Some(my_name) = ctx.bridge.confirmed_username() {
+            if frame_ctx.is_cursor
+                && let Some(my_name) = ctx.bridge.confirmed_username()
+            {
                 let color = username_color(my_name);
                 let s = egui::Stroke::new(STROKE_EMPHASIS, color);
                 ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);

@@ -12,8 +12,8 @@ use super::{
 const DRAG_HANDLE_WIDTH: f32 = 6.0;
 use crate::client_bridge::ClientBridge;
 use crate::theme::STROKE_HAIRLINE;
-use crate::widgets::inline_scene_view::{InlineScriptState, show_lang_picker};
 use crate::widgets::EditorContext;
+use crate::widgets::inline_scene_view::InlineScriptState;
 
 pub(super) type HeadPlayback = (usize, usize, f32);
 
@@ -97,6 +97,29 @@ pub(super) fn horizontal_resize_handle(
     resp
 }
 
+/// Header progress fill for a playing frame. Both grid and editor views paint
+/// the same blended bar; the rect is `progress` of the available width tall
+/// `HEADER_HEIGHT`, anchored at `ui.min_rect().min`.
+pub(super) fn paint_progress_fill(
+    ui: &egui::Ui,
+    accent: egui::Color32,
+    bg: egui::Color32,
+    progress: f32,
+) {
+    let header_rect = egui::Rect::from_min_size(
+        ui.min_rect().min,
+        egui::vec2(ui.available_width() * progress, HEADER_HEIGHT),
+    );
+    let blend = |a: u8, b: u8| -> u8 { ((a as u16 * 2 + b as u16) / 3) as u8 };
+    let fill = egui::Color32::from_rgb(
+        blend(accent.r(), bg.r()),
+        blend(accent.g(), bg.g()),
+        blend(accent.b(), bg.b()),
+    );
+    ui.painter().rect_filled(header_rect, 0.0, fill);
+    ui.ctx().request_repaint();
+}
+
 /// Draw the multiplayer compilation + mutation flash overlays for a cell.
 /// Peak alphas differ per view (stack vs sequencer), so they are passed in.
 pub(super) fn draw_feedback_flashes(
@@ -158,8 +181,12 @@ impl super::ScenePanel {
             let strip_width = 24.0;
             ui.allocate_ui(egui::vec2(strip_width, available_height), |ui| {
                 let rect = ui.available_rect_before_wrap();
-                let strip_fill =
-                    egui::Color32::from_rgba_unmultiplied(ctx.accent.r(), ctx.accent.g(), ctx.accent.b(), 96);
+                let strip_fill = egui::Color32::from_rgba_unmultiplied(
+                    ctx.accent.r(),
+                    ctx.accent.g(),
+                    ctx.accent.b(),
+                    96,
+                );
                 ui.painter().rect_filled(rect, 0.0, strip_fill);
 
                 // Click to expand
@@ -211,7 +238,8 @@ impl super::ScenePanel {
                                         )
                                         .clicked()
                                     {
-                                        let mut scripts: Vec<Script> = ctx.bridge
+                                        let mut scripts: Vec<Script> = ctx
+                                            .bridge
                                             .scene()
                                             .map(|s| s.prelude.clone())
                                             .unwrap_or_default();
@@ -267,29 +295,19 @@ impl super::ScenePanel {
 
                                     if self.prelude_states[idx].lang_picker_open {
                                         let state = &mut self.prelude_states[idx];
-                                        if let Some(lang) = show_lang_picker(
-                                            ui,
-                                            &mut state.lang_picker_open,
-                                            &mut state.lang_picker_filter,
-                                            &mut state.lang_picker_selection,
-                                            &state.lang,
-                                            ctx.accent,
-                                            ctx.bridge,
-                                        ) {
-                                            state.lang = lang;
-                                            state.dirty = true;
+                                        if state.show_inline_lang_picker(ui, ctx.accent, ctx.bridge)
+                                        {
                                             state.request_focus = true;
-                                        }
-                                        if !self.prelude_states[idx].lang_picker_open {
-                                            self.prelude_states[idx].request_focus = true;
                                         }
                                     } else {
                                         // Body (code editor)
-                                        let syntax = ctx.bridge
+                                        let syntax = ctx
+                                            .bridge
                                             .syntax_map
                                             .get(self.prelude_states[idx].lang.as_str());
                                         let syntax_pair = syntax.map(|cs| (cs, ctx.theme));
-                                        let reference = ctx.bridge
+                                        let reference = ctx
+                                            .bridge
                                             .languages()
                                             .iter()
                                             .find(|l| l.name == self.prelude_states[idx].lang)
@@ -304,8 +322,12 @@ impl super::ScenePanel {
                                             opacity: Some(ctx.opacity),
                                             sample_names: ctx.sample_names,
                                         };
-                                        self.prelude_states[idx]
-                                            .show_body(ui, idx, &editor_ctx, ctx.bridge);
+                                        self.prelude_states[idx].show_body(
+                                            ui,
+                                            idx,
+                                            &editor_ctx,
+                                            ctx.bridge,
+                                        );
                                     }
                                 });
 
@@ -331,8 +353,7 @@ impl super::ScenePanel {
 
                         // Add script button
                         ui.add_space(4.0);
-                        let add_fill =
-                            ctx.opacity.fill(ui.visuals().widgets.inactive.bg_fill, 0.5);
+                        let add_fill = ctx.opacity.fill(ui.visuals().widgets.inactive.bg_fill, 0.5);
                         if ui
                             .add(
                                 egui::Button::new(egui::RichText::new("+").strong())
@@ -341,7 +362,8 @@ impl super::ScenePanel {
                             )
                             .clicked()
                         {
-                            let mut scripts: Vec<Script> = ctx.bridge
+                            let mut scripts: Vec<Script> = ctx
+                                .bridge
                                 .scene()
                                 .map(|s| s.prelude.clone())
                                 .unwrap_or_default();

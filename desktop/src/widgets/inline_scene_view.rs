@@ -13,6 +13,34 @@ use super::{CodeEditor, EditorContext};
 use crate::client_bridge::ClientBridge;
 use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, cycled_accent};
 
+/// Toggle the language picker via Cmd/Ctrl+L when the editor has focus.
+/// Resets the picker filter and selection on each toggle.
+fn handle_lang_picker_shortcut(
+    ui: &egui::Ui,
+    editor_has_focus: bool,
+    open: &mut bool,
+    filter: &mut String,
+    selection: &mut usize,
+) {
+    if !editor_has_focus {
+        return;
+    }
+    let is_mac = ui.ctx().os().is_mac();
+    let shortcut_pressed = ui.input(|i| {
+        i.key_pressed(egui::Key::L)
+            && if is_mac {
+                i.modifiers.mac_cmd
+            } else {
+                i.modifiers.ctrl
+            }
+    });
+    if shortcut_pressed {
+        *open = !*open;
+        filter.clear();
+        *selection = 0;
+    }
+}
+
 /// Full-body language picker grid. Replaces the code editor area with a grid
 /// of clickable language tiles. Returns `Some(lang_name)` when a language is
 /// selected, `None` while browsing or on cancel.
@@ -240,6 +268,7 @@ pub struct InlineFrameState {
     pub pending_ops: Vec<TextOp>,
     pub last_op_send: Instant,
     pub has_remote_edits: bool,
+    pub editor_id: Option<egui::Id>,
     pub height: f32,
     pub collapsed: bool,
     pub focus_toggled: bool,
@@ -269,6 +298,7 @@ impl InlineFrameState {
             pending_ops: Vec::new(),
             last_op_send: Instant::now(),
             has_remote_edits: false,
+            editor_id: None,
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
             focus_toggled: false,
@@ -324,8 +354,17 @@ impl InlineFrameState {
         self.prev_content = self.content.clone();
     }
 
-    pub fn integrate_remote_op(&mut self, op: &TextOp) {
+    pub fn integrate_remote_op(&mut self, ctx: &egui::Context, op: &TextOp) {
         self.has_remote_edits = true;
+
+        for local in &mut self.pending_ops {
+            transform_local_against_remote(local, op);
+        }
+
+        if let Some(id) = self.editor_id {
+            anchor_text_edit_cursor(ctx, id, &self.content, op);
+        }
+
         match op {
             TextOp::Insert { pos, text } => {
                 let pos = (*pos).min(self.content.len());
@@ -356,7 +395,7 @@ impl InlineFrameState {
     }
 
     pub fn sync_if_remote_changed(&mut self, frame: &Frame) {
-        if self.dirty {
+        if self.dirty || !self.pending_ops.is_empty() {
             return;
         }
         let remote_content = frame.script().content();
@@ -397,6 +436,32 @@ impl InlineFrameState {
         self.last_eval = Some(Instant::now());
     }
 
+    /// Render the inline language picker. Returns `true` when the picker just
+    /// closed (via pick, escape, or click-out) so the caller can re-focus the
+    /// editor.
+    pub fn show_inline_lang_picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        accent: egui::Color32,
+        bridge: &ClientBridge,
+    ) -> bool {
+        let was_open = self.lang_picker_open;
+        if let Some(lang) = show_lang_picker(
+            ui,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+            &self.lang,
+            accent,
+            bridge,
+        ) {
+            self.lang = lang;
+            self.dirty = true;
+            return true;
+        }
+        was_open && !self.lang_picker_open
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn show_header(
         &mut self,
@@ -417,22 +482,13 @@ impl InlineFrameState {
         wv.inactive.bg_stroke = egui::Stroke::NONE;
 
         // Cmd/Ctrl+L shortcut — only for the frame whose editor has focus
-        if self.editor_has_focus {
-            let is_mac = ui.ctx().os().is_mac();
-            let shortcut_pressed = ui.input(|i| {
-                i.key_pressed(egui::Key::L)
-                    && if is_mac {
-                        i.modifiers.mac_cmd
-                    } else {
-                        i.modifiers.ctrl
-                    }
-            });
-            if shortcut_pressed {
-                self.lang_picker_open = !self.lang_picker_open;
-                self.lang_picker_filter.clear();
-                self.lang_picker_selection = 0;
-            }
-        }
+        handle_lang_picker_shortcut(
+            ui,
+            self.editor_has_focus,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+        );
 
         // Collapse toggle (chevron) — not in sequencer editor panel
         if !is_sequencer {
@@ -688,6 +744,7 @@ impl InlineFrameState {
     ) {
         let editor_id = ui.id().with("editor_body");
         let editor_id_focus = editor_id.with("editor");
+        self.editor_id = Some(editor_id_focus);
 
         // Handle focus request from Nav → Edit mode transition
         if self.focus_request == FocusRequest::Editor {
@@ -775,6 +832,99 @@ impl InlineFrameState {
     }
 }
 
+fn shift_byte_pos(pos: usize, op: &TextOp) -> usize {
+    match op {
+        TextOp::Insert {
+            pos: rp,
+            text: rtext,
+        } => {
+            if *rp <= pos {
+                pos + rtext.len()
+            } else {
+                pos
+            }
+        }
+        TextOp::Delete { pos: rp, len: rlen } => {
+            if rp.saturating_add(*rlen) <= pos {
+                pos - *rlen
+            } else if *rp >= pos {
+                pos
+            } else {
+                *rp
+            }
+        }
+    }
+}
+
+fn transform_local_against_remote(local: &mut TextOp, remote: &TextOp) {
+    match local {
+        TextOp::Insert { pos, .. } => {
+            *pos = shift_byte_pos(*pos, remote);
+        }
+        TextOp::Delete { pos, len } => {
+            let start = *pos;
+            let end = pos.saturating_add(*len);
+            let new_start = shift_byte_pos(start, remote);
+            let new_end = shift_byte_pos(end, remote);
+            *pos = new_start;
+            *len = new_end.saturating_sub(new_start);
+        }
+    }
+}
+
+fn byte_to_char(s: &str, byte_pos: usize) -> usize {
+    if byte_pos >= s.len() {
+        s.chars().count()
+    } else {
+        s[..byte_pos].chars().count()
+    }
+}
+
+fn shift_cursor_char(cursor_char: usize, op: &TextOp, content_before: &str) -> usize {
+    match op {
+        TextOp::Insert { pos, text } => {
+            let cp = byte_to_char(content_before, *pos);
+            if cp <= cursor_char {
+                cursor_char + text.chars().count()
+            } else {
+                cursor_char
+            }
+        }
+        TextOp::Delete { pos, len } => {
+            let cp = byte_to_char(content_before, *pos);
+            let end_byte = pos.saturating_add(*len).min(content_before.len());
+            let cc = if *pos < end_byte {
+                content_before[*pos..end_byte].chars().count()
+            } else {
+                0
+            };
+            if cp + cc <= cursor_char {
+                cursor_char - cc
+            } else if cp >= cursor_char {
+                cursor_char
+            } else {
+                cp
+            }
+        }
+    }
+}
+
+fn anchor_text_edit_cursor(ctx: &egui::Context, id: egui::Id, content_before: &str, op: &TextOp) {
+    use egui::text::CCursor;
+    use egui::widgets::text_edit::TextEditState;
+
+    let Some(mut state) = TextEditState::load(ctx, id) else {
+        return;
+    };
+    let Some(mut range) = state.cursor.char_range() else {
+        return;
+    };
+    range.primary = CCursor::new(shift_cursor_char(range.primary.index, op, content_before));
+    range.secondary = CCursor::new(shift_cursor_char(range.secondary.index, op, content_before));
+    state.cursor.set_char_range(Some(range));
+    state.store(ctx, id);
+}
+
 pub struct InlineScriptState {
     pub editor: CodeEditor,
     pub content: String,
@@ -824,6 +974,31 @@ impl InlineScriptState {
         Script::new(self.content.clone(), self.lang.clone())
     }
 
+    /// Render the inline language picker. Returns `true` when the picker just
+    /// closed so the caller can re-focus the editor.
+    pub fn show_inline_lang_picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        accent: egui::Color32,
+        bridge: &ClientBridge,
+    ) -> bool {
+        let was_open = self.lang_picker_open;
+        if let Some(lang) = show_lang_picker(
+            ui,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+            &self.lang,
+            accent,
+            bridge,
+        ) {
+            self.lang = lang;
+            self.dirty = true;
+            return true;
+        }
+        was_open && !self.lang_picker_open
+    }
+
     pub fn show_header(
         &mut self,
         ui: &mut egui::Ui,
@@ -837,22 +1012,13 @@ impl InlineScriptState {
         wv.inactive.bg_stroke = egui::Stroke::NONE;
 
         // Cmd/Ctrl+L shortcut — only for the script whose editor has focus
-        if self.editor_has_focus {
-            let is_mac = ui.ctx().os().is_mac();
-            let shortcut_pressed = ui.input(|i| {
-                i.key_pressed(egui::Key::L)
-                    && if is_mac {
-                        i.modifiers.mac_cmd
-                    } else {
-                        i.modifiers.ctrl
-                    }
-            });
-            if shortcut_pressed {
-                self.lang_picker_open = !self.lang_picker_open;
-                self.lang_picker_filter.clear();
-                self.lang_picker_selection = 0;
-            }
-        }
+        handle_lang_picker_shortcut(
+            ui,
+            self.editor_has_focus,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+        );
 
         // Language selector
         let lang_btn = ui.add(
@@ -1002,5 +1168,113 @@ impl InlineScriptState {
         ));
         self.dirty = false;
         self.last_eval = Some(Instant::now());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ins(pos: usize, text: &str) -> TextOp {
+        TextOp::Insert {
+            pos,
+            text: text.into(),
+        }
+    }
+    fn del(pos: usize, len: usize) -> TextOp {
+        TextOp::Delete { pos, len }
+    }
+
+    #[test]
+    fn rebase_local_insert_after_remote_insert_before() {
+        let mut local = ins(5, "a");
+        transform_local_against_remote(&mut local, &ins(0, "X"));
+        assert!(matches!(local, TextOp::Insert { pos: 6, .. }));
+    }
+
+    #[test]
+    fn rebase_local_insert_after_remote_insert_after() {
+        let mut local = ins(5, "a");
+        transform_local_against_remote(&mut local, &ins(10, "X"));
+        assert!(matches!(local, TextOp::Insert { pos: 5, .. }));
+    }
+
+    #[test]
+    fn rebase_local_insert_after_remote_delete_before() {
+        let mut local = ins(5, "a");
+        transform_local_against_remote(&mut local, &del(0, 3));
+        assert!(matches!(local, TextOp::Insert { pos: 2, .. }));
+    }
+
+    #[test]
+    fn rebase_local_insert_inside_remote_delete_clamps_to_start() {
+        let mut local = ins(4, "a");
+        transform_local_against_remote(&mut local, &del(2, 5));
+        assert!(matches!(local, TextOp::Insert { pos: 2, .. }));
+    }
+
+    #[test]
+    fn rebase_local_delete_extends_through_remote_insert_inside() {
+        // Remote inserts "X" (1 byte) at byte 3, inside the local delete [2, 6).
+        // Policy: extend the local delete to absorb the inserted byte.
+        let mut local = del(2, 4);
+        transform_local_against_remote(&mut local, &ins(3, "X"));
+        assert!(matches!(local, TextOp::Delete { pos: 2, len: 5 }));
+    }
+
+    #[test]
+    fn rebase_local_delete_disjoint_remote_delete_before() {
+        let mut local = del(10, 4);
+        transform_local_against_remote(&mut local, &del(0, 3));
+        assert!(matches!(local, TextOp::Delete { pos: 7, len: 4 }));
+    }
+
+    #[test]
+    fn rebase_local_delete_partial_overlap_with_remote_delete() {
+        // Local [5, 10) overlaps remote [3, 7). After remote applies, only
+        // bytes originally at [7, 10) remain, shifted left by 4 → [3, 6).
+        let mut local = del(5, 5);
+        transform_local_against_remote(&mut local, &del(3, 4));
+        assert!(matches!(local, TextOp::Delete { pos: 3, len: 3 }));
+    }
+
+    #[test]
+    fn cursor_shifts_right_on_remote_insert_before_caret() {
+        let content = "0123456789";
+        let new = shift_cursor_char(7, &ins(2, "abc"), content);
+        assert_eq!(new, 10);
+    }
+
+    #[test]
+    fn cursor_unchanged_on_remote_insert_after_caret() {
+        let content = "0123456789";
+        let new = shift_cursor_char(5, &ins(8, "abc"), content);
+        assert_eq!(new, 5);
+    }
+
+    #[test]
+    fn cursor_shifts_left_on_remote_delete_before_caret() {
+        let content = "0123456789";
+        let new = shift_cursor_char(8, &del(2, 3), content);
+        assert_eq!(new, 5);
+    }
+
+    #[test]
+    fn cursor_clamps_to_delete_start_when_inside_caret() {
+        let content = "0123456789";
+        let new = shift_cursor_char(7, &del(4, 5), content);
+        assert_eq!(new, 4);
+    }
+
+    #[test]
+    fn cursor_handles_multibyte_chars() {
+        // "héllo" — 'é' is 2 bytes, char 1 starts at byte 1, char 2 starts at byte 3.
+        let content = "héllo";
+        // Insert "Z" at byte 3 (between 'é' and 'l') — that is char position 2.
+        let new = shift_cursor_char(4, &ins(3, "Z"), content);
+        assert_eq!(new, 5);
+        // Caret before the insert is unaffected.
+        let new = shift_cursor_char(1, &ins(3, "Z"), content);
+        assert_eq!(new, 1);
     }
 }

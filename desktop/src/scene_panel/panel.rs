@@ -75,7 +75,7 @@ impl ScenePanel {
         for (li, fi, ops) in pending_edits {
             if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
                 for op in &ops {
-                    state.integrate_remote_op(op);
+                    state.integrate_remote_op(ui.ctx(), op);
                 }
             }
         }

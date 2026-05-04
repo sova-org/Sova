@@ -1,10 +1,10 @@
 use eframe::egui;
 use sova_core::scene::Scene;
 
-use super::prelude::{HeadPlayback, frame_playback, playing_frame_indices};
+use super::prelude::{HeadPlayback, frame_playback, paint_progress_fill, playing_frame_indices};
 use super::{HEADER_HEIGHT, SceneRenderCtx};
 use crate::theme::{COLOR_MUTED, username_color};
-use crate::widgets::inline_scene_view::{InlineFrameState, show_lang_picker};
+use crate::widgets::inline_scene_view::InlineFrameState;
 use crate::widgets::{EditorContext, PeerCursor};
 
 impl super::ScenePanel {
@@ -137,18 +137,7 @@ impl super::ScenePanel {
 
                 // Progress fill behind header
                 if is_playing && frame.enabled {
-                    let header_rect = egui::Rect::from_min_size(
-                        ui.min_rect().min,
-                        egui::vec2(ui.available_width() * progress, HEADER_HEIGHT),
-                    );
-                    let blend = |a: u8, b: u8| -> u8 { ((a as u16 * 2 + b as u16) / 3) as u8 };
-                    let fill = egui::Color32::from_rgb(
-                        blend(line_accent.r(), bg.r()),
-                        blend(line_accent.g(), bg.g()),
-                        blend(line_accent.b(), bg.b()),
-                    );
-                    ui.painter().rect_filled(header_rect, 0.0, fill);
-                    ui.ctx().request_repaint();
+                    paint_progress_fill(ui, line_accent, bg, progress);
                 }
 
                 // Header: breadcrumb + frame controls
@@ -291,25 +280,11 @@ impl super::ScenePanel {
                 }
 
                 if picker_is_open {
-                    if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                        if let Some(lang) = show_lang_picker(
-                            ui,
-                            &mut state.lang_picker_open,
-                            &mut state.lang_picker_filter,
-                            &mut state.lang_picker_selection,
-                            &state.lang,
-                            line_accent,
-                            ctx.bridge,
-                        ) {
-                            state.lang = lang;
-                            state.dirty = true;
-                            state.focus_request =
-                                crate::widgets::inline_scene_view::FocusRequest::Editor;
-                        }
-                        if !state.lang_picker_open {
-                            state.focus_request =
-                                crate::widgets::inline_scene_view::FocusRequest::Editor;
-                        }
+                    if let Some(state) = self.frame_states.get_mut(&(li, fi))
+                        && state.show_inline_lang_picker(ui, line_accent, ctx.bridge)
+                    {
+                        state.focus_request =
+                            crate::widgets::inline_scene_view::FocusRequest::Editor;
                     }
                 } else {
                     // Code editor
@@ -321,7 +296,8 @@ impl super::ScenePanel {
                     );
                     let syntax_pair = syntax.map(|cs| (cs, ctx.theme));
 
-                    let reference = ctx.bridge
+                    let reference = ctx
+                        .bridge
                         .languages()
                         .iter()
                         .find(|l| {
@@ -332,7 +308,8 @@ impl super::ScenePanel {
                         .filter(|l| !l.documentation.reference.is_empty())
                         .map(|l| &l.documentation.reference);
 
-                    let mut cursors: Vec<PeerCursor> = ctx.bridge
+                    let mut cursors: Vec<PeerCursor> = ctx
+                        .bridge
                         .text_cursors_for_frame(li, fi)
                         .into_iter()
                         .map(|(name, line, col)| PeerCursor {
@@ -383,12 +360,7 @@ impl super::ScenePanel {
             });
     }
 
-    fn show_prelude_editor(
-        &mut self,
-        ui: &mut egui::Ui,
-        idx: usize,
-        ctx: &SceneRenderCtx<'_>,
-    ) {
+    fn show_prelude_editor(&mut self, ui: &mut egui::Ui, idx: usize, ctx: &SceneRenderCtx<'_>) {
         // Validate index
         if idx >= self.prelude_states.len() {
             self.deselect_all();
@@ -428,28 +400,17 @@ impl super::ScenePanel {
                 // Language picker or code editor
                 if self.prelude_states[idx].lang_picker_open {
                     let state = &mut self.prelude_states[idx];
-                    if let Some(lang) = show_lang_picker(
-                        ui,
-                        &mut state.lang_picker_open,
-                        &mut state.lang_picker_filter,
-                        &mut state.lang_picker_selection,
-                        &state.lang,
-                        ctx.accent,
-                        ctx.bridge,
-                    ) {
-                        state.lang = lang;
-                        state.dirty = true;
+                    if state.show_inline_lang_picker(ui, ctx.accent, ctx.bridge) {
                         state.request_focus = true;
                     }
-                    if !self.prelude_states[idx].lang_picker_open {
-                        self.prelude_states[idx].request_focus = true;
-                    }
                 } else {
-                    let syntax = ctx.bridge
+                    let syntax = ctx
+                        .bridge
                         .syntax_map
                         .get(self.prelude_states[idx].lang.as_str());
                     let syntax_pair = syntax.map(|cs| (cs, ctx.theme));
-                    let reference = ctx.bridge
+                    let reference = ctx
+                        .bridge
                         .languages()
                         .iter()
                         .find(|l| l.name == self.prelude_states[idx].lang)

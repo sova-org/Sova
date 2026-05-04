@@ -348,3 +348,19 @@ pub fn grid_row(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>, sc: &Shor
     });
     ui.end_row();
 }
+
+/// Heading + striped two-column shortcut grid. The keybindings window stacks
+/// half a dozen of these; callers space them with `ui.add_space(...)` between.
+pub fn section(
+    ui: &mut egui::Ui,
+    title: impl Into<egui::RichText>,
+    id: &str,
+    rows: impl FnOnce(&mut egui::Ui),
+) {
+    ui.heading(title);
+    egui::Grid::new(id)
+        .num_columns(2)
+        .min_col_width(150.0)
+        .striped(true)
+        .show(ui, rows);
+}
