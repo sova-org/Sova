@@ -264,6 +264,10 @@ pub struct InlineFrameState {
     pub menu_open: bool,
     pub frame_text_id: Option<FrameTextId>,
     pub last_seen_doc_string: String,
+    /// Loro `Cursor` for the local user's caret — persists across frames so it
+    /// can be re-resolved into egui's `TextEditState` whenever a remote
+    /// `ScriptEdit` shifts the doc under the caret.
+    pub local_caret_cursor: Option<loro::cursor::Cursor>,
     pub last_cursor_publish: Instant,
     pub height: f32,
     pub collapsed: bool,
@@ -290,6 +294,7 @@ impl InlineFrameState {
             escape_pressed: false,
             menu_open: false,
             frame_text_id: None,
+            local_caret_cursor: None,
             last_cursor_publish: Instant::now(),
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
@@ -646,14 +651,35 @@ impl InlineFrameState {
         }
 
         // Resolve our FrameTextId from the current layout, refresh the projection
-        // from the Loro doc if remote ops have moved it ahead of last_seen_doc_string.
+        // from the Loro doc if remote ops have moved it ahead of last_seen_doc_string,
+        // and re-anchor egui's caret using the saved Loro Cursor so the local user's
+        // caret follows the character it was on through remote inserts/deletes.
         self.frame_text_id = bridge.frame_text_id_at(li, fi);
         if let Some(id) = self.frame_text_id
-            && let Some(live) = bridge.frame_doc_text(id)
-            && live != self.last_seen_doc_string
+            && let Some(doc) = bridge.frame_doc(id)
         {
-            self.content = live.clone();
-            self.last_seen_doc_string = live;
+            let live = doc.get_text(FrameTextStore::CONTENT_CONTAINER).to_string();
+            if live != self.last_seen_doc_string {
+                if let Some(cur) = &self.local_caret_cursor
+                    && let Ok(pq) = doc.get_cursor_pos(cur)
+                    && let Some(mut state) =
+                        egui::widgets::text_edit::TextEditState::load(ui.ctx(), editor_id_focus)
+                {
+                    let new_cp = pq.current.pos;
+                    let mut range = state.cursor.char_range().unwrap_or_else(|| {
+                        egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(new_cp),
+                            egui::text::CCursor::new(new_cp),
+                        )
+                    });
+                    range.primary = egui::text::CCursor::new(new_cp);
+                    range.secondary = egui::text::CCursor::new(new_cp);
+                    state.cursor.set_char_range(Some(range));
+                    state.store(ui.ctx(), editor_id_focus);
+                }
+                self.content = live.clone();
+                self.last_seen_doc_string = live;
+            }
         }
 
         egui::ScrollArea::vertical()
@@ -706,9 +732,10 @@ impl InlineFrameState {
             }
         }
 
-        // Publish caret presence as two EphemeralStore keys (~10 Hz throttle).
+        // Capture the local caret as a Loro Cursor every frame the editor has
+        // focus. The same cursor anchors egui's caret across remote ops AND is
+        // what we publish for peer presence (throttled to ~10 Hz).
         if self.editor_has_focus
-            && self.last_cursor_publish.elapsed().as_millis() >= 100
             && let Some(id) = self.frame_text_id
             && let Some(doc) = bridge.frame_doc(id)
             && let Some(state) =
@@ -716,8 +743,14 @@ impl InlineFrameState {
             && let Some(range) = state.cursor.char_range()
         {
             let text = doc.get_text(FrameTextStore::CONTENT_CONTAINER);
-            if let Some(cursor) = text.get_cursor(range.primary.index, loro::cursor::Side::Middle) {
-                let name = bridge.confirmed_username().unwrap_or("");
+            self.local_caret_cursor =
+                text.get_cursor(range.primary.index, loro::cursor::Side::Left);
+
+            if self.last_cursor_publish.elapsed().as_millis() >= 100
+                && let Some(cursor) = &self.local_caret_cursor
+                && let Some(name) = bridge.confirmed_username()
+                && !name.is_empty()
+            {
                 let frame_key = format!("peer/{}/cursor_frame", name);
                 let pos_key = format!("peer/{}/cursor_pos", name);
                 bridge

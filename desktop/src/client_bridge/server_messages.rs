@@ -22,6 +22,13 @@ impl ClientBridge {
         self.mutation_flashes
             .retain(|_, t| t.elapsed().as_secs_f32() < MUTATION_FLASH_SECS);
 
+        // Drain expired peer presence entries (cursors of disconnected peers).
+        // Once per second is plenty; the EphemeralStore's TTL is 30 s.
+        if self.last_presence_gc.elapsed().as_secs() >= 1 {
+            self.presence.remove_outdated();
+            self.last_presence_gc = std::time::Instant::now();
+        }
+
         let events: Vec<BridgeEvent> = {
             let Some(rx) = &self.event_rx else { return };
             std::iter::from_fn(|| rx.try_recv().ok()).collect()

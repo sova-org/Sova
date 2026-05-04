@@ -168,6 +168,7 @@ pub struct ClientBridge {
     pub frame_docs: HashMap<FrameTextId, (loro::LoroDoc, loro::Subscription)>,
     pub presence: loro::awareness::EphemeralStore,
     pub presence_subscription: Option<loro::Subscription>,
+    pub(super) last_presence_gc: Instant,
 
     // Scene history for undo/redo
     scene_history: VecDeque<Scene>,
@@ -277,6 +278,7 @@ impl ClientBridge {
             frame_docs: HashMap::new(),
             presence: loro::awareness::EphemeralStore::new(30_000),
             presence_subscription: None,
+            last_presence_gc: Instant::now(),
             scene_history: VecDeque::new(),
             history_index: 0,
             skip_next_history_push: false,

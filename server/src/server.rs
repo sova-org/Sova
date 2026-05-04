@@ -438,11 +438,13 @@ impl SovaCoreServer {
             }
         });
 
-        // Presence TTL cleanup — every 1 s, prune entries whose timestamp is past
-        // their TTL and rebroadcast the trimmed snapshot so peers see the eviction.
+        // Presence TTL eviction is local to each peer's EphemeralStore; the
+        // server does not broadcast a fake presence frame every second. Each
+        // desktop client calls `remove_outdated()` periodically in its poll
+        // loop, which drains stale entries (e.g. from disconnected peers)
+        // without producing wire chatter.
         let presence_token = token.child_token();
         let presence_store = self.presence.clone();
-        let presence_registry = self.client_registry.clone();
         tokio::task::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(1));
             loop {
@@ -450,12 +452,6 @@ impl SovaCoreServer {
                     _ = presence_token.cancelled() => break,
                     _ = interval.tick() => {
                         presence_store.remove_outdated();
-                        let bytes = presence_store.encode_all();
-                        broadcast_raw(
-                            &presence_registry,
-                            &ServerMessage::Presence { update: bytes },
-                            true,
-                        );
                     }
                 }
             }

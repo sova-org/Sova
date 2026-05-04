@@ -26,7 +26,10 @@ impl ClientBridge {
         let Some(doc) = self.frame_doc(target_id) else {
             return Vec::new();
         };
-        let me = self.confirmed_username();
+        // Resolve our own username up front; treat None as the empty string so
+        // a brief None state can't leak our own cursor through the filter (we
+        // never publish under "" so it can't match anyone real either).
+        let me = self.confirmed_username().unwrap_or("");
         let states = self.presence.get_all_states();
 
         let mut out = Vec::new();
@@ -40,7 +43,7 @@ impl ClientBridge {
             if suffix != "cursor_frame" {
                 continue;
             }
-            if Some(name) == me {
+            if name == me {
                 continue;
             }
             let frame_id = match value {

@@ -60,7 +60,12 @@ pub async fn on_message(
     client_name: &mut String,
     is_host: bool,
 ) -> ServerMessage {
-    println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+    if !matches!(
+        msg,
+        ClientMessage::Presence { .. } | ClientMessage::ScriptEdit { .. }
+    ) {
+        println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+    }
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
