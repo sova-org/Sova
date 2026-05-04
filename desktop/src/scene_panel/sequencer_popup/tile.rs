@@ -91,11 +91,9 @@ impl crate::scene_panel::ScenePanel {
         let editing_count = editing_peers.len();
         let mut editing_names: Vec<&str> = editing_peers.iter().map(String::as_str).collect();
         editing_names.sort_unstable();
-        let mut peer_names_on_frame: Vec<&str> = bridge
-            .peer_cursors()
-            .iter()
-            .filter_map(|(name, &(pli, pfi, _))| (pli == li && pfi == fi).then_some(name.as_str()))
-            .collect();
+        // peer_names_on_frame and editing_names overlap entirely now that the
+        // discrete editing signal is the single source of truth for "who is here".
+        let mut peer_names_on_frame: Vec<&str> = editing_names.clone();
         peer_names_on_frame.sort_unstable();
 
         let shows_inline_editor = self.show_inline_tile_editor(ui, rect, li, fi, frame, bridge);
@@ -229,15 +227,13 @@ impl crate::scene_panel::ScenePanel {
 
         crate::scene_panel::prelude::draw_feedback_flashes(ui, li, fi, rect, bridge, 80.0, 50.0);
 
-        for (name, &(pli, pfi, _)) in bridge.peer_cursors() {
-            if pli == li && pfi == fi {
-                let color = username_color(name);
-                let bottom_strip = egui::Rect::from_min_size(
-                    egui::pos2(rect.left(), rect.bottom() - 2.0),
-                    egui::vec2(rect.width(), 2.0),
-                );
-                painter.rect_filled(bottom_strip, 0.0, color);
-            }
+        for name in bridge.editing_peers_for_frame(li, fi) {
+            let color = username_color(name);
+            let bottom_strip = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), rect.bottom() - 2.0),
+                egui::vec2(rect.width(), 2.0),
+            );
+            painter.rect_filled(bottom_strip, 0.0, color);
         }
 
         let mut cursor_only: Vec<&str> = peer_names_on_frame

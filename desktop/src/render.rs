@@ -409,8 +409,6 @@ impl SovaApp {
             egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    let pending_edits: Vec<_> =
-                        self.bridge.pending_script_edits.drain(..).collect();
                     let sample_names = self.panels.sample_browser.sample_names();
                     self.panels.scene.show(
                         ui,
@@ -418,7 +416,6 @@ impl SovaApp {
                         self.prefs.appearance.visuals_enabled,
                         self.prefs.appearance.scene_opacity,
                         &self.prefs.editor,
-                        pending_edits,
                         &sample_names,
                         self.input_owner,
                     );

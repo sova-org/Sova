@@ -312,11 +312,14 @@ impl super::ScenePanel {
                         .bridge
                         .text_cursors_for_frame(li, fi)
                         .into_iter()
-                        .map(|(name, line, col)| PeerCursor {
-                            name: name.to_owned(),
-                            line,
-                            col,
-                            color: username_color(name),
+                        .map(|(name, line, col)| {
+                            let color = username_color(&name);
+                            PeerCursor {
+                                name,
+                                line,
+                                col,
+                                color,
+                            }
                         })
                         .collect();
 
@@ -348,14 +351,6 @@ impl super::ScenePanel {
                     if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
                         state.show_body(ui, li, fi, &editor_ctx, ctx.bridge);
                     }
-                }
-
-                // Flush pending CRDT ops
-                if let Some(state) = self.frame_states.get_mut(&(li, fi))
-                    && state.dirty
-                {
-                    state.compute_diff_ops();
-                    state.flush_pending_ops(li, fi, ctx.bridge);
                 }
             });
     }

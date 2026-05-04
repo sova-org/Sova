@@ -221,6 +221,9 @@ impl ClientBridge {
             micros: 0,
             quantum: self.clock.quantum,
             devices: self.devices.clone(),
+            frame_text_layout: Vec::new(),
+            frame_doc_snapshots: Vec::new(),
+            presence: Vec::new(),
         })
     }
 }

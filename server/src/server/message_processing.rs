@@ -13,6 +13,57 @@ use crate::{
 };
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
+    // Shallow-snapshot any frame doc whose canonical text was just committed via
+    // SetFrames. This bounds Loro doc memory across long sessions; the live text
+    // for every committed frame is now archived as the new doc snapshot baseline.
+    if let SchedulerMessage::SetFrames(frames, _) = &msg {
+        for (li, fi, _) in frames {
+            if let Some(id) = state.frame_text.lookup(*li, *fi) {
+                let doc_opt = state.frame_text.docs.read().unwrap().get(&id).cloned();
+                if let Some(doc) = doc_opt {
+                    let frontiers = doc.oplog_frontiers();
+                    if let Ok(blob) = doc.export(loro::ExportMode::shallow_snapshot(&frontiers))
+                        && let Ok(new_doc) = loro::LoroDoc::from_snapshot(&blob)
+                    {
+                        let _ = new_doc.set_peer_id(crate::FrameTextStore::SERVER_PEER_ID);
+                        state.frame_text.docs.write().unwrap().insert(id, new_doc);
+                    }
+                }
+            }
+        }
+        // Re-broadcast the post-checkpoint snapshots so clients reset their
+        // local docs to the freshly-pruned baseline.
+        let mapping: Vec<((usize, usize), crate::FrameTextId)> = state
+            .frame_text
+            .layout
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect();
+        let new_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
+            .frame_text
+            .docs
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(id, doc)| {
+                (
+                    *id,
+                    doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
+                )
+            })
+            .collect();
+        broadcast_raw(
+            &state.client_registry,
+            &ServerMessage::FrameTextLayout {
+                mapping,
+                new_doc_snapshots,
+            },
+            false,
+        );
+    }
+
     let iface = state.sched_iface.read().unwrap();
     if iface.send(msg.clone()).is_err() {
         return ServerMessage::InternalError("Scheduler communication error.".into());
@@ -84,6 +135,28 @@ pub async fn on_message(
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
             let devices = state.devices.create_device_snapshot();
+            let frame_text_layout: Vec<((usize, usize), crate::FrameTextId)> = state
+                .frame_text
+                .layout
+                .read()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect();
+            let frame_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
+                .frame_text
+                .docs
+                .read()
+                .unwrap()
+                .iter()
+                .map(|(id, doc)| {
+                    (
+                        *id,
+                        doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
+                    )
+                })
+                .collect();
+            let presence_bytes = state.presence.encode_all();
             let snapshot = Snapshot {
                 scene,
                 tempo: clock.tempo(),
@@ -91,6 +164,9 @@ pub async fn on_message(
                 micros: clock.micros(),
                 quantum: clock.quantum(),
                 devices,
+                frame_text_layout,
+                frame_doc_snapshots,
+                presence: presence_bytes,
             };
             ServerMessage::Snapshot(snapshot)
         }
@@ -108,16 +184,14 @@ pub async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::CursorPosition(line_idx, frame_idx, text_cursor) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(),
-                ServerMessage::PeerCursorMoved(
-                    client_name.clone(),
-                    line_idx,
-                    frame_idx,
-                    text_cursor,
-                ),
-            ));
+        ClientMessage::Presence { update } => {
+            // Apply locally first, then broadcast (droppable).
+            let _ = state.presence.apply(&update);
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::Presence { update },
+                true,
+            );
             ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
@@ -466,14 +540,32 @@ pub async fn on_message(
             state.devices.panic_all_midi_outputs();
             ServerMessage::Success
         }
-        ClientMessage::ScriptEdit { li, fi, ops } => {
+        ClientMessage::ScriptEdit {
+            frame_text_id,
+            update,
+        } => {
+            let doc_opt = state
+                .frame_text
+                .docs
+                .read()
+                .unwrap()
+                .get(&frame_text_id)
+                .cloned();
+            let Some(doc) = doc_opt else {
+                return ServerMessage::InternalError(format!(
+                    "Unknown frame_text_id {:?}",
+                    frame_text_id
+                ));
+            };
+            if let Err(e) = doc.import(&update) {
+                return ServerMessage::InternalError(format!("CRDT import failed: {e}"));
+            }
             broadcast_raw(
                 &state.client_registry,
                 &ServerMessage::ScriptEdit {
                     sender: client_name.clone(),
-                    li,
-                    fi,
-                    ops,
+                    frame_text_id,
+                    update,
                 },
                 false,
             );

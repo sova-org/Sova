@@ -21,7 +21,6 @@ impl ScenePanel {
         visuals_enabled: bool,
         scene_opacity: f32,
         editor_settings: &EditorSettings,
-        pending_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
         sample_names: &[String],
         input_owner: InputOwner,
     ) {
@@ -71,14 +70,6 @@ impl ScenePanel {
         self.sync_sequencer_inline_edit(scene);
         self.sync_sequencer_line_speed_focus(scene);
         self.sync_prelude_states(&scene.prelude);
-
-        for (li, fi, ops) in pending_edits {
-            if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                for op in &ops {
-                    state.integrate_remote_op(ui.ctx(), op);
-                }
-            }
-        }
 
         let theme = crate::widgets::syntax_highlight::SyntaxTheme::from_pref(
             editor_settings.syntax_theme,

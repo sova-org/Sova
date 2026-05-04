@@ -37,6 +37,7 @@ font-kit = "0.14.3"
 ab_glyph = "0.2"
 egui-phosphor = { version = "0.11", default-features = false, features = ["fill"] }
 tokio-util = "0.7.18"
+loro = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1"

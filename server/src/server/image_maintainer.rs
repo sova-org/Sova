@@ -15,7 +15,7 @@ use sova_core::{
 
 use crate::{
     ClientRegistry, ServerMessage,
-    server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
+    server::{FrameTextStore, POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
 };
 
 fn notification_to_server_message(
@@ -44,6 +44,7 @@ pub fn start_image_maintainer(
     client_registry: ClientRegistry,
     is_playing: Arc<AtomicBool>,
     mut clock: Clock,
+    frame_text: Arc<FrameTextStore>,
 ) {
     thread::spawn(move || {
         let position_broadcast_interval =
@@ -98,6 +99,52 @@ pub fn start_image_maintainer(
                         }
                         _ => (),
                     };
+
+                    // Keep FrameTextStore layout in sync with structural changes.
+                    // Note: UpdatedFrames is intentionally excluded here. The Loro
+                    // doc is the authority on in-progress text; resetting on every
+                    // UpdatedFrames (which fires on evaluate) would clobber typing.
+                    let layout_changed = matches!(
+                        &p,
+                        SovaNotification::UpdatedScene(_)
+                            | SovaNotification::UpdatedScenePrelude(_)
+                            | SovaNotification::UpdatedLines(_)
+                            | SovaNotification::AddedLine(_, _)
+                            | SovaNotification::RemovedLine(_)
+                            | SovaNotification::AddedFrame(_, _, _)
+                            | SovaNotification::RemovedFrame(_, _)
+                    );
+                    if layout_changed {
+                        frame_text.rebuild_from_scene(&guard);
+                        let mapping: Vec<((usize, usize), crate::FrameTextId)> = frame_text
+                            .layout
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .map(|(k, v)| (*k, *v))
+                            .collect();
+                        let new_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = frame_text
+                            .docs
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .map(|(id, doc)| {
+                                (
+                                    *id,
+                                    doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
+                                )
+                            })
+                            .collect();
+                        broadcast_raw(
+                            &client_registry,
+                            &ServerMessage::FrameTextLayout {
+                                mapping,
+                                new_doc_snapshots,
+                            },
+                            false,
+                        );
+                    }
+
                     drop(guard);
 
                     let should_broadcast = match &p {

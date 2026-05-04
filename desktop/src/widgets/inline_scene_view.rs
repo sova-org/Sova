@@ -7,7 +7,7 @@ use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
-use sova_server::{ClientMessage, TextOp};
+use sova_server::{ClientMessage, FrameTextId, FrameTextStore};
 
 use super::{CodeEditor, EditorContext};
 use crate::client_bridge::ClientBridge;
@@ -257,17 +257,14 @@ pub struct InlineFrameState {
     pub lang_picker_selection: usize,
     pub last_eval: Option<Instant>,
     pub last_cursor: Option<(usize, usize)>,
-    pub sent_cursor: Option<(usize, usize)>,
-    pub last_cursor_send: Instant,
 
     pub editor_has_focus: bool,
     pub focus_request: FocusRequest,
     pub escape_pressed: bool,
     pub menu_open: bool,
-    pub prev_content: String,
-    pub pending_ops: Vec<TextOp>,
-    pub last_op_send: Instant,
-    pub has_remote_edits: bool,
+    pub frame_text_id: Option<FrameTextId>,
+    pub last_seen_doc_string: String,
+    pub last_cursor_publish: Instant,
     pub editor_id: Option<egui::Id>,
     pub height: f32,
     pub collapsed: bool,
@@ -278,8 +275,8 @@ impl InlineFrameState {
     pub fn new(frame: &Frame) -> Self {
         let content = frame.script().content().to_owned();
         Self {
-            prev_content: content.clone(),
             editor: CodeEditor::new(),
+            last_seen_doc_string: content.clone(),
             content,
             lang: frame.script().lang().to_owned(),
             dirty: false,
@@ -288,16 +285,13 @@ impl InlineFrameState {
             lang_picker_selection: 0,
             last_eval: None,
             last_cursor: None,
-            sent_cursor: None,
-            last_cursor_send: Instant::now(),
 
             editor_has_focus: false,
             focus_request: FocusRequest::None,
             escape_pressed: false,
             menu_open: false,
-            pending_ops: Vec::new(),
-            last_op_send: Instant::now(),
-            has_remote_edits: false,
+            frame_text_id: None,
+            last_cursor_publish: Instant::now(),
             editor_id: None,
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
@@ -305,129 +299,31 @@ impl InlineFrameState {
         }
     }
 
-    pub fn compute_diff_ops(&mut self) {
-        if self.content == self.prev_content {
-            return;
-        }
-        let old: Vec<char> = self.prev_content.chars().collect();
-        let new: Vec<char> = self.content.chars().collect();
-
-        let prefix = old
-            .iter()
-            .zip(new.iter())
-            .take_while(|(a, b)| a == b)
-            .count();
-        let old_rem = old.len() - prefix;
-        let new_rem = new.len() - prefix;
-        let suffix = old[prefix..]
-            .iter()
-            .rev()
-            .zip(new[prefix..].iter().rev())
-            .take_while(|(a, b)| a == b)
-            .count()
-            .min(old_rem)
-            .min(new_rem);
-
-        let del_len = old.len() - prefix - suffix;
-        let ins_len = new.len() - prefix - suffix;
-
-        let byte_prefix: usize = old.iter().take(prefix).map(|c| c.len_utf8()).sum();
-
-        if del_len > 0 {
-            let byte_del: usize = old[prefix..prefix + del_len]
-                .iter()
-                .map(|c| c.len_utf8())
-                .sum();
-            self.pending_ops.push(TextOp::Delete {
-                pos: byte_prefix,
-                len: byte_del,
-            });
-        }
-        if ins_len > 0 {
-            let ins_text: String = new[prefix..prefix + ins_len].iter().collect();
-            self.pending_ops.push(TextOp::Insert {
-                pos: byte_prefix,
-                text: ins_text,
-            });
-        }
-
-        self.prev_content = self.content.clone();
-    }
-
-    pub fn integrate_remote_op(&mut self, ctx: &egui::Context, op: &TextOp) {
-        self.has_remote_edits = true;
-
-        for local in &mut self.pending_ops {
-            transform_local_against_remote(local, op);
-        }
-
-        if let Some(id) = self.editor_id {
-            anchor_text_edit_cursor(ctx, id, &self.content, op);
-        }
-
-        match op {
-            TextOp::Insert { pos, text } => {
-                let pos = (*pos).min(self.content.len());
-                self.content.insert_str(pos, text);
-                self.prev_content = self.content.clone();
-            }
-            TextOp::Delete { pos, len } => {
-                let pos = (*pos).min(self.content.len());
-                let end = (pos + len).min(self.content.len());
-                if pos < end {
-                    self.content.drain(pos..end);
-                    self.prev_content = self.content.clone();
-                }
-            }
-        }
-    }
-
-    pub fn flush_pending_ops(&mut self, li: usize, fi: usize, bridge: &ClientBridge) {
-        if self.pending_ops.is_empty() {
-            return;
-        }
-        if self.last_op_send.elapsed().as_millis() < 30 {
-            return;
-        }
-        let ops = std::mem::take(&mut self.pending_ops);
-        bridge.send(ClientMessage::ScriptEdit { li, fi, ops });
-        self.last_op_send = Instant::now();
-    }
-
     pub fn sync_if_remote_changed(&mut self, frame: &Frame) {
-        if self.dirty || !self.pending_ops.is_empty() {
-            return;
-        }
-        let remote_content = frame.script().content();
-        let remote_lang = frame.script().lang();
-        if self.has_remote_edits {
-            if remote_content == self.content {
-                self.has_remote_edits = false;
-                self.lang = remote_lang.to_owned();
-                self.prev_content = self.content.clone();
-            }
-            return;
-        }
-        if remote_content != self.content || remote_lang != self.lang {
-            self.content = remote_content.to_owned();
-            self.lang = remote_lang.to_owned();
-            self.prev_content = self.content.clone();
-            self.pending_ops.clear();
+        // Lang is server-authoritative and changes only via SetFrames; sync it
+        // from the canonical Frame whenever the user is not editing.
+        if frame.script().lang() != self.lang {
+            self.lang = frame.script().lang().to_owned();
         }
     }
 
     pub fn sync_from_frame(&mut self, frame: &Frame) {
+        // Discard local edits and reset the projection to the canonical content.
         self.content = frame.script().content().to_owned();
         self.lang = frame.script().lang().to_owned();
         self.dirty = false;
-        self.prev_content = self.content.clone();
-        self.pending_ops.clear();
-        self.has_remote_edits = false;
+        self.last_seen_doc_string = self.content.clone();
     }
 
     pub fn evaluate(&mut self, li: usize, fi: usize, frame: &Frame, bridge: &ClientBridge) {
+        // Always evaluate the live Loro doc text (in case other peers added
+        // characters that haven't been mirrored to self.content yet this frame).
+        let live = self
+            .frame_text_id
+            .and_then(|id| bridge.frame_doc_text(id))
+            .unwrap_or_else(|| self.content.clone());
         let mut f = frame.clone();
-        f.set_script(Script::new(self.content.clone(), self.lang.clone()));
+        f.set_script(Script::new(live, self.lang.clone()));
         bridge.send(SchedulerMessage::SetFrames(
             vec![(li, fi, f)],
             ActionTiming::Immediate,
@@ -752,6 +648,17 @@ impl InlineFrameState {
             ui.memory_mut(|m| m.request_focus(editor_id_focus));
         }
 
+        // Resolve our FrameTextId from the current layout, refresh the projection
+        // from the Loro doc if remote ops have moved it ahead of last_seen_doc_string.
+        self.frame_text_id = bridge.frame_text_id_at(li, fi);
+        if let Some(id) = self.frame_text_id
+            && let Some(live) = bridge.frame_doc_text(id)
+            && live != self.last_seen_doc_string
+        {
+            self.content = live.clone();
+            self.last_seen_doc_string = live;
+        }
+
         egui::ScrollArea::vertical()
             .id_salt(("editor_scroll", li, fi))
             .auto_shrink(false)
@@ -759,13 +666,17 @@ impl InlineFrameState {
                 let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
-                    self.compute_diff_ops();
+                    if let Some(id) = self.frame_text_id
+                        && let Some(doc) = bridge.frame_doc(id)
+                    {
+                        let text = doc.get_text(FrameTextStore::CONTENT_CONTAINER);
+                        apply_local_diff_to_loro(&text, &self.last_seen_doc_string, &self.content);
+                        doc.commit();
+                        self.last_seen_doc_string = self.content.clone();
+                    }
                 }
                 self.last_cursor = output.cursor_line.zip(output.cursor_col);
             });
-
-        // Flush pending CRDT operations (throttled)
-        self.flush_pending_ops(li, fi, bridge);
 
         // Track focus and handle edit mode shortcuts
         self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));
@@ -798,14 +709,29 @@ impl InlineFrameState {
             }
         }
 
-        // Send text cursor position to peers (throttled)
-        if let Some(pos) = self.last_cursor
-            && self.sent_cursor != Some(pos)
-            && self.last_cursor_send.elapsed().as_millis() >= 50
+        // Publish caret presence as two EphemeralStore keys (~10 Hz throttle).
+        if self.editor_has_focus
+            && self.last_cursor_publish.elapsed().as_millis() >= 100
+            && let Some(id) = self.frame_text_id
+            && let Some(doc) = bridge.frame_doc(id)
+            && let Some(state) =
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), editor_id_focus)
+            && let Some(range) = state.cursor.char_range()
         {
-            self.sent_cursor = Some(pos);
-            self.last_cursor_send = Instant::now();
-            bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
+            let text = doc.get_text(FrameTextStore::CONTENT_CONTAINER);
+            if let Some(cursor) = text.get_cursor(range.primary.index, loro::cursor::Side::Middle) {
+                let name = bridge.confirmed_username().unwrap_or("");
+                let frame_key = format!("peer/{}/cursor_frame", name);
+                let pos_key = format!("peer/{}/cursor_pos", name);
+                bridge
+                    .presence
+                    .set(&frame_key, loro::LoroValue::I64(id.0 as i64));
+                bridge.presence.set(
+                    &pos_key,
+                    loro::LoroValue::Binary(cursor.encode().into()),
+                );
+                self.last_cursor_publish = Instant::now();
+            }
         }
 
         // Eval flash
@@ -830,99 +756,6 @@ impl InlineFrameState {
             }
         }
     }
-}
-
-fn shift_byte_pos(pos: usize, op: &TextOp) -> usize {
-    match op {
-        TextOp::Insert {
-            pos: rp,
-            text: rtext,
-        } => {
-            if *rp <= pos {
-                pos + rtext.len()
-            } else {
-                pos
-            }
-        }
-        TextOp::Delete { pos: rp, len: rlen } => {
-            if rp.saturating_add(*rlen) <= pos {
-                pos - *rlen
-            } else if *rp >= pos {
-                pos
-            } else {
-                *rp
-            }
-        }
-    }
-}
-
-fn transform_local_against_remote(local: &mut TextOp, remote: &TextOp) {
-    match local {
-        TextOp::Insert { pos, .. } => {
-            *pos = shift_byte_pos(*pos, remote);
-        }
-        TextOp::Delete { pos, len } => {
-            let start = *pos;
-            let end = pos.saturating_add(*len);
-            let new_start = shift_byte_pos(start, remote);
-            let new_end = shift_byte_pos(end, remote);
-            *pos = new_start;
-            *len = new_end.saturating_sub(new_start);
-        }
-    }
-}
-
-fn byte_to_char(s: &str, byte_pos: usize) -> usize {
-    if byte_pos >= s.len() {
-        s.chars().count()
-    } else {
-        s[..byte_pos].chars().count()
-    }
-}
-
-fn shift_cursor_char(cursor_char: usize, op: &TextOp, content_before: &str) -> usize {
-    match op {
-        TextOp::Insert { pos, text } => {
-            let cp = byte_to_char(content_before, *pos);
-            if cp <= cursor_char {
-                cursor_char + text.chars().count()
-            } else {
-                cursor_char
-            }
-        }
-        TextOp::Delete { pos, len } => {
-            let cp = byte_to_char(content_before, *pos);
-            let end_byte = pos.saturating_add(*len).min(content_before.len());
-            let cc = if *pos < end_byte {
-                content_before[*pos..end_byte].chars().count()
-            } else {
-                0
-            };
-            if cp + cc <= cursor_char {
-                cursor_char - cc
-            } else if cp >= cursor_char {
-                cursor_char
-            } else {
-                cp
-            }
-        }
-    }
-}
-
-fn anchor_text_edit_cursor(ctx: &egui::Context, id: egui::Id, content_before: &str, op: &TextOp) {
-    use egui::text::CCursor;
-    use egui::widgets::text_edit::TextEditState;
-
-    let Some(mut state) = TextEditState::load(ctx, id) else {
-        return;
-    };
-    let Some(mut range) = state.cursor.char_range() else {
-        return;
-    };
-    range.primary = CCursor::new(shift_cursor_char(range.primary.index, op, content_before));
-    range.secondary = CCursor::new(shift_cursor_char(range.secondary.index, op, content_before));
-    state.cursor.set_char_range(Some(range));
-    state.store(ctx, id);
 }
 
 pub struct InlineScriptState {
@@ -1171,110 +1004,95 @@ impl InlineScriptState {
     }
 }
 
+
+fn apply_local_diff_to_loro(text: &loro::LoroText, prev: &str, new: &str) {
+    if prev == new {
+        return;
+    }
+    let old_chars: Vec<char> = prev.chars().collect();
+    let new_chars: Vec<char> = new.chars().collect();
+    let prefix = old_chars
+        .iter()
+        .zip(new_chars.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let old_rem = old_chars.len() - prefix;
+    let new_rem = new_chars.len() - prefix;
+    let suffix = old_chars[prefix..]
+        .iter()
+        .rev()
+        .zip(new_chars[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count()
+        .min(old_rem)
+        .min(new_rem);
+    let del_codepoints = old_chars.len() - prefix - suffix;
+    let ins_text: String = new_chars[prefix..new_chars.len() - suffix].iter().collect();
+    if del_codepoints > 0 {
+        let _ = text.delete(prefix, del_codepoints);
+    }
+    if !ins_text.is_empty() {
+        let _ = text.insert(prefix, &ins_text);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use loro::LoroDoc;
 
-    fn ins(pos: usize, text: &str) -> TextOp {
-        TextOp::Insert {
-            pos,
-            text: text.into(),
-        }
-    }
-    fn del(pos: usize, len: usize) -> TextOp {
-        TextOp::Delete { pos, len }
+    #[test]
+    fn local_diff_round_trip_through_loro() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "abc").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "abc", "aXbc");
+        doc.commit();
+        assert_eq!(text.to_string(), "aXbc");
     }
 
     #[test]
-    fn rebase_local_insert_after_remote_insert_before() {
-        let mut local = ins(5, "a");
-        transform_local_against_remote(&mut local, &ins(0, "X"));
-        assert!(matches!(local, TextOp::Insert { pos: 6, .. }));
+    fn local_diff_handles_multibyte() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "héllo").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "héllo", "hZéllo");
+        doc.commit();
+        assert_eq!(text.to_string(), "hZéllo");
     }
 
     #[test]
-    fn rebase_local_insert_after_remote_insert_after() {
-        let mut local = ins(5, "a");
-        transform_local_against_remote(&mut local, &ins(10, "X"));
-        assert!(matches!(local, TextOp::Insert { pos: 5, .. }));
+    fn local_diff_pure_delete() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "hello world").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "hello world", "hello");
+        doc.commit();
+        assert_eq!(text.to_string(), "hello");
     }
 
     #[test]
-    fn rebase_local_insert_after_remote_delete_before() {
-        let mut local = ins(5, "a");
-        transform_local_against_remote(&mut local, &del(0, 3));
-        assert!(matches!(local, TextOp::Insert { pos: 2, .. }));
-    }
+    fn two_docs_converge_via_export_import() {
+        let a = LoroDoc::new();
+        a.set_peer_id(1).unwrap();
+        let b = LoroDoc::new();
+        b.set_peer_id(2).unwrap();
+        a.get_text("content").insert(0, "Hello").unwrap();
+        a.commit();
+        b.get_text("content").insert(0, "World").unwrap();
+        b.commit();
 
-    #[test]
-    fn rebase_local_insert_inside_remote_delete_clamps_to_start() {
-        let mut local = ins(4, "a");
-        transform_local_against_remote(&mut local, &del(2, 5));
-        assert!(matches!(local, TextOp::Insert { pos: 2, .. }));
-    }
+        let a_to_b = a.export(loro::ExportMode::all_updates()).unwrap();
+        let b_to_a = b.export(loro::ExportMode::all_updates()).unwrap();
+        a.import(&b_to_a).unwrap();
+        b.import(&a_to_b).unwrap();
 
-    #[test]
-    fn rebase_local_delete_extends_through_remote_insert_inside() {
-        // Remote inserts "X" (1 byte) at byte 3, inside the local delete [2, 6).
-        // Policy: extend the local delete to absorb the inserted byte.
-        let mut local = del(2, 4);
-        transform_local_against_remote(&mut local, &ins(3, "X"));
-        assert!(matches!(local, TextOp::Delete { pos: 2, len: 5 }));
-    }
-
-    #[test]
-    fn rebase_local_delete_disjoint_remote_delete_before() {
-        let mut local = del(10, 4);
-        transform_local_against_remote(&mut local, &del(0, 3));
-        assert!(matches!(local, TextOp::Delete { pos: 7, len: 4 }));
-    }
-
-    #[test]
-    fn rebase_local_delete_partial_overlap_with_remote_delete() {
-        // Local [5, 10) overlaps remote [3, 7). After remote applies, only
-        // bytes originally at [7, 10) remain, shifted left by 4 → [3, 6).
-        let mut local = del(5, 5);
-        transform_local_against_remote(&mut local, &del(3, 4));
-        assert!(matches!(local, TextOp::Delete { pos: 3, len: 3 }));
-    }
-
-    #[test]
-    fn cursor_shifts_right_on_remote_insert_before_caret() {
-        let content = "0123456789";
-        let new = shift_cursor_char(7, &ins(2, "abc"), content);
-        assert_eq!(new, 10);
-    }
-
-    #[test]
-    fn cursor_unchanged_on_remote_insert_after_caret() {
-        let content = "0123456789";
-        let new = shift_cursor_char(5, &ins(8, "abc"), content);
-        assert_eq!(new, 5);
-    }
-
-    #[test]
-    fn cursor_shifts_left_on_remote_delete_before_caret() {
-        let content = "0123456789";
-        let new = shift_cursor_char(8, &del(2, 3), content);
-        assert_eq!(new, 5);
-    }
-
-    #[test]
-    fn cursor_clamps_to_delete_start_when_inside_caret() {
-        let content = "0123456789";
-        let new = shift_cursor_char(7, &del(4, 5), content);
-        assert_eq!(new, 4);
-    }
-
-    #[test]
-    fn cursor_handles_multibyte_chars() {
-        // "héllo" — 'é' is 2 bytes, char 1 starts at byte 1, char 2 starts at byte 3.
-        let content = "héllo";
-        // Insert "Z" at byte 3 (between 'é' and 'l') — that is char position 2.
-        let new = shift_cursor_char(4, &ins(3, "Z"), content);
-        assert_eq!(new, 5);
-        // Caret before the insert is unaffected.
-        let new = shift_cursor_char(1, &ins(3, "Z"), content);
-        assert_eq!(new, 1);
+        assert_eq!(
+            a.get_text("content").to_string(),
+            b.get_text("content").to_string()
+        );
     }
 }

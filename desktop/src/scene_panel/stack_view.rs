@@ -392,17 +392,12 @@ impl super::ScenePanel {
 
                 // Peer editing this line indicator
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let any_peer_editing =
-                        ctx.bridge
-                            .peer_cursors()
-                            .iter()
-                            .any(|(name, &(pli, _, _))| {
-                                pli == li
-                                    && ctx
-                                        .bridge
-                                        .confirmed_username()
-                                        .is_none_or(|my| my != name.as_str())
-                            });
+                    let any_peer_editing = (0..ctx
+                        .bridge
+                        .scene()
+                        .map(|s| s.lines.get(li).map(|l| l.frames.len()).unwrap_or(0))
+                        .unwrap_or(0))
+                        .any(|fi| !ctx.bridge.editing_peers_for_frame(li, fi).is_empty());
                     if any_peer_editing {
                         ui.add(
                             egui::Label::new(
@@ -648,11 +643,14 @@ impl super::ScenePanel {
                             .bridge
                             .text_cursors_for_frame(li, fi)
                             .into_iter()
-                            .map(|(name, line, col)| PeerCursor {
-                                name: name.to_owned(),
-                                line,
-                                col,
-                                color: username_color(name),
+                            .map(|(name, line, col)| {
+                                let color = username_color(&name);
+                                PeerCursor {
+                                    name,
+                                    line,
+                                    col,
+                                    color,
+                                }
                             })
                             .collect();
 
@@ -713,13 +711,11 @@ impl super::ScenePanel {
 
             super::prelude::draw_feedback_flashes(ui, li, fi, cell_rect, ctx.bridge, 60.0, 40.0);
 
-            // Peer presence
-            for (name, &(pli, pfi, _)) in ctx.bridge.peer_cursors() {
-                if pli == li && pfi == fi {
-                    let color = username_color(name);
-                    let s = egui::Stroke::new(STROKE_EMPHASIS, color);
-                    ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);
-                }
+            // Peer presence (drawn from the discrete editing signal)
+            for name in ctx.bridge.editing_peers_for_frame(li, fi) {
+                let color = username_color(name);
+                let s = egui::Stroke::new(STROKE_EMPHASIS, color);
+                ui.painter().vline(cell_rect.left(), cell_rect.y_range(), s);
             }
 
             // Local user cursor

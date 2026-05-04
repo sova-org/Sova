@@ -1,8 +1,8 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
-use sova_server::ClientMessage;
+use sova_server::{ClientMessage, FrameTextId};
 
-use super::{ChatMessage, ClientBridge, PeerCursorState, now_hhmm, MAX_CHAT_MESSAGES};
+use super::{ChatMessage, ClientBridge, MAX_CHAT_MESSAGES, now_hhmm};
 
 impl ClientBridge {
     pub fn peers(&self) -> &[String] {
@@ -17,21 +17,57 @@ impl ClientBridge {
         self.confirmed_username = Some(name);
     }
 
-    pub fn peer_cursors(&self) -> &HashMap<String, PeerCursorState> {
-        &self.peer_cursors
-    }
+    /// Decoded `(peer_name, line, col)` triples for every peer whose ephemeral
+    /// cursor presence anchors into the given `(li, fi)` frame's Loro doc.
+    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(String, usize, usize)> {
+        let Some(target_id) = self.frame_text_id_at(li, fi) else {
+            return Vec::new();
+        };
+        let Some(doc) = self.frame_doc(target_id) else {
+            return Vec::new();
+        };
+        let me = self.confirmed_username();
+        let states = self.presence.get_all_states();
 
-    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(&str, usize, usize)> {
-        self.peer_cursors
-            .iter()
-            .filter_map(|(name, &(pli, pfi, ref tc))| {
-                if pli == li && pfi == fi {
-                    tc.map(|(line, col)| (name.as_str(), line, col))
-                } else {
-                    None
-                }
-            })
-            .collect()
+        let mut out = Vec::new();
+        for (key, value) in &states {
+            let Some(rest) = key.strip_prefix("peer/") else {
+                continue;
+            };
+            let Some((name, suffix)) = rest.split_once('/') else {
+                continue;
+            };
+            if suffix != "cursor_frame" {
+                continue;
+            }
+            if Some(name) == me {
+                continue;
+            }
+            let frame_id = match value {
+                loro::LoroValue::I64(v) => FrameTextId(*v as u64),
+                _ => continue,
+            };
+            if frame_id != target_id {
+                continue;
+            }
+            let pos_key = format!("peer/{}/cursor_pos", name);
+            let Some(loro::LoroValue::Binary(bytes)) = states.get(&pos_key) else {
+                continue;
+            };
+            let Ok(cursor) = loro::cursor::Cursor::decode(bytes.as_ref()) else {
+                continue;
+            };
+            let Ok(pos_query) = doc.get_cursor_pos(&cursor) else {
+                continue;
+            };
+            let codepoint = pos_query.current.pos;
+            let live = doc
+                .get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
+                .to_string();
+            let (line, col) = codepoint_to_line_col(&live, codepoint);
+            out.push((name.to_owned(), line, col));
+        }
+        out
     }
 
     pub fn editing_peers_for_frame(&self, li: usize, fi: usize) -> &[String] {
@@ -71,4 +107,21 @@ impl ClientBridge {
     pub fn send_hydra_code(&self, code: &str) {
         self.send(ClientMessage::HydraCode(code.to_owned()));
     }
+}
+
+fn codepoint_to_line_col(s: &str, codepoint: usize) -> (usize, usize) {
+    let mut line = 0;
+    let mut col = 0;
+    for (i, ch) in s.chars().enumerate() {
+        if i >= codepoint {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }

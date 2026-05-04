@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::time::Instant;
 
@@ -72,6 +73,7 @@ impl ClientBridge {
         match msg {
             ServerMessage::Hello {
                 username,
+                peer_id,
                 scene,
                 devices,
                 peers,
@@ -80,12 +82,26 @@ impl ClientBridge {
                 languages,
                 audio_engine_state,
                 link_enabled,
+                frame_text_layout,
+                frame_doc_snapshots,
+                presence,
             } => {
                 self.confirmed_username = Some(username);
+                self.peer_id = Some(peer_id);
                 self.scene = Some(scene);
                 self.devices = devices;
                 self.peers = peers;
                 self.languages = languages;
+                self.frame_text_layout = frame_text_layout.into_iter().collect();
+                self.frame_docs.clear();
+                for (id, blob) in frame_doc_snapshots {
+                    if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
+                        let _ = doc.set_peer_id(peer_id);
+                        self.install_frame_doc(id, doc);
+                    }
+                }
+                let _ = self.presence.apply(&presence);
+                self.install_presence_wire();
                 for lang_def in &self.languages {
                     if let Some(syn) = &lang_def.syntax
                         && let Some(compiled) = CompiledSyntax::new(syn)
@@ -268,7 +284,6 @@ impl ClientBridge {
                             names.retain(|n| n != p);
                             !names.is_empty()
                         });
-                        self.peer_cursors.remove(p);
                     }
                 }
                 self.peers = new_peers;
@@ -323,9 +338,6 @@ impl ClientBridge {
                     }
                 }
             }
-            ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
-                self.peer_cursors.insert(name, (li, fi, tc));
-            }
             ServerMessage::Notification(SovaNotification::Annotations(a)) => {
                 self.annotations = a;
             }
@@ -366,12 +378,36 @@ impl ClientBridge {
             }
             ServerMessage::ScriptEdit {
                 sender,
-                li,
-                fi,
-                ops,
+                frame_text_id,
+                update,
             } => {
-                if self.confirmed_username.as_deref() != Some(&sender) {
-                    self.pending_script_edits.push((li, fi, ops));
+                if self.confirmed_username.as_deref() == Some(&sender) {
+                    return ControlFlow::Continue(());
+                }
+                if let Some((doc, _)) = self.frame_docs.get(&frame_text_id) {
+                    let _ = doc.import(&update);
+                }
+            }
+            ServerMessage::Presence { update } => {
+                let _ = self.presence.apply(&update);
+            }
+            ServerMessage::FrameTextLayout {
+                mapping,
+                new_doc_snapshots,
+            } => {
+                self.frame_text_layout = mapping.into_iter().collect();
+                let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
+                self.frame_docs.retain(|id, _| live.contains(id));
+                for (id, blob) in new_doc_snapshots {
+                    if self.frame_docs.contains_key(&id) {
+                        continue;
+                    }
+                    if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
+                        if let Some(p) = self.peer_id {
+                            let _ = doc.set_peer_id(p);
+                        }
+                        self.install_frame_doc(id, doc);
+                    }
                 }
             }
             ServerMessage::CoreRestarted => {
@@ -403,6 +439,23 @@ impl ClientBridge {
                 self.mutation_flashes.clear();
                 self.positions.clear();
                 self.position_start_beat.clear();
+
+                // Integrate Loro state. Importing into existing local docs
+                // merges concurrent edits; build fresh docs only for unknown ids.
+                self.frame_text_layout = snapshot.frame_text_layout.into_iter().collect();
+                let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
+                self.frame_docs.retain(|id, _| live.contains(id));
+                for (id, blob) in snapshot.frame_doc_snapshots {
+                    if let Some((doc, _)) = self.frame_docs.get(&id) {
+                        let _ = doc.import(&blob);
+                    } else if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
+                        if let Some(p) = self.peer_id {
+                            let _ = doc.set_peer_id(p);
+                        }
+                        self.install_frame_doc(id, doc);
+                    }
+                }
+                let _ = self.presence.apply(&snapshot.presence);
             }
             _ => {}
         }

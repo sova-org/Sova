@@ -13,15 +13,12 @@ use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
 use sova_core::vm::interpreter::Annotation;
 use sova_core::vm::language::LanguageDefinition;
-use sova_server::{AudioEngineState, ClientMessage, ServerMessage};
+use sova_server::{AudioEngineState, ClientMessage, FrameTextId, ServerMessage};
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::feedback_engine::FeedbackEngine;
 use crate::panels::log_panel::LogEntry;
 use crate::widgets::syntax_highlight::CompiledSyntax;
-
-/// (cursor_li, cursor_fi, selection_anchor)
-type PeerCursorState = (usize, usize, Option<(usize, usize)>);
 
 const MAX_CHAT_MESSAGES: usize = 500;
 const COMPILATION_FLASH_SECS: f32 = 1.0;
@@ -151,7 +148,6 @@ pub struct ClientBridge {
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
-    peer_cursors: HashMap<String, PeerCursorState>,
     chat_messages: VecDeque<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
     annotations: Vec<Vec<Vec<Annotation>>>,
@@ -166,8 +162,12 @@ pub struct ClientBridge {
     // Latest error (compile or runtime) for toast display
     pub last_error: Option<(String, Instant)>,
 
-    // Incoming script edits from peers
-    pub pending_script_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
+    // Loro CRDT state
+    pub peer_id: Option<u64>,
+    pub frame_text_layout: HashMap<(usize, usize), FrameTextId>,
+    pub frame_docs: HashMap<FrameTextId, (loro::LoroDoc, loro::Subscription)>,
+    pub presence: loro::awareness::EphemeralStore,
+    pub presence_subscription: Option<loro::Subscription>,
 
     // Scene history for undo/redo
     scene_history: VecDeque<Scene>,
@@ -188,6 +188,49 @@ pub struct ClientBridge {
 }
 
 impl ClientBridge {
+    pub fn frame_text_id_at(&self, li: usize, fi: usize) -> Option<FrameTextId> {
+        self.frame_text_layout.get(&(li, fi)).copied()
+    }
+
+    pub fn frame_doc(&self, id: FrameTextId) -> Option<&loro::LoroDoc> {
+        self.frame_docs.get(&id).map(|(doc, _)| doc)
+    }
+
+    pub fn frame_doc_text(&self, id: FrameTextId) -> Option<String> {
+        self.frame_docs.get(&id).map(|(doc, _)| {
+            doc.get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
+                .to_string()
+        })
+    }
+
+    pub(crate) fn install_frame_doc(&mut self, id: FrameTextId, doc: loro::LoroDoc) {
+        let send = self.send_tx.clone();
+        let id_copy = id;
+        let sub = doc.subscribe_local_update(Box::new(move |bytes: &Vec<u8>| {
+            if let Some(tx) = &send {
+                let _ = tx.send(OutgoingMessage::Send(Box::new(ClientMessage::ScriptEdit {
+                    frame_text_id: id_copy,
+                    update: bytes.clone(),
+                })));
+            }
+            true
+        }));
+        self.frame_docs.insert(id, (doc, sub));
+    }
+
+    pub(crate) fn install_presence_wire(&mut self) {
+        let send = self.send_tx.clone();
+        self.presence_subscription =
+            Some(self.presence.subscribe_local_updates(Box::new(move |bytes| {
+                if let Some(tx) = &send {
+                    let _ = tx.send(OutgoingMessage::Send(Box::new(ClientMessage::Presence {
+                        update: bytes.clone(),
+                    })));
+                }
+                true
+            })));
+    }
+
     pub fn new(
         runtime: tokio::runtime::Handle,
         ctx: egui::Context,
@@ -211,7 +254,6 @@ impl ClientBridge {
             languages: Vec::new(),
             syntax_map: HashMap::new(),
             peer_editing: HashMap::new(),
-            peer_cursors: HashMap::new(),
             chat_messages: VecDeque::new(),
             errors: HashMap::new(),
             annotations: Vec::new(),
@@ -219,7 +261,11 @@ impl ClientBridge {
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
             last_error: None,
-            pending_script_edits: Vec::new(),
+            peer_id: None,
+            frame_text_layout: HashMap::new(),
+            frame_docs: HashMap::new(),
+            presence: loro::awareness::EphemeralStore::new(30_000),
+            presence_subscription: None,
             scene_history: VecDeque::new(),
             history_index: 0,
             skip_next_history_push: false,

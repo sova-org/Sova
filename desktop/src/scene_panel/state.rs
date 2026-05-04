@@ -1,6 +1,5 @@
 use eframe::egui;
 use sova_core::scene::{Frame, Scene};
-use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
 use crate::widgets::inline_scene_view::FocusRequest;
@@ -215,9 +214,7 @@ impl ScenePanel {
         self.selection.insert(pos);
         self.anchor = Some(pos);
         self.scroll_to_cursor = true;
-        if bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(pos.0, pos.1, None));
-        }
+        let _ = bridge; // navigation no longer publishes a presence event here.
     }
 
     /// Move cursor within navigation mode. Does NOT reset selection (caller decides).
@@ -237,9 +234,7 @@ impl ScenePanel {
             self.state = SceneState::NavigatingFrame { cursor: pos };
         }
         self.scroll_to_cursor = true;
-        if bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(pos.0, pos.1, None));
-        }
+        let _ = bridge;
     }
 
     /// Select a prelude script for navigation.
