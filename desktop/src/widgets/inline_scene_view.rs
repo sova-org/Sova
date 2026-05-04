@@ -265,7 +265,6 @@ pub struct InlineFrameState {
     pub frame_text_id: Option<FrameTextId>,
     pub last_seen_doc_string: String,
     pub last_cursor_publish: Instant,
-    pub editor_id: Option<egui::Id>,
     pub height: f32,
     pub collapsed: bool,
     pub focus_toggled: bool,
@@ -292,7 +291,6 @@ impl InlineFrameState {
             menu_open: false,
             frame_text_id: None,
             last_cursor_publish: Instant::now(),
-            editor_id: None,
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
             focus_toggled: false,
@@ -640,7 +638,6 @@ impl InlineFrameState {
     ) {
         let editor_id = ui.id().with("editor_body");
         let editor_id_focus = editor_id.with("editor");
-        self.editor_id = Some(editor_id_focus);
 
         // Handle focus request from Nav → Edit mode transition
         if self.focus_request == FocusRequest::Editor {

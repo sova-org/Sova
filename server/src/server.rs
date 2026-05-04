@@ -641,31 +641,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 client_addr_str, client_name, initial_is_playing
             );
 
-            // Allocate this client's Loro PeerID, snapshot every frame doc, and
-            // collect the current presence bytes for the handshake.
-            let assigned_peer_id =
-                state.next_peer_id.fetch_add(1, Ordering::Relaxed);
-            let frame_text_layout: Vec<((usize, usize), crate::FrameTextId)> = state
-                .frame_text
-                .layout
-                .read()
-                .unwrap()
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect();
-            let frame_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
-                .frame_text
-                .docs
-                .read()
-                .unwrap()
-                .iter()
-                .map(|(id, doc)| {
-                    (
-                        *id,
-                        doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
-                    )
-                })
-                .collect();
+            // Allocate this client's Loro PeerID and snapshot every frame doc
+            // plus the current presence bytes for the handshake.
+            let assigned_peer_id = state.next_peer_id.fetch_add(1, Ordering::Relaxed);
+            let frame_text_layout = state.frame_text.layout_vec();
+            let frame_doc_snapshots = state.frame_text.export_full_snapshots();
             let presence_bytes = state.presence.encode_all();
 
             hello_msg = ServerMessage::Hello {
@@ -807,27 +787,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     let scene = state.scene_image.lock().await.clone();
                     let c = Clock::from(&state.clock_server);
                     let devices = state.devices.device_list();
-                    let frame_text_layout: Vec<((usize, usize), crate::FrameTextId)> = state
-                        .frame_text
-                        .layout
-                        .read()
-                        .unwrap()
-                        .iter()
-                        .map(|(k, v)| (*k, *v))
-                        .collect();
-                    let frame_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
-                        .frame_text
-                        .docs
-                        .read()
-                        .unwrap()
-                        .iter()
-                        .map(|(id, doc)| {
-                            (
-                                *id,
-                                doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
-                            )
-                        })
-                        .collect();
+                    let frame_text_layout = state.frame_text.layout_vec();
+                    let frame_doc_snapshots = state.frame_text.export_full_snapshots();
                     let presence_bytes = state.presence.encode_all();
                     let snapshot = Snapshot {
                         scene,

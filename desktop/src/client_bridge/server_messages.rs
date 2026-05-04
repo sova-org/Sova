@@ -95,10 +95,7 @@ impl ClientBridge {
                 self.frame_text_layout = frame_text_layout.into_iter().collect();
                 self.frame_docs.clear();
                 for (id, blob) in frame_doc_snapshots {
-                    if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
-                        let _ = doc.set_peer_id(peer_id);
-                        self.install_frame_doc(id, doc);
-                    }
+                    self.install_frame_doc_from_snapshot(id, &blob);
                 }
                 let _ = self.presence.apply(&presence);
                 self.install_presence_wire();
@@ -399,14 +396,8 @@ impl ClientBridge {
                 let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
                 self.frame_docs.retain(|id, _| live.contains(id));
                 for (id, blob) in new_doc_snapshots {
-                    if self.frame_docs.contains_key(&id) {
-                        continue;
-                    }
-                    if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
-                        if let Some(p) = self.peer_id {
-                            let _ = doc.set_peer_id(p);
-                        }
-                        self.install_frame_doc(id, doc);
+                    if !self.frame_docs.contains_key(&id) {
+                        self.install_frame_doc_from_snapshot(id, &blob);
                     }
                 }
             }
@@ -448,11 +439,8 @@ impl ClientBridge {
                 for (id, blob) in snapshot.frame_doc_snapshots {
                     if let Some((doc, _)) = self.frame_docs.get(&id) {
                         let _ = doc.import(&blob);
-                    } else if let Ok(doc) = loro::LoroDoc::from_snapshot(&blob) {
-                        if let Some(p) = self.peer_id {
-                            let _ = doc.set_peer_id(p);
-                        }
-                        self.install_frame_doc(id, doc);
+                    } else {
+                        self.install_frame_doc_from_snapshot(id, &blob);
                     }
                 }
                 let _ = self.presence.apply(&snapshot.presence);

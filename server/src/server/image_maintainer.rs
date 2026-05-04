@@ -116,30 +116,11 @@ pub fn start_image_maintainer(
                     );
                     if layout_changed {
                         frame_text.rebuild_from_scene(&guard);
-                        let mapping: Vec<((usize, usize), crate::FrameTextId)> = frame_text
-                            .layout
-                            .read()
-                            .unwrap()
-                            .iter()
-                            .map(|(k, v)| (*k, *v))
-                            .collect();
-                        let new_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = frame_text
-                            .docs
-                            .read()
-                            .unwrap()
-                            .iter()
-                            .map(|(id, doc)| {
-                                (
-                                    *id,
-                                    doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
-                                )
-                            })
-                            .collect();
                         broadcast_raw(
                             &client_registry,
                             &ServerMessage::FrameTextLayout {
-                                mapping,
-                                new_doc_snapshots,
+                                mapping: frame_text.layout_vec(),
+                                new_doc_snapshots: frame_text.export_full_snapshots(),
                             },
                             false,
                         );

@@ -218,6 +218,17 @@ impl ClientBridge {
         self.frame_docs.insert(id, (doc, sub));
     }
 
+    /// Build a `LoroDoc` from a snapshot blob, set the peer id (if known) and
+    /// install it under `id`, wiring up the local-update subscription.
+    pub(crate) fn install_frame_doc_from_snapshot(&mut self, id: FrameTextId, blob: &[u8]) {
+        if let Ok(doc) = loro::LoroDoc::from_snapshot(blob) {
+            if let Some(p) = self.peer_id {
+                let _ = doc.set_peer_id(p);
+            }
+            self.install_frame_doc(id, doc);
+        }
+    }
+
     pub(crate) fn install_presence_wire(&mut self) {
         let send = self.send_tx.clone();
         self.presence_subscription =

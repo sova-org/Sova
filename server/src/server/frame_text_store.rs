@@ -79,5 +79,30 @@ impl FrameTextStore {
     pub fn lookup(&self, li: usize, fi: usize) -> Option<FrameTextId> {
         self.layout.read().unwrap().get(&(li, fi)).copied()
     }
+
+    /// Snapshot the current `(li, fi) -> FrameTextId` layout as a wire-friendly Vec.
+    pub fn layout_vec(&self) -> Vec<((usize, usize), FrameTextId)> {
+        self.layout
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect()
+    }
+
+    /// Export every doc as a full Loro snapshot (`ExportMode::snapshot()`).
+    pub fn export_full_snapshots(&self) -> Vec<(FrameTextId, Vec<u8>)> {
+        self.docs
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(id, doc)| {
+                (
+                    *id,
+                    doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
 }
 

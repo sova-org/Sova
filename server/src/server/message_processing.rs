@@ -33,32 +33,11 @@ fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
         }
         // Re-broadcast the post-checkpoint snapshots so clients reset their
         // local docs to the freshly-pruned baseline.
-        let mapping: Vec<((usize, usize), crate::FrameTextId)> = state
-            .frame_text
-            .layout
-            .read()
-            .unwrap()
-            .iter()
-            .map(|(k, v)| (*k, *v))
-            .collect();
-        let new_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
-            .frame_text
-            .docs
-            .read()
-            .unwrap()
-            .iter()
-            .map(|(id, doc)| {
-                (
-                    *id,
-                    doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
-                )
-            })
-            .collect();
         broadcast_raw(
             &state.client_registry,
             &ServerMessage::FrameTextLayout {
-                mapping,
-                new_doc_snapshots,
+                mapping: state.frame_text.layout_vec(),
+                new_doc_snapshots: state.frame_text.export_full_snapshots(),
             },
             false,
         );
@@ -135,27 +114,8 @@ pub async fn on_message(
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
             let devices = state.devices.create_device_snapshot();
-            let frame_text_layout: Vec<((usize, usize), crate::FrameTextId)> = state
-                .frame_text
-                .layout
-                .read()
-                .unwrap()
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect();
-            let frame_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)> = state
-                .frame_text
-                .docs
-                .read()
-                .unwrap()
-                .iter()
-                .map(|(id, doc)| {
-                    (
-                        *id,
-                        doc.export(loro::ExportMode::snapshot()).unwrap_or_default(),
-                    )
-                })
-                .collect();
+            let frame_text_layout = state.frame_text.layout_vec();
+            let frame_doc_snapshots = state.frame_text.export_full_snapshots();
             let presence_bytes = state.presence.encode_all();
             let snapshot = Snapshot {
                 scene,
