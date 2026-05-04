@@ -19,6 +19,7 @@ impl SovaApp {
                 || self.panels.server.is_running(),
             visuals_open: self.panels.visuals.open,
             debug_open: self.panels.debug_open,
+            scene_view_mode: self.panels.scene.view_mode,
             recent_scenes: &self.session.recent_scenes,
             egui_ctx: ctx,
         })
@@ -66,6 +67,12 @@ impl SovaApp {
                 if self.bridge.is_connected() {
                     self.bridge
                         .restart_audio(self.panels.audio.generate_audio_config());
+                }
+            }
+            MenuAction::SetSceneViewMode(mode) => {
+                if self.panels.scene.view_mode != mode {
+                    self.panels.scene.view_mode = mode;
+                    self.panels.scene.scroll_to_cursor = true;
                 }
             }
             MenuAction::Exit => {
@@ -166,9 +173,10 @@ impl SovaApp {
             ToggleViewMode => {
                 use crate::scene_panel::ViewMode;
                 self.panels.scene.view_mode = match self.panels.scene.view_mode {
-                    ViewMode::Classic => ViewMode::Sequencer,
-                    ViewMode::Sequencer => ViewMode::Classic,
+                    ViewMode::Stack => ViewMode::Sequencer,
+                    ViewMode::Sequencer => ViewMode::Stack,
                 };
+                self.panels.scene.scroll_to_cursor = true;
             }
         }
     }

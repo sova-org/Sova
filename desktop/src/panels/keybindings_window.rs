@@ -148,7 +148,7 @@ pub(crate) fn show_keybindings_window(
                 let mode_label = if is_sequencer {
                     t!("kb.mode_sequencer")
                 } else {
-                    t!("kb.mode_classic")
+                    t!("kb.mode_stack")
                 };
                 ui.weak(mode_label);
                 ui.add_space(2.0);

@@ -83,7 +83,7 @@ fn main() -> eframe::Result {
             scene_panel.prelude_collapsed = s.scene.prelude_collapsed;
             scene_panel.prelude_col_width = s.scene.prelude_col_width;
             scene_panel.view_mode = if s.scene.view_mode == 1 {
-                scene_panel::ViewMode::Classic
+                scene_panel::ViewMode::Stack
             } else {
                 scene_panel::ViewMode::Sequencer
             };
@@ -190,7 +190,7 @@ impl SovaApp {
                 prelude_collapsed: self.panels.scene.prelude_collapsed,
                 prelude_col_width: self.panels.scene.prelude_col_width,
                 view_mode: match self.panels.scene.view_mode {
-                    scene_panel::ViewMode::Classic => 1,
+                    scene_panel::ViewMode::Stack => 1,
                     scene_panel::ViewMode::Sequencer => 0,
                 },
                 show_phase_bar: self.panels.transport_bar.show_phase_bar,

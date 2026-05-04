@@ -33,7 +33,7 @@ pub(crate) struct FrameCellCtx<'a> {
 }
 
 impl super::ScenePanel {
-    pub(super) fn show_classic(
+    pub(super) fn show_stack(
         &mut self,
         ui: &mut egui::Ui,
         scene: &Scene,
@@ -41,7 +41,7 @@ impl super::ScenePanel {
         ctx: &SceneRenderCtx<'_>,
         available_height: f32,
     ) {
-        // Column widths are classic-view-only state. Sync once on entry so the
+        // Column widths are stack-view-only state. Sync once on entry so the
         // ScenePanel dispatcher in mod.rs doesn't need to know about them.
         while self.column_widths.len() < scene.lines.len() {
             self.column_widths.push(super::DEFAULT_COL_WIDTH);

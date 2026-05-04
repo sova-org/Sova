@@ -1,4 +1,3 @@
-mod classic_view;
 mod hud;
 mod keyboard;
 mod lifecycle;
@@ -6,6 +5,7 @@ mod panel;
 mod prelude;
 mod sequencer_grid;
 mod sequencer_popup;
+mod stack_view;
 mod state;
 
 use std::collections::{BTreeSet, HashMap};
@@ -58,7 +58,7 @@ pub(super) struct SceneRenderCtx<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     Sequencer,
-    Classic,
+    Stack,
 }
 
 pub struct PanelVisibility {

@@ -98,23 +98,25 @@ pub fn bottom_bar(
 
             // Scene view-mode toggle: two segments, the active one highlighted.
             // Clicking either segment selects it; clicking the already-active
-            // segment is a no-op.
-            let classic_active = view_mode == ViewMode::Classic;
+            // segment is a no-op. Hover tooltip surfaces the V shortcut.
+            let stack_active = view_mode == ViewMode::Stack;
             let sequencer_active = view_mode == ViewMode::Sequencer;
-            let classic_btn =
-                ui.selectable_label(classic_active, t!("options.scene_view_mode.classic"));
-            if classic_btn.clicked() && !classic_active {
-                toggle_view_mode = true;
-            }
-            if classic_btn.hovered() {
-                super::hint::set(ui.ctx(), t!("bottom.view_mode").to_string());
-            }
-            let sequencer_btn =
-                ui.selectable_label(sequencer_active, t!("options.scene_view_mode.sequencer"));
+            let sequencer_btn = ui.selectable_label(
+                sequencer_active,
+                t!("options.scene_view_mode.sequencer"),
+            );
             if sequencer_btn.clicked() && !sequencer_active {
                 toggle_view_mode = true;
             }
             if sequencer_btn.hovered() {
+                super::hint::set(ui.ctx(), t!("bottom.view_mode").to_string());
+            }
+            let stack_btn =
+                ui.selectable_label(stack_active, t!("options.scene_view_mode.stack"));
+            if stack_btn.clicked() && !stack_active {
+                toggle_view_mode = true;
+            }
+            if stack_btn.hovered() {
                 super::hint::set(ui.ctx(), t!("bottom.view_mode").to_string());
             }
 

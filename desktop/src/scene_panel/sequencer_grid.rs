@@ -15,14 +15,14 @@ impl super::ScenePanel {
         head_progress: &[Vec<HeadPlayback>],
         ctx: &SceneRenderCtx<'_>,
     ) {
-        // Auto-select first frame if no cursor is set
+        // Auto-place cursor on the first frame when nothing is selected. Land in
+        // navigation, not edit — pressing Enter then enters the editor like any
+        // other navigation entry point.
         if matches!(self.state, super::SceneState::Empty)
             && !scene.lines.is_empty()
             && !scene.lines[0].frames.is_empty()
         {
-            self.enter_frame_edit((0, 0));
-            self.selection.insert((0, 0));
-            self.anchor = Some((0, 0));
+            self.navigate_to_frame((0, 0), ctx.bridge);
         }
 
         // If focused, delegate to focused frame view
@@ -284,7 +284,7 @@ impl super::ScenePanel {
                     .get(&(li, fi))
                     .is_some_and(|s| s.lang_picker_open);
 
-                // Ensure editor body is visible (don't write height — classic
+                // Ensure editor body is visible (don't write height — stack
                 // mode owns that field; sequencer fills available space via layout)
                 if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
                     state.collapsed = false;

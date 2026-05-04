@@ -3,7 +3,7 @@ use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
 use sova_server::ClientMessage;
 
-use super::classic_view::{MAX_COL_WIDTH, MIN_COL_WIDTH};
+use super::stack_view::{MAX_COL_WIDTH, MIN_COL_WIDTH};
 use super::{
     DRAG_HANDLE_HEIGHT, GAP, HEADER_HEIGHT, LINE_HEADER_HEIGHT, MAX_FRAME_HEIGHT, MIN_FRAME_HEIGHT,
     SceneRenderCtx,
@@ -98,7 +98,7 @@ pub(super) fn horizontal_resize_handle(
 }
 
 /// Draw the multiplayer compilation + mutation flash overlays for a cell.
-/// Peak alphas differ per view (classic vs sequencer), so they are passed in.
+/// Peak alphas differ per view (stack vs sequencer), so they are passed in.
 pub(super) fn draw_feedback_flashes(
     ui: &egui::Ui,
     li: usize,

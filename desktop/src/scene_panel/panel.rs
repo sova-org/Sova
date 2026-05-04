@@ -102,7 +102,7 @@ impl ScenePanel {
         };
 
         match self.view_mode {
-            ViewMode::Classic => self.show_classic(ui, scene, &head_progress, &ctx, available_height),
+            ViewMode::Stack => self.show_stack(ui, scene, &head_progress, &ctx, available_height),
             ViewMode::Sequencer => self.show_sequencer(ui, scene, &head_progress, &ctx),
         }
 
@@ -318,7 +318,7 @@ impl ScenePanel {
             .entry((fli, ffi))
             .or_insert_with(|| crate::widgets::inline_scene_view::InlineFrameState::new(frame));
 
-        let frame_ctx = super::classic_view::FrameCellCtx {
+        let frame_ctx = super::stack_view::FrameCellCtx {
             pos: (fli, ffi),
             n_frames: line.frames.len(),
             frame,
