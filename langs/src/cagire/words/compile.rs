@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::cagire::ops::Op;
+use crate::cagire::ops::{CtlShape, Op};
 use crate::cagire::types::Span;
 
 use super::{WordCompile::*, lookup_word};
@@ -30,6 +30,7 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "*" => Op::Mul,
         "/" => Op::Div,
         "mod" => Op::Mod,
+        "++" => Op::Concat,
         "neg" => Op::Neg,
         "abs" => Op::Abs,
         "floor" => Op::Floor,
@@ -58,6 +59,7 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "select" => Op::Pick,
         "sound" => Op::NewCmd,
         "." => Op::Emit,
+        "rest" => Op::PushSilence,
         "rand" => Op::Rand(None),
         "exprand" => Op::ExpRand(None),
         "logrand" => Op::LogRand(None),
@@ -105,6 +107,22 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "triangle" => Op::Triangle,
         "range" => Op::Range,
         "perlin" => Op::Perlin,
+        "ctlsine" => Op::Ctl { shape: CtlShape::Sine, bipolar: false },
+        "ctlbsine" => Op::Ctl { shape: CtlShape::Sine, bipolar: true },
+        "ctltriangle" => Op::Ctl { shape: CtlShape::Triangle, bipolar: false },
+        "ctlbtriangle" => Op::Ctl { shape: CtlShape::Triangle, bipolar: true },
+        "ctlsaw" => Op::Ctl { shape: CtlShape::Saw, bipolar: false },
+        "ctlbsaw" => Op::Ctl { shape: CtlShape::Saw, bipolar: true },
+        "ctlsquare" => Op::Ctl { shape: CtlShape::Square, bipolar: false },
+        "ctlbsquare" => Op::Ctl { shape: CtlShape::Square, bipolar: true },
+        "ctlramp" => Op::Ctl { shape: CtlShape::Ramp, bipolar: false },
+        "ctlbramp" => Op::Ctl { shape: CtlShape::Ramp, bipolar: true },
+        "ctlperlin" => Op::Ctl { shape: CtlShape::Perlin, bipolar: false },
+        "ctlbperlin" => Op::Ctl { shape: CtlShape::Perlin, bipolar: true },
+        "ctlnoise" => Op::Ctl { shape: CtlShape::Noise, bipolar: false },
+        "ctlbnoise" => Op::Ctl { shape: CtlShape::Noise, bipolar: true },
+        "ctlsh" => Op::Ctl { shape: CtlShape::Sh, bipolar: false },
+        "ctlbsh" => Op::Ctl { shape: CtlShape::Sh, bipolar: true },
         "linmap" => Op::LinMap,
         "expmap" => Op::ExpMap,
         "map" => Op::Map,
@@ -287,6 +305,36 @@ pub(crate) fn compile_word(
         "logramp" => {
             push(ops, spans, Op::PushFloat(0.3), span);
             push(ops, spans, Op::Ramp, span);
+            return;
+        }
+        "ctllinramp" => {
+            push(ops, spans, Op::PushFloat(1.0), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: false }, span);
+            return;
+        }
+        "ctlexpramp" => {
+            push(ops, spans, Op::PushFloat(3.0), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: false }, span);
+            return;
+        }
+        "ctllogramp" => {
+            push(ops, spans, Op::PushFloat(0.3), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: false }, span);
+            return;
+        }
+        "ctlblinramp" => {
+            push(ops, spans, Op::PushFloat(1.0), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: true }, span);
+            return;
+        }
+        "ctlbexpramp" => {
+            push(ops, spans, Op::PushFloat(3.0), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: true }, span);
+            return;
+        }
+        "ctlblogramp" => {
+            push(ops, spans, Op::PushFloat(0.3), span);
+            push(ops, spans, Op::Ctl { shape: CtlShape::Ramp, bipolar: true }, span);
             return;
         }
         _ => {}

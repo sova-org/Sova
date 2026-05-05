@@ -627,4 +627,14 @@ pub(super) const WORDS: &[Word] = &[
         compile: Simple,
         varargs: false,
     },
+    Word {
+        name: "++",
+        aliases: &[],
+        category: "String",
+        stack: "(a b -- s)",
+        desc: "Concatenate as string; numbers stringified",
+        example: include_str!("../../../docs/cagire/examples/concat.cagire"),
+        compile: Simple,
+        varargs: false,
+    },
 ];

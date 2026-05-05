@@ -79,6 +79,7 @@ pub enum Value {
         tuning: Arc<Tuning>,
         degrees: Arc<[usize]>,
     },
+    Silence,
 }
 
 impl Value {
@@ -86,6 +87,7 @@ impl Value {
         match self {
             Value::Float(f) => Ok(*f),
             Value::Int(i) => Ok(*i as f64),
+            Value::Silence => Err("silence is not numeric".into()),
             _ => Err("expected number".into()),
         }
     }
@@ -94,6 +96,7 @@ impl Value {
         match self {
             Value::Int(i) => Ok(*i),
             Value::Float(f) => Ok(*f as i64),
+            Value::Silence => Err("silence is not numeric".into()),
             _ => Err("expected number".into()),
         }
     }
@@ -101,6 +104,7 @@ impl Value {
     pub(super) fn as_str(&self) -> Result<&str, String> {
         match self {
             Value::Str(s) => Ok(s),
+            Value::Silence => Err("silence is not a string".into()),
             _ => Err("expected string".into()),
         }
     }
@@ -136,6 +140,7 @@ impl Value {
             Value::Quotation(..) => true,
             Value::CycleList(items) => !items.is_empty(),
             Value::Tuning { .. } | Value::Scale { .. } => true,
+            Value::Silence => false,
         }
     }
 
@@ -147,6 +152,7 @@ impl Value {
             Value::Quotation(..) | Value::CycleList(_) => String::new(),
             Value::Tuning { .. } => "<tuning>".into(),
             Value::Scale { .. } => "<scale>".into(),
+            Value::Silence => String::new(),
         }
     }
 
@@ -158,7 +164,8 @@ impl Value {
             Value::Quotation(..)
             | Value::CycleList(_)
             | Value::Tuning { .. }
-            | Value::Scale { .. } => None,
+            | Value::Scale { .. }
+            | Value::Silence => None,
         }
     }
 

@@ -7,6 +7,7 @@ pub enum Op {
     PushInt(i64),
     PushFloat(f64),
     PushStr(Arc<str>),
+    PushSilence,
     Dup,
     Dupn,
     Drop,
@@ -31,6 +32,7 @@ pub enum Op {
     Mul,
     Div,
     Mod,
+    Concat,
     Neg,
     Abs,
     Floor,
@@ -101,6 +103,7 @@ pub enum Op {
     Triangle,
     Range,
     Perlin,
+    Ctl { shape: CtlShape, bipolar: bool },
     LinMap,
     ExpMap,
     Map,
@@ -151,6 +154,20 @@ pub enum Op {
     Odub,
     Print,
     ExecuteFrame,
+}
+
+/// Control-rate LFO shape selector. Phase is `(freq * beat).fract()`.
+/// `Ramp` consumes `(freq curve)` from the stack; the others consume `(freq)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CtlShape {
+    Sine,
+    Triangle,
+    Saw,
+    Square,
+    Ramp,
+    Perlin,
+    Noise,
+    Sh,
 }
 
 impl Op {
