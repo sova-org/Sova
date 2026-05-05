@@ -25,6 +25,13 @@ const COMPILATION_FLASH_SECS: f32 = 1.0;
 const MUTATION_FLASH_SECS: f32 = 1.2;
 const SCENE_HISTORY_CAP: usize = 50;
 
+// Multiplayer presence tuning. Exposed `pub(crate)` because the cursor publish
+// throttle is consumed by `widgets::inline_scene_view`; the others are
+// sibling-module concerns.
+pub(crate) const PRESENCE_TTL_MS: i64 = 30_000;
+pub(crate) const PRESENCE_GC_INTERVAL_SECS: u64 = 1;
+pub(crate) const CURSOR_PUBLISH_THROTTLE_MS: u128 = 100;
+
 pub struct ChatMessage {
     pub user: String,
     pub message: String,
@@ -276,7 +283,7 @@ impl ClientBridge {
             peer_id: None,
             frame_text_layout: HashMap::new(),
             frame_docs: HashMap::new(),
-            presence: loro::awareness::EphemeralStore::new(30_000),
+            presence: loro::awareness::EphemeralStore::new(PRESENCE_TTL_MS),
             presence_subscription: None,
             last_presence_gc: Instant::now(),
             scene_history: VecDeque::new(),

@@ -31,6 +31,17 @@ impl super::ScenePanel {
             return;
         }
 
+        // Detect a real cursor move to start the keyboard-cursor preview timer.
+        // Skip the first observation so initial auto-navigate doesn't flash.
+        let current_cursor = self.state.cursor();
+        if let (Some(prev), Some(cur)) = (self.last_observed_cursor, current_cursor)
+            && prev != cur
+        {
+            self.cursor_preview_deadline =
+                Some(std::time::Instant::now() + super::KB_PREVIEW_LIFETIME);
+        }
+        self.last_observed_cursor = current_cursor;
+
         let panel_h = ui.available_height();
         ui.allocate_ui(egui::vec2(ui.available_width(), panel_h), |ui| {
             if self.state.shows_sequencer_grid() {
@@ -72,6 +83,7 @@ impl super::ScenePanel {
                     ctx.accent,
                     ctx.opacity,
                     ctx.bridge,
+                    ctx.theme,
                     ctx.default_lang,
                 );
             });

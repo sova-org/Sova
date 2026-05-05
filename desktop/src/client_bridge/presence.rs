@@ -32,7 +32,8 @@ impl ClientBridge {
         let me = self.confirmed_username().unwrap_or("");
         let states = self.presence.get_all_states();
 
-        let mut out = Vec::new();
+        // First pass: collect (name, codepoint) pairs anchored to this frame.
+        let mut candidates: Vec<(String, usize)> = Vec::new();
         for (key, value) in &states {
             let Some(rest) = key.strip_prefix("peer/") else {
                 continue;
@@ -40,10 +41,7 @@ impl ClientBridge {
             let Some((name, suffix)) = rest.split_once('/') else {
                 continue;
             };
-            if suffix != "cursor_frame" {
-                continue;
-            }
-            if name == me {
+            if suffix != "cursor_frame" || name == me {
                 continue;
             }
             let frame_id = match value {
@@ -63,14 +61,46 @@ impl ClientBridge {
             let Ok(pos_query) = doc.get_cursor_pos(&cursor) else {
                 continue;
             };
-            let codepoint = pos_query.current.pos;
-            let live = doc
-                .get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
-                .to_string();
-            let (line, col) = codepoint_to_line_col(&live, codepoint);
-            out.push((name.to_owned(), line, col));
+            candidates.push((name.to_owned(), pos_query.current.pos));
         }
-        out
+
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        // Hoist the live text fetch out of the per-peer loop and build a
+        // codepoint index of newlines once. Each peer's (line, col) is then a
+        // partition_point binary search instead of a full string rescan.
+        let live = doc
+            .get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
+            .to_string();
+        let newlines: Vec<usize> = live
+            .chars()
+            .enumerate()
+            .filter_map(|(i, ch)| (ch == '\n').then_some(i))
+            .collect();
+
+        candidates
+            .into_iter()
+            .map(|(name, codepoint)| {
+                let line = newlines.partition_point(|&n| n < codepoint);
+                let col = if line == 0 {
+                    codepoint
+                } else {
+                    codepoint - (newlines[line - 1] + 1)
+                };
+                (name, line, col)
+            })
+            .collect()
+    }
+
+    /// Single point of cleanup when a peer disconnects. Future presence-related
+    /// per-peer state (selections, follow targets, ...) gets one place to add to.
+    pub(super) fn forget_peer(&mut self, name: &str) {
+        self.peer_editing.retain(|_, names| {
+            names.retain(|n| n != name);
+            !names.is_empty()
+        });
     }
 
     pub fn editing_peers_for_frame(&self, li: usize, fi: usize) -> &[String] {
@@ -112,19 +142,3 @@ impl ClientBridge {
     }
 }
 
-fn codepoint_to_line_col(s: &str, codepoint: usize) -> (usize, usize) {
-    let mut line = 0;
-    let mut col = 0;
-    for (i, ch) in s.chars().enumerate() {
-        if i >= codepoint {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}

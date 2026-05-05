@@ -10,7 +10,7 @@ use sova_core::schedule::SchedulerMessage;
 use sova_server::{ClientMessage, FrameTextId, FrameTextStore};
 
 use super::{CodeEditor, EditorContext};
-use crate::client_bridge::ClientBridge;
+use crate::client_bridge::{CURSOR_PUBLISH_THROTTLE_MS, ClientBridge};
 use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, cycled_accent};
 
 /// Toggle the language picker via Cmd/Ctrl+L when the editor has focus.
@@ -751,7 +751,7 @@ impl InlineFrameState {
             self.local_caret_cursor =
                 text.get_cursor(range.primary.index, loro::cursor::Side::Left);
 
-            if self.last_cursor_publish.elapsed().as_millis() >= 100
+            if self.last_cursor_publish.elapsed().as_millis() >= CURSOR_PUBLISH_THROTTLE_MS
                 && let Some(cursor) = &self.local_caret_cursor
                 && let Some(name) = bridge.confirmed_username()
                 && !name.is_empty()
