@@ -303,8 +303,13 @@ impl InlineFrameState {
     }
 
     pub fn sync_if_remote_changed(&mut self, frame: &Frame) {
-        // Lang is server-authoritative and changes only via SetFrames; sync it
-        // from the canonical Frame whenever the user is not editing.
+        // Lang is server-authoritative and changes only via SetFrames. Skip the
+        // sync while the user has uncommitted local changes (e.g. a freshly
+        // picked language waiting on the next evaluate), otherwise we revert
+        // the user's choice before evaluate() can ship it as SetFrames.
+        if self.dirty {
+            return;
+        }
         if frame.script().lang() != self.lang {
             self.lang = frame.script().lang().to_owned();
         }
@@ -1102,6 +1107,26 @@ mod tests {
         apply_local_diff_to_loro(&text, "hello world", "hello");
         doc.commit();
         assert_eq!(text.to_string(), "hello");
+    }
+
+    #[test]
+    fn sync_if_remote_changed_skips_when_dirty() {
+        let frame: Frame = Script::new(String::new(), "boinx".to_string()).into();
+        let mut state = InlineFrameState::new(&frame);
+        state.lang = "cagire".to_string();
+        state.dirty = true;
+        state.sync_if_remote_changed(&frame);
+        assert_eq!(state.lang, "cagire");
+    }
+
+    #[test]
+    fn sync_if_remote_changed_applies_when_clean() {
+        let frame: Frame = Script::new(String::new(), "boinx".to_string()).into();
+        let mut state = InlineFrameState::new(&frame);
+        state.lang = "cagire".to_string();
+        state.dirty = false;
+        state.sync_if_remote_changed(&frame);
+        assert_eq!(state.lang, "boinx");
     }
 
     #[test]
