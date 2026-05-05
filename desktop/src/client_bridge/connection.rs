@@ -78,24 +78,36 @@ impl ClientBridge {
                     let _ = client.disconnect().await;
                     return;
                 }
-                Ok(Some(_)) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Unexpected server response".into(),
-                    ));
+                Ok(Some(other)) => {
+                    let kind = format!("{:?}", std::mem::discriminant(&other));
+                    let _ = event_tx.send(ServerMessage::ConnectionRefused(format!(
+                        "Unexpected first server message (variant {kind}); expected Hello — \
+                         is the server running an older protocol?",
+                    )));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
                     return;
                 }
                 Ok(None) => {
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Failed to deserialize handshake".into(),
+                        "Failed to deserialize handshake (server replied with malformed bytes; \
+                         likely a protocol-version mismatch — rebuild server and client \
+                         from the same commit)".into(),
                     ));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
                     return;
                 }
                 Err(e) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
+                    let detail = if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                        "server closed the connection before sending Hello \
+                         (the server-side handshake panicked or the protocol versions don't match — \
+                         confirm both binaries were built from this commit)"
+                            .to_string()
+                    } else {
+                        format!("{} ({:?})", e, e.kind())
+                    };
+                    let _ = event_tx.send(ServerMessage::ConnectionRefused(detail));
                     ctx.request_repaint();
                     return;
                 }

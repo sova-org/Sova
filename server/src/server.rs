@@ -643,6 +643,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             let frame_text_layout = state.frame_text.layout_vec();
             let frame_doc_snapshots = state.frame_text.export_full_snapshots();
             let presence_bytes = state.presence.encode_all();
+            let snapshot_count = frame_doc_snapshots.len();
+            let presence_byte_count = presence_bytes.len();
 
             hello_msg = ServerMessage::Hello {
                 username: client_name.clone(),
@@ -660,10 +662,26 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 presence: presence_bytes,
             };
 
-            if !matches!(
-                timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await,
-                Ok(Ok(()))
-            ) {
+            let hello_result = timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await;
+            match &hello_result {
+                Ok(Ok(())) => {
+                    println!(
+                        "[ handshake ] Hello delivered to {} ({}). peer_id={}, frame_docs={}, presence_bytes={}",
+                        client_addr_str,
+                        client_name,
+                        assigned_peer_id,
+                        snapshot_count,
+                        presence_byte_count
+                    );
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[ handshake ] write error sending Hello to {}: {}", client_name, e);
+                }
+                Err(_) => {
+                    eprintln!("[ handshake ] timeout sending Hello to {}", client_name);
+                }
+            }
+            if !matches!(hello_result, Ok(Ok(()))) {
                 eprintln!("Failed to send Hello to {}", client_name);
                 let mut clients_guard = state.clients.lock().await;
                 if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
