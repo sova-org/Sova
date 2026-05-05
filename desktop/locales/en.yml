@@ -566,3 +566,7 @@ reset_scene.message: "This will clear all lines, frames, scripts, and variables.
 # Exit confirmation
 exit.title: "Exit Sova"
 exit.message: "The server is still running. Are you sure you want to exit?"
+
+# Load demo confirmation
+load_demo.title: "Load Demo"
+load_demo.message: "Loading \"%{name}\" will replace the current scene. Continue?"

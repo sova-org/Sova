@@ -42,6 +42,18 @@ impl SovaApp {
                 .send(ClientMessage::ResetScene(ActionTiming::Immediate));
         }
 
+        match self.dialogs.confirm_load_demo.show(ctx) {
+            widgets::ConfirmAction::Confirmed => {
+                if let Some((_, bytes)) = self.dialogs.pending_demo.take() {
+                    self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                }
+            }
+            widgets::ConfirmAction::Cancelled => {
+                self.dialogs.pending_demo = None;
+            }
+            widgets::ConfirmAction::None => {}
+        }
+
         if self.session.rename_input.is_some() {
             let mut open = true;
             let mut confirmed_name: Option<String> = None;

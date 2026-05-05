@@ -44,8 +44,12 @@ impl SovaApp {
             MenuAction::ClearRecentScenes => {
                 self.session.recent_scenes.clear();
             }
-            MenuAction::LoadDemo(_name, bytes) => {
-                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+            MenuAction::LoadDemo(name, bytes) => {
+                self.dialogs.pending_demo = Some((name, bytes));
+                self.dialogs.confirm_load_demo.open(
+                    t!("load_demo.title"),
+                    t!("load_demo.message", name = name),
+                );
             }
             MenuAction::StartServer => {
                 self.panels

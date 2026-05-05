@@ -68,6 +68,8 @@ pub(crate) struct Dialogs {
     pub(crate) pending: PendingDialog,
     pub(crate) confirm_exit: widgets::ConfirmDialog,
     pub(crate) confirm_reset_scene: widgets::ConfirmDialog,
+    pub(crate) confirm_load_demo: widgets::ConfirmDialog,
+    pub(crate) pending_demo: Option<(&'static str, &'static [u8])>,
 }
 
 impl Dialogs {
@@ -77,6 +79,8 @@ impl Dialogs {
             pending: PendingDialog::None,
             confirm_exit: widgets::ConfirmDialog::new("confirm_exit"),
             confirm_reset_scene: widgets::ConfirmDialog::new("confirm_reset_scene"),
+            confirm_load_demo: widgets::ConfirmDialog::new("confirm_load_demo"),
+            pending_demo: None,
         }
     }
 }

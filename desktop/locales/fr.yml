@@ -555,3 +555,7 @@ reset_scene.message: "Toutes les lignes, frames, scripts et variables seront eff
 # Exit confirmation
 exit.title: "Quitter Sova"
 exit.message: "Le serveur est toujours en cours d'exécution. Voulez-vous vraiment quitter ?"
+
+# Load demo confirmation
+load_demo.title: "Charger une démo"
+load_demo.message: "Charger « %{name} » remplacera la scène actuelle. Continuer ?"
