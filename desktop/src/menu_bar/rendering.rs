@@ -1,6 +1,9 @@
 use eframe::egui;
 
-use super::{MenuAction, MenuItemDef, MENU_LABEL_RIGHT_GAP, MENU_MAX_HEIGHT_FRACTION, MENU_MAX_WIDTH, MENU_MIN_WIDTH};
+use super::{
+    MENU_LABEL_RIGHT_GAP, MENU_MAX_HEIGHT_FRACTION, MENU_MAX_TOTAL_WIDTH_FRACTION, MENU_MAX_WIDTH,
+    MENU_MIN_WIDTH, MenuAction, MenuItemDef,
+};
 
 pub(super) enum MenuPanelClick {
     Action(MenuAction),
@@ -315,17 +318,6 @@ pub(super) fn menu_popup_metrics(style: &egui::Style) -> (f32, f32) {
     )
 }
 
-fn menu_item_height(style: &egui::Style, item: &MenuItemDef) -> f32 {
-    match item {
-        MenuItemDef::Separator => style.spacing.interact_size.y * 0.25,
-        _ => style.spacing.interact_size.y,
-    }
-}
-
-fn menu_content_height(style: &egui::Style, items: &[MenuItemDef]) -> f32 {
-    items.iter().map(|item| menu_item_height(style, item)).sum()
-}
-
 fn layout_job_width(ctx: &egui::Context, job: egui::text::LayoutJob) -> f32 {
     ctx.fonts_mut(|fonts| fonts.layout_job(job).size().x)
 }
@@ -389,6 +381,33 @@ fn menu_content_width(ctx: &egui::Context, style: &egui::Style, items: &[MenuIte
         .clamp(MENU_MIN_WIDTH, MENU_MAX_WIDTH)
 }
 
+/// Pure layout decision: how many columns and how many rows per column to use
+/// when the items would otherwise overflow vertically.
+///
+/// Returns `(num_cols, rows_per_col)`. Always at least one column. When
+/// `num_cols == 1`, items fit in a single column (which may still overflow
+/// `max_inner_height` and need an outer scroll area).
+pub(super) fn layout_columns(
+    items_len: usize,
+    row_height: f32,
+    max_inner_height: f32,
+    col_width: f32,
+    max_total_width: f32,
+) -> (usize, usize) {
+    if items_len == 0 {
+        return (1, 0);
+    }
+    let rows_fit = (max_inner_height / row_height).floor().max(1.0) as usize;
+    if items_len <= rows_fit {
+        return (1, items_len);
+    }
+    let cols_needed = items_len.div_ceil(rows_fit);
+    let max_cols_by_width = (max_total_width / col_width).floor().max(1.0) as usize;
+    let num_cols = cols_needed.min(max_cols_by_width).max(1);
+    let rows_per_col = items_len.div_ceil(num_cols);
+    (num_cols, rows_per_col)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn show_menu_panel(
     ctx: &egui::Context,
@@ -406,12 +425,18 @@ pub(super) fn show_menu_panel(
     let mut clicked = None;
     let menu_style = configured_menu_style(base_style);
     let frame = egui::Frame::menu(&menu_style);
-    let content_width = menu_content_width(ctx, &menu_style, items);
-    let outer_width = content_width + frame.total_margin().sum().x;
-    let max_inner_height = (ctx.content_rect().height() * MENU_MAX_HEIGHT_FRACTION
-        - frame.total_margin().sum().y)
-        .max(menu_style.spacing.interact_size.y);
-    let should_scroll = menu_content_height(&menu_style, items) > max_inner_height;
+    let col_width = menu_content_width(ctx, &menu_style, items);
+    let row_height = menu_style.spacing.interact_size.y;
+    let viewport = ctx.content_rect();
+    let max_inner_height =
+        (viewport.height() * MENU_MAX_HEIGHT_FRACTION - frame.total_margin().sum().y).max(row_height);
+    let max_total_width =
+        (viewport.width() * MENU_MAX_TOTAL_WIDTH_FRACTION - frame.total_margin().sum().x).max(col_width);
+
+    let (num_cols, rows_per_col) =
+        layout_columns(items.len(), row_height, max_inner_height, col_width, max_total_width);
+    let needs_scroll = num_cols == 1 && rows_per_col as f32 * row_height > max_inner_height;
+    let outer_width = num_cols as f32 * col_width + frame.total_margin().sum().x;
 
     let popup = egui::Popup::new(
         area_id,
@@ -428,52 +453,88 @@ pub(super) fn show_menu_panel(
     .width(outer_width)
     .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
     .show(|ui| {
-        ui.set_min_width(content_width);
-        ui.set_max_width(content_width);
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
-        let draw_rows = |ui: &mut egui::Ui,
-                         item_rects: &mut Vec<egui::Rect>,
-                         hovered_idx: &mut Option<usize>,
-                         clicked: &mut Option<MenuPanelClick>| {
-            ui.set_min_width(content_width);
-            ui.set_max_width(content_width);
-            for (i, item) in items.iter().enumerate() {
-                let response = show_item_row(
-                    ui,
-                    item,
-                    content_width,
-                    show_keyboard_selection && selected_idx == Some(i),
-                    allow_mouse_hover,
-                    submenu_open(i),
-                    true,
-                );
-                item_rects[i] = response.rect;
-
-                if allow_mouse_hover && response.hovered() && item.is_navigable() {
-                    *hovered_idx = Some(i);
-                }
-
-                if response.clicked() {
-                    *clicked = match item {
-                        MenuItemDef::SubMenu { enabled: true, .. } => {
-                            Some(MenuPanelClick::OpenSubmenu(i))
-                        }
-                        _ => item.action().map(MenuPanelClick::Action),
-                    };
-                }
+        let render_one = |ui: &mut egui::Ui,
+                          idx: usize,
+                          item_rects: &mut [egui::Rect],
+                          hovered_idx: &mut Option<usize>,
+                          clicked: &mut Option<MenuPanelClick>| {
+            let item = &items[idx];
+            let response = show_item_row(
+                ui,
+                item,
+                col_width,
+                show_keyboard_selection && selected_idx == Some(idx),
+                allow_mouse_hover,
+                submenu_open(idx),
+                true,
+            );
+            item_rects[idx] = response.rect;
+            if allow_mouse_hover && response.hovered() && item.is_navigable() {
+                *hovered_idx = Some(idx);
+            }
+            if response.clicked() {
+                *clicked = match item {
+                    MenuItemDef::SubMenu { enabled: true, .. } => {
+                        Some(MenuPanelClick::OpenSubmenu(idx))
+                    }
+                    _ => item.action().map(MenuPanelClick::Action),
+                };
             }
         };
 
-        if should_scroll {
+        let draw_single =
+            |ui: &mut egui::Ui,
+             item_rects: &mut Vec<egui::Rect>,
+             hovered_idx: &mut Option<usize>,
+             clicked: &mut Option<MenuPanelClick>| {
+                ui.set_min_width(col_width);
+                ui.set_max_width(col_width);
+                for i in 0..items.len() {
+                    render_one(ui, i, item_rects, hovered_idx, clicked);
+                }
+            };
+
+        let draw_columns =
+            |ui: &mut egui::Ui,
+             item_rects: &mut Vec<egui::Rect>,
+             hovered_idx: &mut Option<usize>,
+             clicked: &mut Option<MenuPanelClick>| {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                    for col_idx in 0..num_cols {
+                        let start = col_idx * rows_per_col;
+                        let end = (start + rows_per_col).min(items.len());
+                        ui.vertical(|ui| {
+                            ui.set_min_width(col_width);
+                            ui.set_max_width(col_width);
+                            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                            let last_within = end.saturating_sub(start + 1);
+                            for (within, item) in items[start..end].iter().enumerate() {
+                                if matches!(item, MenuItemDef::Separator)
+                                    && (within == 0 || within == last_within)
+                                {
+                                    continue;
+                                }
+                                render_one(ui, start + within, item_rects, hovered_idx, clicked);
+                            }
+                        });
+                    }
+                });
+            };
+
+        if num_cols > 1 {
+            draw_columns(ui, &mut item_rects, &mut hovered_idx, &mut clicked);
+        } else if needs_scroll {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .max_height(max_inner_height)
                 .show(ui, |ui| {
-                    draw_rows(ui, &mut item_rects, &mut hovered_idx, &mut clicked)
+                    draw_single(ui, &mut item_rects, &mut hovered_idx, &mut clicked);
                 });
         } else {
-            draw_rows(ui, &mut item_rects, &mut hovered_idx, &mut clicked);
+            draw_single(ui, &mut item_rects, &mut hovered_idx, &mut clicked);
         }
     })
     .expect("menu popups anchored to fixed positions should always render");
@@ -485,3 +546,4 @@ pub(super) fn show_menu_panel(
         clicked,
     }
 }
+
