@@ -170,6 +170,16 @@ saw snd c4 note 0.5 verb 1 orbit .
 
 Different voices sharing the same orbit also share that orbit's effect state, which is how you get a single long reverb tail that several voices pour into. Orbits are also what `corbit` targets when you build a sidechain, and how `orec` and `odub` capture audio in the [Recording](#) article.
 
+## Skipping a Voice
+
+`rest` pushes a silence value. Any sound or parameter that resolves to silence cancels its emission for that polyphony slot. Useful for chords that drop a voice on certain cycles:
+
+```
+< 60 rest > 67 note sine snd .
+```
+
+Here the first slot alternates between note 60 and silence, while the second slot keeps emitting note 67.
+
 ## Where to Go Next
 
 Now that you know what is inside Doux, see [Modulations](#) for how values flow from the stack to the sound register, how to change them from one frame to the next, and how to hand Doux continuous movements that sweep parameters smoothly.

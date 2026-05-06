@@ -1073,7 +1073,7 @@ fn truncate_str(s: &str, max_chars: usize) -> &str {
     }
 }
 
-fn syntax_layout_job(
+pub(crate) fn syntax_layout_job(
     text: &str,
     cs: &CompiledSyntax,
     theme: &SyntaxTheme,

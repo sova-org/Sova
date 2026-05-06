@@ -15,7 +15,6 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub scope: ScopeSettings,
     pub spectrum: SpectrumSettings,
-    pub visuals: VisualsSettings,
     pub doc: DocSettings,
     pub scene: SceneSettings,
     pub tools: ToolsSettings,
@@ -128,13 +127,6 @@ impl Default for AppearanceSettings {
             bg_brightness: 0,
         }
     }
-}
-
-#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct VisualsSettings {
-    pub code: String,
-    pub shared: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

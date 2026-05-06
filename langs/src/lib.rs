@@ -3,6 +3,7 @@ pub mod bob;
 pub mod boinx;
 pub mod cagire;
 pub mod alisp;
+pub mod hydra;
 
 use sova_core::vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory};
 
@@ -15,6 +16,7 @@ pub fn create_language_center() -> LanguageCenter {
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(boinx::BoinxInterpreterFactory);
     interpreters.add_factory(cagire::CagireInterpreterFactory::new());
+    interpreters.add_factory(hydra::HydraInterpreterFactory);
 
     LanguageCenter {
         transcoder,

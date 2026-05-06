@@ -4,13 +4,12 @@ use egui_commonmark::CommonMarkViewer;
 
 use crate::client_bridge::ClientBridge;
 use crate::icons;
-use crate::widgets::{syntax_highlight::SyntaxTheme, EditorSettings};
+use crate::widgets::EditorSettings;
 
 use super::{
-    find_clicked_hook, general_articles, hydra_articles, resolve_article_link, tab_underline,
-    toc_marker, DocPanel, DocView,
+    find_clicked_hook, general_articles, resolve_article_link, tab_underline, toc_marker,
+    DocPanel, DocView,
 };
-use super::markdown::show_highlighted_markdown;
 
 impl DocPanel {
     pub(crate) fn show_content(
@@ -20,8 +19,7 @@ impl DocPanel {
         editor_settings: &EditorSettings,
     ) {
         let langs = bridge.languages();
-        let hydra_tab = 1 + langs.len();
-        let doux_tab = hydra_tab + 1;
+        let doux_tab = 1 + langs.len();
         let tab_count = doux_tab + 1;
         self.selected_tab = self.selected_tab.min(tab_count - 1);
 
@@ -66,22 +64,6 @@ impl DocPanel {
                         self.edited_example.clear();
                         self.scroll_to_top = true;
                     }
-                }
-
-                let r = ui.selectable_label(
-                    self.selected_tab == hydra_tab,
-                    icons::button_text(ui, icons::WAVE_SINE, "Hydra"),
-                );
-                if self.selected_tab == hydra_tab {
-                    tab_underline(ui, r.rect);
-                }
-                if r.clicked() {
-                    self.selected_tab = hydra_tab;
-                    self.search.clear();
-                    self.view = None;
-                    self.example_output = None;
-                    self.edited_example.clear();
-                    self.scroll_to_top = true;
                 }
 
                 let r = ui.selectable_label(
@@ -132,8 +114,6 @@ impl DocPanel {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if selected == 0 {
                         self.show_general_toc(ui, &needle);
-                    } else if selected == hydra_tab {
-                        self.show_hydra_toc(ui, &needle);
                     } else if selected == doux_tab {
                         self.show_doux_toc(ui, &needle);
                     } else {
@@ -161,8 +141,6 @@ impl DocPanel {
                 scroll.show(ui, |ui| {
                     nav_target = if selected == 0 {
                         self.show_general_content(ui)
-                    } else if selected == hydra_tab {
-                        self.show_hydra_content(ui, editor_settings)
                     } else if selected == doux_tab {
                         self.show_doux_content(ui);
                         None
@@ -184,7 +162,6 @@ impl DocPanel {
         {
             let tab = match &view {
                 DocView::GeneralArticle(_) => 0,
-                DocView::HydraArticle(_) => hydra_tab,
                 DocView::DouxModule(_) => doux_tab,
                 _ => self.selected_tab,
             };
@@ -246,57 +223,6 @@ impl DocPanel {
         find_clicked_hook(&self.md_cache)
     }
 
-    fn show_hydra_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
-        ui.strong(t!("doc.articles").as_ref());
-        ui.add_space(4.0);
-        for (i, (_, title, content)) in hydra_articles().iter().enumerate() {
-            if !needle.is_empty()
-                && !title.to_lowercase().contains(needle)
-                && !content.to_lowercase().contains(needle)
-            {
-                continue;
-            }
-            let selected = self.view == Some(DocView::HydraArticle(i));
-            let r = ui.selectable_label(selected, *title);
-            if selected {
-                toc_marker(ui, r.rect);
-            }
-            if selected && self.scroll_toc {
-                r.scroll_to_me(Some(egui::Align::Center));
-                self.scroll_toc = false;
-            }
-            if r.clicked() {
-                self.set_view(DocView::HydraArticle(i));
-            }
-        }
-    }
-
-    fn show_hydra_content(
-        &mut self,
-        ui: &mut egui::Ui,
-        editor_settings: &EditorSettings,
-    ) -> Option<String> {
-        let articles = hydra_articles();
-        let idx = match &self.view {
-            Some(DocView::HydraArticle(i)) => *i,
-            _ => 0,
-        };
-        if let Some((_, title, content)) = articles.get(idx) {
-            let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
-            ui.heading(*title);
-            ui.add_space(8.0);
-            show_highlighted_markdown(
-                ui,
-                &mut self.md_cache,
-                content,
-                self.hydra_syntax.as_ref(),
-                &theme,
-                None,
-            )
-        } else {
-            None
-        }
-    }
 
     fn show_doux_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
         let modules = doux::all_modules();

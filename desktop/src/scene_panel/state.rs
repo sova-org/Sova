@@ -1,6 +1,5 @@
 use eframe::egui;
 use sova_core::scene::{Frame, Scene};
-use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
 use crate::widgets::inline_scene_view::FocusRequest;
@@ -27,7 +26,7 @@ pub(crate) enum SceneState {
     EditingFrame { cursor: (usize, usize) },
     /// Prelude editor has focus, sequencer grid hidden.
     EditingPrelude { index: usize },
-    /// Classic mode only: single frame fills the panel.
+    /// Stack mode only: single frame fills the panel.
     FocusedFrame { frame: (usize, usize) },
 }
 
@@ -128,7 +127,7 @@ impl ScenePanel {
     }
 
     pub(super) fn should_auto_open_picker_after_insert(&self) -> bool {
-        self.view_mode == super::ViewMode::Classic
+        self.view_mode == super::ViewMode::Stack
     }
 
     pub(crate) fn clear_sequencer_inline_edit(&mut self) {
@@ -215,9 +214,7 @@ impl ScenePanel {
         self.selection.insert(pos);
         self.anchor = Some(pos);
         self.scroll_to_cursor = true;
-        if bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(pos.0, pos.1, None));
-        }
+        let _ = bridge; // navigation no longer publishes a presence event here.
     }
 
     /// Move cursor within navigation mode. Does NOT reset selection (caller decides).
@@ -237,9 +234,7 @@ impl ScenePanel {
             self.state = SceneState::NavigatingFrame { cursor: pos };
         }
         self.scroll_to_cursor = true;
-        if bridge.is_connected() {
-            bridge.send(ClientMessage::CursorPosition(pos.0, pos.1, None));
-        }
+        let _ = bridge;
     }
 
     /// Select a prelude script for navigation.
@@ -294,7 +289,7 @@ impl ScenePanel {
         }
     }
 
-    /// Enter focus mode (classic only).
+    /// Enter focus mode (stack only).
     pub(crate) fn enter_focus_mode(&mut self, pos: (usize, usize)) {
         self.clear_sequencer_inline_edit();
         self.clear_sequencer_line_speed_focus();

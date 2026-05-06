@@ -20,6 +20,7 @@ mod waveform;
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorContext, EditorSettings, PeerCursor};
+pub(crate) use code_editor::syntax_layout_job;
 pub use combo::searchable_string_list as combo_searchable_string_list;
 pub use combo::string_list as combo_string_list;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction, PanelStates};

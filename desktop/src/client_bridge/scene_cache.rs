@@ -67,7 +67,8 @@ impl ClientBridge {
     }
 
     pub fn start_feedback(&mut self, audio_config: AudioRestartConfig) {
-        match FeedbackEngine::start(audio_config) {
+        let host_tx = self.install_host_channel();
+        match FeedbackEngine::start(audio_config, host_tx) {
             Ok(engine) => self.feedback_engine = Some(engine),
             Err(e) => {
                 let _ = self.log_tx.send(LogEntry {
@@ -221,6 +222,9 @@ impl ClientBridge {
             micros: 0,
             quantum: self.clock.quantum,
             devices: self.devices.clone(),
+            frame_text_layout: Vec::new(),
+            frame_doc_snapshots: Vec::new(),
+            presence: Vec::new(),
         })
     }
 }

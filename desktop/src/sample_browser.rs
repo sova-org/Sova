@@ -113,6 +113,9 @@ impl SampleNode {
     }
 }
 
+/// Sorted (folders, audio files) split of a directory's entries.
+type DirSplit = (Vec<(String, PathBuf)>, Vec<String>);
+
 pub struct SampleTree {
     roots: Vec<SampleNode>,
     default_root_count: usize,
@@ -149,15 +152,12 @@ impl SampleTree {
         }
     }
 
-    fn scan_children(path: &Path) -> Vec<SampleNode> {
-        let entries = match fs::read_dir(path) {
-            Ok(e) => e,
-            Err(_) => return Vec::new(),
-        };
-
+    /// Partition a directory into (sorted folders, sorted audio files). Returns
+    /// `None` if the directory cannot be read.
+    fn read_audio_dir(path: &Path) -> Option<DirSplit> {
+        let entries = fs::read_dir(path).ok()?;
         let mut files: Vec<String> = Vec::new();
         let mut folders: Vec<(String, PathBuf)> = Vec::new();
-
         for entry in entries.flatten() {
             let ft = entry.file_type().ok();
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -167,58 +167,37 @@ impl SampleTree {
                 files.push(name);
             }
         }
-
         folders.sort_by_key(|a| a.0.to_lowercase());
         files.sort_by_key(|a| a.to_lowercase());
+        Some((folders, files))
+    }
 
-        let mut nodes = Vec::new();
-        for (name, folder_path) in folders {
-            if let Some(folder) = Self::scan_folder(&name, &folder_path) {
-                nodes.push(folder);
-            }
-        }
-        for name in files {
-            nodes.push(SampleNode::File { name });
-        }
-        nodes
+    /// Recurse into folders (skipping empties) and append loose files.
+    fn build_children(folders: Vec<(String, PathBuf)>, files: Vec<String>) -> Vec<SampleNode> {
+        let mut children: Vec<SampleNode> = folders
+            .into_iter()
+            .filter_map(|(name, p)| Self::scan_folder(&name, &p))
+            .collect();
+        children.extend(files.into_iter().map(|name| SampleNode::File { name }));
+        children
+    }
+
+    fn scan_children(path: &Path) -> Vec<SampleNode> {
+        let Some((folders, files)) = Self::read_audio_dir(path) else {
+            return Vec::new();
+        };
+        Self::build_children(folders, files)
     }
 
     fn scan_root(path: &Path) -> Option<SampleNode> {
-        let entries = fs::read_dir(path).ok()?;
         let label = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
-
-        let mut files: Vec<String> = Vec::new();
-        let mut folders: Vec<(String, PathBuf)> = Vec::new();
-
-        for entry in entries.flatten() {
-            let ft = entry.file_type().ok();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if ft.is_some_and(|t| t.is_dir()) {
-                folders.push((name, entry.path()));
-            } else if is_audio_file(&name) {
-                files.push(name);
-            }
-        }
-
-        folders.sort_by_key(|a| a.0.to_lowercase());
-        files.sort_by_key(|a| a.to_lowercase());
-
-        let mut children = Vec::new();
-        for (name, folder_path) in folders {
-            if let Some(folder) = Self::scan_folder(&name, &folder_path) {
-                children.push(folder);
-            }
-        }
-        for name in files {
-            children.push(SampleNode::File { name });
-        }
-
+        let (folders, files) = Self::read_audio_dir(path)?;
         Some(SampleNode::Root {
             label,
-            children,
+            children: Self::build_children(folders, files),
             expanded: false,
         })
     }

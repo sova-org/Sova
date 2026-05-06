@@ -1,8 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
-use sova_server::ClientMessage;
+use crossbeam_channel::{Sender, unbounded};
+use sova_core::HostMessage;
+use sova_server::{ClientMessage, FrameTextId};
 
-use super::{ChatMessage, ClientBridge, PeerCursorState, now_hhmm, MAX_CHAT_MESSAGES};
+use super::{ChatMessage, ClientBridge, MAX_CHAT_MESSAGES, now_hhmm};
 
 impl ClientBridge {
     pub fn peers(&self) -> &[String] {
@@ -17,21 +19,90 @@ impl ClientBridge {
         self.confirmed_username = Some(name);
     }
 
-    pub fn peer_cursors(&self) -> &HashMap<String, PeerCursorState> {
-        &self.peer_cursors
-    }
+    /// Decoded `(peer_name, line, col)` triples for every peer whose ephemeral
+    /// cursor presence anchors into the given `(li, fi)` frame's Loro doc.
+    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(String, usize, usize)> {
+        let Some(target_id) = self.frame_text_id_at(li, fi) else {
+            return Vec::new();
+        };
+        let Some(doc) = self.frame_doc(target_id) else {
+            return Vec::new();
+        };
+        // Resolve our own username up front; treat None as the empty string so
+        // a brief None state can't leak our own cursor through the filter (we
+        // never publish under "" so it can't match anyone real either).
+        let me = self.confirmed_username().unwrap_or("");
+        let states = self.presence.get_all_states();
 
-    pub fn text_cursors_for_frame(&self, li: usize, fi: usize) -> Vec<(&str, usize, usize)> {
-        self.peer_cursors
-            .iter()
-            .filter_map(|(name, &(pli, pfi, ref tc))| {
-                if pli == li && pfi == fi {
-                    tc.map(|(line, col)| (name.as_str(), line, col))
+        // First pass: collect (name, codepoint) pairs anchored to this frame.
+        let mut candidates: Vec<(String, usize)> = Vec::new();
+        for (key, value) in &states {
+            let Some(rest) = key.strip_prefix("peer/") else {
+                continue;
+            };
+            let Some((name, suffix)) = rest.split_once('/') else {
+                continue;
+            };
+            if suffix != "cursor_frame" || name == me {
+                continue;
+            }
+            let frame_id = match value {
+                loro::LoroValue::I64(v) => FrameTextId(*v as u64),
+                _ => continue,
+            };
+            if frame_id != target_id {
+                continue;
+            }
+            let pos_key = format!("peer/{}/cursor_pos", name);
+            let Some(loro::LoroValue::Binary(bytes)) = states.get(&pos_key) else {
+                continue;
+            };
+            let Ok(cursor) = loro::cursor::Cursor::decode(bytes.as_ref()) else {
+                continue;
+            };
+            let Ok(pos_query) = doc.get_cursor_pos(&cursor) else {
+                continue;
+            };
+            candidates.push((name.to_owned(), pos_query.current.pos));
+        }
+
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        // Hoist the live text fetch out of the per-peer loop and build a
+        // codepoint index of newlines once. Each peer's (line, col) is then a
+        // partition_point binary search instead of a full string rescan.
+        let live = doc
+            .get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
+            .to_string();
+        let newlines: Vec<usize> = live
+            .chars()
+            .enumerate()
+            .filter_map(|(i, ch)| (ch == '\n').then_some(i))
+            .collect();
+
+        candidates
+            .into_iter()
+            .map(|(name, codepoint)| {
+                let line = newlines.partition_point(|&n| n < codepoint);
+                let col = if line == 0 {
+                    codepoint
                 } else {
-                    None
-                }
+                    codepoint - (newlines[line - 1] + 1)
+                };
+                (name, line, col)
             })
             .collect()
+    }
+
+    /// Single point of cleanup when a peer disconnects. Future presence-related
+    /// per-peer state (selections, follow targets, ...) gets one place to add to.
+    pub(super) fn forget_peer(&mut self, name: &str) {
+        self.peer_editing.retain(|_, names| {
+            names.retain(|n| n != name);
+            !names.is_empty()
+        });
     }
 
     pub fn editing_peers_for_frame(&self, li: usize, fi: usize) -> &[String] {
@@ -64,11 +135,24 @@ impl ClientBridge {
         }
     }
 
-    pub fn take_remote_hydra(&mut self) -> Option<(String, String)> {
-        self.remote_hydra.take()
+    /// Creates a fresh host-message channel and stores the receiver. Returns
+    /// the sender so the caller can register it on a [DeviceMap]. Replaces
+    /// any previously installed receiver — the previous channel's sender
+    /// will start erroring on the next send, which is the correct shutdown
+    /// signal for an outgoing embedded-server / feedback-engine instance.
+    pub fn install_host_channel(&mut self) -> Sender<HostMessage> {
+        let (tx, rx) = unbounded();
+        self.host_rx = Some(rx);
+        tx
     }
 
-    pub fn send_hydra_code(&self, code: &str) {
-        self.send(ClientMessage::HydraCode(code.to_owned()));
+    /// Drains any host messages emitted by the in-process scheduler. Returns
+    /// an empty `Vec` when no host channel is installed (remote-only mode).
+    pub fn drain_host_messages(&mut self) -> Vec<HostMessage> {
+        let Some(rx) = &self.host_rx else {
+            return Vec::new();
+        };
+        rx.try_iter().collect()
     }
 }
+

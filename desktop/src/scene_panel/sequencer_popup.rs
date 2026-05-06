@@ -1,5 +1,6 @@
 mod header;
 mod inline_edit;
+mod preview;
 mod tile;
 
 use eframe::egui;
@@ -14,6 +15,7 @@ use crate::client_bridge::ClientBridge;
 use crate::theme::{
     COLOR_MUTED,
 };
+use crate::widgets::syntax_highlight::SyntaxTheme;
 
 const TILE_W: f32 = 112.0;
 const TILE_H: f32 = 72.0;
@@ -59,6 +61,7 @@ impl super::ScenePanel {
         accent: egui::Color32,
         opacity: &SceneOpacity,
         bridge: &ClientBridge,
+        theme: &SyntaxTheme,
         default_lang: &str,
     ) {
         egui::Frame::NONE
@@ -169,6 +172,7 @@ impl super::ScenePanel {
                                         line_accent,
                                         opacity,
                                         bridge,
+                                        theme,
                                     );
                                     let is_inline_editing = self
                                         .sequencer_inline_edit

@@ -32,7 +32,8 @@ rmp-serde = "1"
 crc32fast = "1"
 crossbeam-channel = { workspace = true }
 socket2 = "0.5"
-doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.31", package = "doux-sova", optional = true }
+doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.33", package = "doux-sova", optional = true }
 include_dir = { version = "0.7", optional = true }
 dirs = { version = "6", optional = true }
 tokio-util = "0.7.18"
+loro = { workspace = true }

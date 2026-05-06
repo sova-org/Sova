@@ -17,8 +17,8 @@ impl SovaApp {
             sample_browser_open: self.panels.tools.settings.show_sample_browser,
             sample_browser_available: !self.bridge.is_connected()
                 || self.panels.server.is_running(),
-            visuals_open: self.panels.visuals.open,
             debug_open: self.panels.debug_open,
+            scene_view_mode: self.panels.scene.view_mode,
             recent_scenes: &self.session.recent_scenes,
             egui_ctx: ctx,
         })
@@ -43,13 +43,18 @@ impl SovaApp {
             MenuAction::ClearRecentScenes => {
                 self.session.recent_scenes.clear();
             }
-            MenuAction::LoadDemo(_name, bytes) => {
-                self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+            MenuAction::LoadDemo(name, bytes) => {
+                self.dialogs.pending_demo = Some((name, bytes));
+                self.dialogs.confirm_load_demo.open(
+                    t!("load_demo.title"),
+                    t!("load_demo.message", name = name),
+                );
             }
             MenuAction::StartServer => {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             MenuAction::StopServer => {
                 self.bridge.disconnect();
@@ -66,6 +71,12 @@ impl SovaApp {
                 if self.bridge.is_connected() {
                     self.bridge
                         .restart_audio(self.panels.audio.generate_audio_config());
+                }
+            }
+            MenuAction::SetSceneViewMode(mode) => {
+                if self.panels.scene.view_mode != mode {
+                    self.panels.scene.view_mode = mode;
+                    self.panels.scene.scroll_to_cursor = true;
                 }
             }
             MenuAction::Exit => {
@@ -120,7 +131,6 @@ impl SovaApp {
                     self.panels.doc.settings.pinned = true;
                 }
             }
-            Visuals => self.panels.visuals.open = !self.panels.visuals.open,
             RestartCore => {
                 if self.bridge.is_connected() {
                     self.bridge.send(ClientMessage::RestartCore);
@@ -162,6 +172,14 @@ impl SovaApp {
             }
             ZoomReset => {
                 self.prefs.appearance.zoom = 1.0;
+            }
+            ToggleViewMode => {
+                use crate::scene_panel::ViewMode;
+                self.panels.scene.view_mode = match self.panels.scene.view_mode {
+                    ViewMode::Stack => ViewMode::Sequencer,
+                    ViewMode::Sequencer => ViewMode::Stack,
+                };
+                self.panels.scene.scroll_to_cursor = true;
             }
         }
     }

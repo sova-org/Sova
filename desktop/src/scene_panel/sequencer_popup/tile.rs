@@ -5,7 +5,9 @@ use crate::theme::{
     COLOR_ERROR, COLOR_MUTED, STROKE_NORMAL, accent_fill_med, accent_fill_soft,
     accent_fill_strong, tile_label_font, username_color,
 };
+use crate::widgets::syntax_highlight::SyntaxTheme;
 
+use super::preview::show_frame_preview;
 use super::{compact_duration_label, TILE_H, TILE_W};
 use crate::scene_panel::SceneOpacity;
 use crate::theme::COLOR_OK;
@@ -27,6 +29,7 @@ impl crate::scene_panel::ScenePanel {
         accent: egui::Color32,
         opacity: &SceneOpacity,
         bridge: &ClientBridge,
+        theme: &SyntaxTheme,
     ) -> egui::Response {
         let (rect, mut resp) =
             ui.allocate_exact_size(egui::vec2(TILE_W, TILE_H), egui::Sense::click());
@@ -91,12 +94,6 @@ impl crate::scene_panel::ScenePanel {
         let editing_count = editing_peers.len();
         let mut editing_names: Vec<&str> = editing_peers.iter().map(String::as_str).collect();
         editing_names.sort_unstable();
-        let mut peer_names_on_frame: Vec<&str> = bridge
-            .peer_cursors()
-            .iter()
-            .filter_map(|(name, &(pli, pfi, _))| (pli == li && pfi == fi).then_some(name.as_str()))
-            .collect();
-        peer_names_on_frame.sort_unstable();
 
         let shows_inline_editor = self.show_inline_tile_editor(ui, rect, li, fi, frame, bridge);
         if !shows_inline_editor {
@@ -229,48 +226,46 @@ impl crate::scene_panel::ScenePanel {
 
         crate::scene_panel::prelude::draw_feedback_flashes(ui, li, fi, rect, bridge, 80.0, 50.0);
 
-        for (name, &(pli, pfi, _)) in bridge.peer_cursors() {
-            if pli == li && pfi == fi {
-                let color = username_color(name);
-                let bottom_strip = egui::Rect::from_min_size(
-                    egui::pos2(rect.left(), rect.bottom() - 2.0),
-                    egui::vec2(rect.width(), 2.0),
-                );
-                painter.rect_filled(bottom_strip, 0.0, color);
-            }
+        for name in bridge.editing_peers_for_frame(li, fi) {
+            let color = username_color(name);
+            let bottom_strip = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), rect.bottom() - 2.0),
+                egui::vec2(rect.width(), 2.0),
+            );
+            painter.rect_filled(bottom_strip, 0.0, color);
         }
 
-        let mut cursor_only: Vec<&str> = peer_names_on_frame
-            .drain(..)
-            .filter(|name| !editing_names.contains(name))
-            .collect();
-        cursor_only.sort_unstable();
-
-        if !cursor_only.is_empty() || !editing_names.is_empty() {
+        let has_script = !frame.script().content().is_empty()
+            || bridge.frame_text_id_at(li, fi).is_some();
+        if has_script || !editing_names.is_empty() {
             resp = resp.on_hover_ui(|ui| {
-                ui.set_min_width(160.0);
-                if !editing_names.is_empty() {
-                    ui.label(
-                        egui::RichText::new("Editing")
-                            .small()
-                            .strong()
-                            .color(ui.visuals().text_color()),
-                    );
-                    ui.label(editing_names.join(", "));
-                }
-                if !cursor_only.is_empty() {
-                    if !editing_names.is_empty() {
-                        ui.add_space(4.0);
-                    }
-                    ui.label(
-                        egui::RichText::new("On Frame")
-                            .small()
-                            .strong()
-                            .color(ui.visuals().text_color()),
-                    );
-                    ui.label(cursor_only.join(", "));
-                }
+                show_frame_preview(ui, li, fi, frame, bridge, theme, &editing_names);
             });
+
+            if is_cursor && !resp.hovered()
+                && let Some(deadline) = self.cursor_preview_deadline
+            {
+                let now = std::time::Instant::now();
+                if now < deadline {
+                    egui::Area::new(egui::Id::new(("seq_kb_preview", li, fi)))
+                        .order(egui::Order::Tooltip)
+                        .fixed_pos(rect.right_bottom() + egui::vec2(6.0, 4.0))
+                        .show(ui.ctx(), |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                show_frame_preview(
+                                    ui,
+                                    li,
+                                    fi,
+                                    frame,
+                                    bridge,
+                                    theme,
+                                    &editing_names,
+                                );
+                            });
+                        });
+                    ui.ctx().request_repaint_after(deadline - now);
+                }
+            }
         }
 
         resp

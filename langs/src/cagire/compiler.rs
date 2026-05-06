@@ -248,6 +248,34 @@ fn compile(
                     push(&mut ops, &mut spans, Op::Count(Some(sp)), sp);
                 } else if word == "]" {
                     return Err(err("unexpected ']'", sp));
+                } else if word == "<" {
+                    let consumed = compile_alt_bracket(
+                        &tokens[i + 1..],
+                        sp,
+                        "<",
+                        ">",
+                        AltBracket::Pattern,
+                        dict,
+                        &mut ops,
+                        &mut spans,
+                    )?;
+                    i += consumed;
+                } else if word == ">" {
+                    return Err(err("unexpected '>'", sp));
+                } else if word == "<<" {
+                    let consumed = compile_alt_bracket(
+                        &tokens[i + 1..],
+                        sp,
+                        "<<",
+                        ">>",
+                        AltBracket::Run,
+                        dict,
+                        &mut ops,
+                        &mut spans,
+                    )?;
+                    i += consumed;
+                } else if word == ">>" {
+                    return Err(err("unexpected '>>'", sp));
                 } else if word == ":" {
                     let (consumed, name, body) = compile_colon_def(&tokens[i + 1..], sp, dict)?;
                     i += consumed;
@@ -352,6 +380,66 @@ fn compile_bracket(
     let end_idx = end_idx.ok_or_else(|| err("missing ']'", open_span))?;
     let (bracket_ops, bracket_spans) = compile(&tokens[..end_idx], dict, false)?;
     Ok((bracket_ops, bracket_spans, end_idx + 1))
+}
+
+#[derive(Clone, Copy)]
+enum AltBracket {
+    /// `< ... >` — selection by pattern iteration (desugars to `pcycle`).
+    Pattern,
+    /// `<< ... >>` — selection by step runs (desugars to `cycle`).
+    Run,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_alt_bracket(
+    tokens: &[Token],
+    open_span: Span,
+    opener: &str,
+    closer: &str,
+    kind: AltBracket,
+    dict: &mut Dictionary,
+    ops: &mut Vec<Op>,
+    spans: &mut Vec<Span>,
+) -> Result<usize, CagireError> {
+    let mut depth = 1;
+    let mut end_idx = None;
+
+    for (i, tok) in tokens.iter().enumerate() {
+        if let TokenKind::Word(w) = &tok.kind {
+            if w == opener {
+                depth += 1;
+            } else if w == closer {
+                depth -= 1;
+                if depth == 0 {
+                    end_idx = Some(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    let end_idx = end_idx.ok_or_else(|| err(format!("missing '{closer}'"), open_span))?;
+    if end_idx == 0 {
+        return Err(err(
+            format!("empty alternation '{opener} {closer}'"),
+            open_span,
+        ));
+    }
+    let close_span = tokens[end_idx].span;
+    let full_span = Span {
+        start: open_span.start,
+        end: close_span.end,
+    };
+    let (body_ops, body_spans) = compile(&tokens[..end_idx], dict, false)?;
+    push(ops, spans, Op::Mark, open_span);
+    extend(ops, spans, body_ops, body_spans);
+    push(ops, spans, Op::Count(Some(full_span)), full_span);
+    let cycle_op = match kind {
+        AltBracket::Pattern => Op::PCycle(Some(close_span)),
+        AltBracket::Run => Op::Cycle(Some(close_span)),
+    };
+    push(ops, spans, cycle_op, close_span);
+    Ok(end_idx + 1)
 }
 
 fn compile_colon_def(

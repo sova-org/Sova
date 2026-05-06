@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering};
 
 use crossbeam_channel::Sender;
-use sova_core::{clock::ClockServer, device_map::DeviceMap, schedule::SchedulerMessage};
+use sova_core::{
+    HostMessage, clock::ClockServer, device_map::DeviceMap, schedule::SchedulerMessage,
+};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ClientRegistry};
 
@@ -16,7 +18,10 @@ pub struct FeedbackEngine {
 }
 
 impl FeedbackEngine {
-    pub fn start(audio_config: AudioRestartConfig) -> Result<Self, String> {
+    pub fn start(
+        audio_config: AudioRestartConfig,
+        host_tx: Sender<HostMessage>,
+    ) -> Result<Self, String> {
         let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
         clock_server.link.enable(true);
 
@@ -26,6 +31,7 @@ impl FeedbackEngine {
         } else if let Err(e) = devices.assign_slot(1, "Sova (Local)") {
             sova_core::log_eprintln!("Feedback: Failed to assign Sova (Local) to Slot 1: {}", e);
         }
+        devices.register_host_proxy(host_tx);
 
         let languages = Arc::new(langs::create_language_center());
 

@@ -7,26 +7,32 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Instant;
 
+use crossbeam_channel::Receiver as CbReceiver;
 use eframe::egui;
+use sova_core::HostMessage;
 use sova_core::error::SovaError;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
 use sova_core::vm::interpreter::Annotation;
 use sova_core::vm::language::LanguageDefinition;
-use sova_server::{AudioEngineState, ClientMessage, ServerMessage};
+use sova_server::{AudioEngineState, ClientMessage, FrameTextId, ServerMessage};
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::feedback_engine::FeedbackEngine;
 use crate::panels::log_panel::LogEntry;
 use crate::widgets::syntax_highlight::CompiledSyntax;
 
-/// (cursor_li, cursor_fi, selection_anchor)
-type PeerCursorState = (usize, usize, Option<(usize, usize)>);
-
 const MAX_CHAT_MESSAGES: usize = 500;
 const COMPILATION_FLASH_SECS: f32 = 1.0;
 const MUTATION_FLASH_SECS: f32 = 1.2;
 const SCENE_HISTORY_CAP: usize = 50;
+
+// Multiplayer presence tuning. Exposed `pub(crate)` because the cursor publish
+// throttle is consumed by `widgets::inline_scene_view`; the others are
+// sibling-module concerns.
+pub(crate) const PRESENCE_TTL_MS: i64 = 30_000;
+pub(crate) const PRESENCE_GC_INTERVAL_SECS: u64 = 1;
+pub(crate) const CURSOR_PUBLISH_THROTTLE_MS: u128 = 100;
 
 pub struct ChatMessage {
     pub user: String,
@@ -151,13 +157,9 @@ pub struct ClientBridge {
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
-    peer_cursors: HashMap<String, PeerCursorState>,
     chat_messages: VecDeque<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
     annotations: Vec<Vec<Vec<Annotation>>>,
-
-    // Remote Hydra code from peers
-    remote_hydra: Option<(String, String)>,
 
     // Visual flashes for multiplayer liveness
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
@@ -166,8 +168,13 @@ pub struct ClientBridge {
     // Latest error (compile or runtime) for toast display
     pub last_error: Option<(String, Instant)>,
 
-    // Incoming script edits from peers
-    pub pending_script_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
+    // Loro CRDT state
+    pub peer_id: Option<u64>,
+    pub frame_text_layout: HashMap<(usize, usize), FrameTextId>,
+    pub frame_docs: HashMap<FrameTextId, (loro::LoroDoc, loro::Subscription)>,
+    pub presence: loro::awareness::EphemeralStore,
+    pub presence_subscription: Option<loro::Subscription>,
+    pub(super) last_presence_gc: Instant,
 
     // Scene history for undo/redo
     scene_history: VecDeque<Scene>,
@@ -177,6 +184,11 @@ pub struct ClientBridge {
 
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
+
+    // In-process host messages (e.g. scene-driven Hydra eval). Set by
+    // `install_host_channel` when the embedded server or the feedback
+    // engine starts; absent in remote-only mode.
+    host_rx: Option<CbReceiver<HostMessage>>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
@@ -188,6 +200,60 @@ pub struct ClientBridge {
 }
 
 impl ClientBridge {
+    pub fn frame_text_id_at(&self, li: usize, fi: usize) -> Option<FrameTextId> {
+        self.frame_text_layout.get(&(li, fi)).copied()
+    }
+
+    pub fn frame_doc(&self, id: FrameTextId) -> Option<&loro::LoroDoc> {
+        self.frame_docs.get(&id).map(|(doc, _)| doc)
+    }
+
+    pub fn frame_doc_text(&self, id: FrameTextId) -> Option<String> {
+        self.frame_docs.get(&id).map(|(doc, _)| {
+            doc.get_text(sova_server::FrameTextStore::CONTENT_CONTAINER)
+                .to_string()
+        })
+    }
+
+    pub(crate) fn install_frame_doc(&mut self, id: FrameTextId, doc: loro::LoroDoc) {
+        let send = self.send_tx.clone();
+        let id_copy = id;
+        let sub = doc.subscribe_local_update(Box::new(move |bytes: &Vec<u8>| {
+            if let Some(tx) = &send {
+                let _ = tx.send(OutgoingMessage::Send(Box::new(ClientMessage::ScriptEdit {
+                    frame_text_id: id_copy,
+                    update: bytes.clone(),
+                })));
+            }
+            true
+        }));
+        self.frame_docs.insert(id, (doc, sub));
+    }
+
+    /// Build a `LoroDoc` from a snapshot blob, set the peer id (if known) and
+    /// install it under `id`, wiring up the local-update subscription.
+    pub(crate) fn install_frame_doc_from_snapshot(&mut self, id: FrameTextId, blob: &[u8]) {
+        if let Ok(doc) = loro::LoroDoc::from_snapshot(blob) {
+            if let Some(p) = self.peer_id {
+                let _ = doc.set_peer_id(p);
+            }
+            self.install_frame_doc(id, doc);
+        }
+    }
+
+    pub(crate) fn install_presence_wire(&mut self) {
+        let send = self.send_tx.clone();
+        self.presence_subscription =
+            Some(self.presence.subscribe_local_updates(Box::new(move |bytes| {
+                if let Some(tx) = &send {
+                    let _ = tx.send(OutgoingMessage::Send(Box::new(ClientMessage::Presence {
+                        update: bytes.clone(),
+                    })));
+                }
+                true
+            })));
+    }
+
     pub fn new(
         runtime: tokio::runtime::Handle,
         ctx: egui::Context,
@@ -211,20 +277,24 @@ impl ClientBridge {
             languages: Vec::new(),
             syntax_map: HashMap::new(),
             peer_editing: HashMap::new(),
-            peer_cursors: HashMap::new(),
             chat_messages: VecDeque::new(),
             errors: HashMap::new(),
             annotations: Vec::new(),
-            remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
             last_error: None,
-            pending_script_edits: Vec::new(),
+            peer_id: None,
+            frame_text_layout: HashMap::new(),
+            frame_docs: HashMap::new(),
+            presence: loro::awareness::EphemeralStore::new(PRESENCE_TTL_MS),
+            presence_subscription: None,
+            last_presence_gc: Instant::now(),
             scene_history: VecDeque::new(),
             history_index: 0,
             skip_next_history_push: false,
             scene_dirty: false,
             feedback_engine: None,
+            host_rx: None,
             send_tx: None,
             event_rx: None,
             runtime,
