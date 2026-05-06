@@ -76,6 +76,23 @@ impl FrameTextStore {
         *layout = new_layout;
     }
 
+    /// Full scene replacement: drop every existing doc and seed fresh ones from
+    /// the new scene's frame contents. Use this for `UpdatedScene` (reset / load),
+    /// not for incremental layout changes.
+    pub fn reset_from_scene(&self, scene: &Scene) {
+        self.docs.write().unwrap().clear();
+        let mut layout = self.layout.write().unwrap();
+        let mut new_layout: HashMap<(usize, usize), FrameTextId> = HashMap::new();
+        for (li, line) in scene.lines.iter().enumerate() {
+            for (fi, frame) in line.frames.iter().enumerate() {
+                let id = self.alloc_id();
+                self.create_doc(id, frame.script().content());
+                new_layout.insert((li, fi), id);
+            }
+        }
+        *layout = new_layout;
+    }
+
     pub fn lookup(&self, li: usize, fi: usize) -> Option<FrameTextId> {
         self.layout.read().unwrap().get(&(li, fi)).copied()
     }
@@ -103,6 +120,85 @@ impl FrameTextStore {
                 )
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sova_core::scene::{Line, Scene, script::Script};
+
+    fn scene_with(content: &str) -> Scene {
+        let mut line = Line::new(vec![1.0]);
+        line.set_frame(0, Script::new(content.into(), "boinx".into()).into());
+        Scene::new(vec![line])
+    }
+
+    fn doc_text(store: &FrameTextStore, id: FrameTextId) -> String {
+        let docs = store.docs.read().unwrap();
+        let doc = docs.get(&id).expect("doc must exist");
+        doc.get_text(FrameTextStore::CONTENT_CONTAINER).to_string()
+    }
+
+    #[test]
+    fn reset_from_scene_replaces_id_and_text_for_persisting_position() {
+        let store = FrameTextStore::new();
+        store.rebuild_from_scene(&scene_with("old"));
+        let old_id = store.lookup(0, 0).expect("layout has (0, 0)");
+
+        // Simulate live edits piling onto the doc.
+        {
+            let docs = store.docs.read().unwrap();
+            let doc = docs.get(&old_id).unwrap();
+            let _ = doc
+                .get_text(FrameTextStore::CONTENT_CONTAINER)
+                .insert(3, " + edits");
+            doc.commit();
+        }
+
+        store.reset_from_scene(&scene_with("new"));
+
+        let new_id = store.lookup(0, 0).expect("layout has (0, 0) after reset");
+        assert_ne!(old_id, new_id, "reset must allocate a fresh id");
+        assert!(
+            !store.docs.read().unwrap().contains_key(&old_id),
+            "old doc must be dropped"
+        );
+        assert_eq!(doc_text(&store, new_id), "new");
+    }
+
+    #[test]
+    fn reset_from_scene_drops_unrelated_docs() {
+        let store = FrameTextStore::new();
+        let mut line = Line::new(vec![1.0, 1.0]);
+        line.set_frame(0, Script::new("a".into(), "boinx".into()).into());
+        line.set_frame(1, Script::new("b".into(), "boinx".into()).into());
+        store.rebuild_from_scene(&Scene::new(vec![line]));
+        assert_eq!(store.docs.read().unwrap().len(), 2);
+
+        store.reset_from_scene(&scene_with("only"));
+
+        let docs = store.docs.read().unwrap();
+        assert_eq!(docs.len(), 1, "only the surviving frame keeps a doc");
+        let layout = store.layout.read().unwrap();
+        assert_eq!(layout.len(), 1);
+        assert!(layout.contains_key(&(0, 0)));
+    }
+
+    #[test]
+    fn rebuild_from_scene_preserves_id_for_persistent_position() {
+        let store = FrameTextStore::new();
+        store.rebuild_from_scene(&scene_with("first"));
+        let id_before = store.lookup(0, 0).unwrap();
+
+        // Add a second frame; (0, 0) should keep its id.
+        let mut line = Line::new(vec![1.0, 1.0]);
+        line.set_frame(0, Script::new("first".into(), "boinx".into()).into());
+        line.set_frame(1, Script::new("second".into(), "boinx".into()).into());
+        store.rebuild_from_scene(&Scene::new(vec![line]));
+
+        let id_after = store.lookup(0, 0).unwrap();
+        assert_eq!(id_before, id_after, "incremental rebuild preserves identity");
     }
 }
 

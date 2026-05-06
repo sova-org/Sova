@@ -101,21 +101,32 @@ pub fn start_image_maintainer(
                     };
 
                     // Keep FrameTextStore layout in sync with structural changes.
-                    // Note: UpdatedFrames is intentionally excluded here. The Loro
-                    // doc is the authority on in-progress text; resetting on every
-                    // UpdatedFrames (which fires on evaluate) would clobber typing.
-                    let layout_changed = matches!(
-                        &p,
-                        SovaNotification::UpdatedScene(_)
-                            | SovaNotification::UpdatedScenePrelude(_)
-                            | SovaNotification::UpdatedLines(_)
-                            | SovaNotification::AddedLine(_, _)
-                            | SovaNotification::RemovedLine(_)
-                            | SovaNotification::AddedFrame(_, _, _)
-                            | SovaNotification::RemovedFrame(_, _)
-                    );
-                    if layout_changed {
-                        frame_text.rebuild_from_scene(&guard);
+                    // UpdatedScene is a full replacement (reset / load) and must
+                    // discard every prior doc so old text cannot leak back in.
+                    // Incremental notifications preserve doc identity for
+                    // positions that survive the change. UpdatedFrames is excluded
+                    // entirely: the Loro doc owns in-progress text and resetting
+                    // it on every evaluate would clobber typing.
+                    enum LayoutChange {
+                        FullReset,
+                        Incremental,
+                        None,
+                    }
+                    let change = match &p {
+                        SovaNotification::UpdatedScene(_) => LayoutChange::FullReset,
+                        SovaNotification::UpdatedLines(_)
+                        | SovaNotification::AddedLine(_, _)
+                        | SovaNotification::RemovedLine(_)
+                        | SovaNotification::AddedFrame(_, _, _)
+                        | SovaNotification::RemovedFrame(_, _) => LayoutChange::Incremental,
+                        _ => LayoutChange::None,
+                    };
+                    match change {
+                        LayoutChange::FullReset => frame_text.reset_from_scene(&guard),
+                        LayoutChange::Incremental => frame_text.rebuild_from_scene(&guard),
+                        LayoutChange::None => {}
+                    }
+                    if !matches!(change, LayoutChange::None) {
                         broadcast_raw(
                             &client_registry,
                             &ServerMessage::FrameTextLayout {

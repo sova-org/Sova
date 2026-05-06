@@ -402,7 +402,9 @@ impl ClientBridge {
                 let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
                 self.frame_docs.retain(|id, _| live.contains(id));
                 for (id, blob) in new_doc_snapshots {
-                    if !self.frame_docs.contains_key(&id) {
+                    if let Some((doc, _)) = self.frame_docs.get(&id) {
+                        let _ = doc.import(&blob);
+                    } else {
                         self.install_frame_doc_from_snapshot(id, &blob);
                     }
                 }
