@@ -7,7 +7,9 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Instant;
 
+use crossbeam_channel::Receiver as CbReceiver;
 use eframe::egui;
+use sova_core::HostMessage;
 use sova_core::error::SovaError;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
@@ -159,9 +161,6 @@ pub struct ClientBridge {
     pub errors: HashMap<(usize, usize), SovaError>,
     annotations: Vec<Vec<Vec<Annotation>>>,
 
-    // Remote Hydra code from peers
-    remote_hydra: Option<(String, String)>,
-
     // Visual flashes for multiplayer liveness
     pub compilation_flashes: HashMap<(usize, usize), (bool, Instant)>,
     pub mutation_flashes: HashMap<(usize, usize), Instant>,
@@ -185,6 +184,11 @@ pub struct ClientBridge {
 
     // Local audio feedback
     feedback_engine: Option<FeedbackEngine>,
+
+    // In-process host messages (e.g. scene-driven Hydra eval). Set by
+    // `install_host_channel` when the embedded server or the feedback
+    // engine starts; absent in remote-only mode.
+    host_rx: Option<CbReceiver<HostMessage>>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
@@ -276,7 +280,6 @@ impl ClientBridge {
             chat_messages: VecDeque::new(),
             errors: HashMap::new(),
             annotations: Vec::new(),
-            remote_hydra: None,
             compilation_flashes: HashMap::new(),
             mutation_flashes: HashMap::new(),
             last_error: None,
@@ -291,6 +294,7 @@ impl ClientBridge {
             skip_next_history_push: false,
             scene_dirty: false,
             feedback_engine: None,
+            host_rx: None,
             send_tx: None,
             event_rx: None,
             runtime,

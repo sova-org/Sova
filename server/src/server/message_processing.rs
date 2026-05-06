@@ -468,14 +468,6 @@ pub async fn on_message(
                 None => ServerMessage::InternalError("Core restart channel closed".into()),
             }
         }
-        ClientMessage::HydraCode(code) => {
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::HydraCode(client_name.clone(), code),
-                false,
-            );
-            ServerMessage::Success
-        }
         ClientMessage::SetMasterVolume(vol) => {
             let clamped = vol.clamp(0.0, 1.0);
             state

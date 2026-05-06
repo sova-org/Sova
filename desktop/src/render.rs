@@ -1,6 +1,7 @@
 use eframe::egui;
 use egui_file_dialog::FileDialog;
 use sova_core::schedule::ActionTiming;
+use sova_core::vm::variable::VariableValue;
 use sova_server::ClientMessage;
 
 use crate::{
@@ -265,9 +266,10 @@ impl SovaApp {
         }
         match sidebar_server_action {
             ServerAction::Start => {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             ServerAction::Stop => {
                 self.bridge.disconnect();
@@ -474,9 +476,10 @@ impl SovaApp {
                 })
                 .inner;
             if action.start_server {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             if action.stop_server {
                 self.panels.server.stop();
@@ -536,16 +539,15 @@ impl SovaApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
 
-        self.panels.visuals.show_editor(ctx, &self.prefs.editor);
-
-        if self.panels.visuals.take_pending_broadcast() {
-            self.bridge.send_hydra_code(self.panels.visuals.code());
-        }
-        if self.panels.visuals.shared
-            && let Some((sender, code)) = self.bridge.take_remote_hydra()
-        {
-            self.panels.visuals.remote_sender = Some(sender);
-            self.panels.visuals.apply_remote_code(&code);
+        for msg in self.bridge.drain_host_messages() {
+            match msg.route.as_str() {
+                "hydra/eval" => {
+                    if let Some(VariableValue::Str(code)) = msg.args.into_iter().next() {
+                        self.panels.visuals.apply_scheduled_code(code);
+                    }
+                }
+                other => sova_core::log_eprintln!("[host] unhandled route '{}'", other),
+            }
         }
     }
 
@@ -577,7 +579,6 @@ impl SovaApp {
                     && (!self.bridge.is_connected() || self.panels.server.is_running()))
                     || self.panels.sample_browser.detached,
                 documentation: !self.panels.doc.settings.collapsed,
-                visuals: self.panels.visuals.open,
             });
         match self.panels.command_palette.show(ctx) {
             widgets::PaletteAction::Execute(cmd) => self.dispatch(cmd),

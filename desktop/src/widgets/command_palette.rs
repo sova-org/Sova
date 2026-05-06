@@ -21,7 +21,6 @@ pub enum CommandId {
     About,
     SampleBrowser,
     Documentation,
-    Visuals,
     // Engine
     RestartCore,
     // Transport
@@ -148,13 +147,6 @@ fn commands() -> Vec<Command> {
             "cmd.documentation",
             "cmd.documentation.desc",
             Shortcut::cmd_shift(Key::Char('H')),
-        ),
-        panel(
-            CommandId::Visuals,
-            icons::PALETTE,
-            "cmd.visuals",
-            "cmd.visuals.desc",
-            Shortcut::cmd_shift(Key::Char('V')),
         ),
         panel(
             CommandId::Debug,
@@ -284,7 +276,6 @@ pub struct PanelStates {
     pub about: bool,
     pub sample_browser: bool,
     pub documentation: bool,
-    pub visuals: bool,
 }
 
 struct FilteredEntry {
@@ -360,7 +351,6 @@ impl CommandPalette {
                 CommandId::About => states.about,
                 CommandId::SampleBrowser => states.sample_browser,
                 CommandId::Documentation => states.documentation,
-                CommandId::Visuals => states.visuals,
                 _ => false,
             };
         }

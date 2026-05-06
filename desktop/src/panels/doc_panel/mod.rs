@@ -10,8 +10,6 @@ use crate::panels::options_panel::OptionsPanel;
 use crate::panels::server_panel::{ServerAction, ServerPanel};
 use crate::settings::{AppearanceSettings, DocSettings, DocSide, DocTrigger};
 use crate::theme::STROKE_EMPHASIS;
-use crate::visuals;
-use crate::widgets::syntax_highlight::CompiledSyntax;
 use crate::widgets::{EditorSettings, SceneOpacity};
 use eframe::egui;
 use egui::containers::panel::Side;
@@ -91,81 +89,12 @@ pub(crate) fn general_articles() -> &'static [(&'static str, &'static str, &'sta
     GENERAL_ARTICLES_EN
 }
 
-const HYDRA_ARTICLES: &[(&str, &str, &str)] = &[
-    (
-        "hydra-intro",
-        "Introduction",
-        include_str!("../../../docs/en/hydra/intro.md"),
-    ),
-    (
-        "hydra-chaining",
-        "Chaining",
-        include_str!("../../../docs/en/hydra/chaining.md"),
-    ),
-    (
-        "hydra-sources",
-        "Sources",
-        include_str!("../../../docs/en/hydra/sources.md"),
-    ),
-    (
-        "hydra-geometry",
-        "Geometry",
-        include_str!("../../../docs/en/hydra/geometry.md"),
-    ),
-    (
-        "hydra-color",
-        "Color",
-        include_str!("../../../docs/en/hydra/color.md"),
-    ),
-    (
-        "hydra-blending",
-        "Blending",
-        include_str!("../../../docs/en/hydra/blending.md"),
-    ),
-    (
-        "hydra-modulation",
-        "Modulation",
-        include_str!("../../../docs/en/hydra/modulation.md"),
-    ),
-    (
-        "hydra-buffers",
-        "Buffers",
-        include_str!("../../../docs/en/hydra/buffers.md"),
-    ),
-    (
-        "hydra-feedback",
-        "Feedback",
-        include_str!("../../../docs/en/hydra/feedback.md"),
-    ),
-    (
-        "hydra-animation",
-        "Animation",
-        include_str!("../../../docs/en/hydra/animation.md"),
-    ),
-    (
-        "hydra-text",
-        "Text",
-        include_str!("../../../docs/en/hydra/text.md"),
-    ),
-    (
-        "hydra-differences",
-        "Differences",
-        include_str!("../../../docs/en/hydra/differences.md"),
-    ),
-];
-pub(crate) fn hydra_articles() -> &'static [(&'static str, &'static str, &'static str)] {
-    HYDRA_ARTICLES
-}
-
 const COLLAPSED_WIDTH: f32 = 30.0;
 const HOVER_DELAY_SECS: f64 = 0.2;
 
 pub(crate) fn resolve_article_link(slug: &str) -> Option<DocView> {
     if let Some(i) = general_articles().iter().position(|(s, _, _)| *s == slug) {
         return Some(DocView::GeneralArticle(i));
-    }
-    if let Some(i) = hydra_articles().iter().position(|(s, _, _)| *s == slug) {
-        return Some(DocView::HydraArticle(i));
     }
     None
 }
@@ -182,7 +111,6 @@ pub(crate) enum DocView {
     GeneralArticle(usize),
     LangArticle(usize),
     LangReference(usize),
-    HydraArticle(usize),
     DouxModule(usize),
 }
 
@@ -264,13 +192,12 @@ pub struct DocPanel {
     pub(crate) edited_example: String,
     pub(crate) scroll_to_top: bool,
     pub(crate) scroll_toc: bool,
-    pub(crate) hydra_syntax: Option<CompiledSyntax>,
 }
 
 impl DocPanel {
     pub fn new(settings: DocSettings) -> Self {
         let mut md_cache = CommonMarkCache::default();
-        for (slug, _, _) in general_articles().iter().chain(hydra_articles()) {
+        for (slug, _, _) in general_articles() {
             md_cache.add_link_hook(*slug);
         }
         Self {
@@ -285,7 +212,6 @@ impl DocPanel {
             edited_example: String::new(),
             scroll_to_top: false,
             scroll_toc: false,
-            hydra_syntax: CompiledSyntax::new(&visuals::hydra_syntax()),
         }
     }
 

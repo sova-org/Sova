@@ -375,11 +375,6 @@ impl ClientBridge {
                     engine.send(msg);
                 }
             }
-            ServerMessage::HydraCode(sender, code) => {
-                if self.confirmed_username.as_deref() != Some(&sender) {
-                    self.remote_hydra = Some((sender, code));
-                }
-            }
             ServerMessage::ScriptEdit {
                 sender,
                 frame_text_id,

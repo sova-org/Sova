@@ -1,6 +1,7 @@
 use crate::clock::{Clock, SyncTime};
 use crate::protocol::audio_engine_proxy::{AudioEnginePayload, AudioEngineProxy};
 use crate::protocol::error::ProtocolError;
+use crate::protocol::host::{HostMessage, HostProxy};
 use crate::protocol::log;
 use crate::protocol::midi::{MIDIMessage, MidiIn};
 use crate::protocol::osc::{OSCIn, OSCMessage, OSCOut};
@@ -30,6 +31,7 @@ pub enum DeviceKind {
     Osc,
     Log,
     AudioEngine,
+    Host,
     Missing,
     #[default]
     Other,
@@ -43,6 +45,7 @@ impl Display for DeviceKind {
             DeviceKind::Osc => write!(f, "Osc"),
             DeviceKind::Log => write!(f, "Log"),
             DeviceKind::AudioEngine => write!(f, "AudioEngine"),
+            DeviceKind::Host => write!(f, "Host"),
             DeviceKind::Missing => write!(f, "Missing"),
             DeviceKind::Other => write!(f, "Other"),
         }
@@ -92,6 +95,7 @@ pub enum ProtocolDevice {
     OSCOutDevice(OSCOut),
     /// Internal audio engine (Sova) - no external connectivity required
     AudioEngine(AudioEngineProxy),
+    Host(HostProxy),
 }
 
 impl ProtocolDevice {
@@ -120,6 +124,7 @@ impl ProtocolDevice {
             ProtocolDevice::OSCOutDevice(osc_out) => osc_out.connect(),
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
             ProtocolDevice::AudioEngine { .. } => Ok(()), // AudioEngine doesn't need external connection
+            ProtocolDevice::Host { .. } => Ok(()),
         }
     }
 
@@ -191,6 +196,15 @@ impl ProtocolDevice {
                 };
                 proxy.send(msg)
             }
+            ProtocolDevice::Host(proxy) => {
+                let ProtocolPayload::Host(msg) = message else {
+                    return Err(ProtocolError(format!(
+                        "Invalid message format for Host device '{}'!",
+                        proxy.name
+                    )));
+                };
+                proxy.send(msg)
+            }
             ProtocolDevice::MIDIInDevice(_)
             | ProtocolDevice::VirtualMIDIInDevice(_)
             | ProtocolDevice::OSCInDevice(_) => {
@@ -228,8 +242,9 @@ impl ProtocolDevice {
             | ProtocolDevice::MIDIInDevice(_)
             | ProtocolDevice::VirtualMIDIInDevice(_)
             | ProtocolDevice::OSCInDevice(_)
-            | ProtocolDevice::AudioEngine { .. } => {
-                // No flushing mechanism for Log, AudioEngine, Control, or input devices
+            | ProtocolDevice::AudioEngine { .. }
+            | ProtocolDevice::Host { .. } => {
+                // No flushing mechanism for Log, AudioEngine, Host, or input devices
             }
         }
     }
@@ -253,6 +268,7 @@ impl ProtocolDevice {
             | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => midi_out.name.clone(),
             ProtocolDevice::OSCOutDevice(osc_out) => osc_out.address.to_string(),
             ProtocolDevice::AudioEngine { .. } => "Internal".to_string(),
+            ProtocolDevice::Host(host) => host.name.clone(),
         }
     }
 
@@ -265,6 +281,7 @@ impl ProtocolDevice {
             }
             ProtocolDevice::OSCOutDevice(_) | ProtocolDevice::OSCInDevice(_) => DeviceKind::Osc,
             ProtocolDevice::AudioEngine { .. } => DeviceKind::AudioEngine,
+            ProtocolDevice::Host { .. } => DeviceKind::Host,
         }
     }
 
@@ -287,6 +304,7 @@ impl ProtocolDevice {
             ProtocolDevice::AudioEngine { .. } => {
                 AudioEnginePayload::generate_messages(event, date)
             }
+            ProtocolDevice::Host { .. } => HostMessage::generate_messages(event, date),
             _ => {
                 log_eprintln!(
                     "[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}",
@@ -331,6 +349,7 @@ impl Debug for ProtocolDevice {
             | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => Debug::fmt(midi_out, f),
             ProtocolDevice::OSCOutDevice(osc_out) => Debug::fmt(osc_out, f),
             ProtocolDevice::AudioEngine { .. } => write!(f, "AudioEngine"),
+            ProtocolDevice::Host(host) => Debug::fmt(host, f),
         }
     }
 }
@@ -347,6 +366,7 @@ impl Display for ProtocolDevice {
             | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => Display::fmt(midi_out, f),
             ProtocolDevice::OSCOutDevice(osc_out) => write!(f, "OSCOutDevice({})", osc_out.name),
             ProtocolDevice::AudioEngine { .. } => write!(f, "AudioEngine"),
+            ProtocolDevice::Host(host) => write!(f, "Host({})", host.name),
         }
     }
 }

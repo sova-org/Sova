@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use crossbeam_channel::{Sender, unbounded};
+use sova_core::HostMessage;
 use sova_server::{ClientMessage, FrameTextId};
 
 use super::{ChatMessage, ClientBridge, MAX_CHAT_MESSAGES, now_hhmm};
@@ -133,12 +135,24 @@ impl ClientBridge {
         }
     }
 
-    pub fn take_remote_hydra(&mut self) -> Option<(String, String)> {
-        self.remote_hydra.take()
+    /// Creates a fresh host-message channel and stores the receiver. Returns
+    /// the sender so the caller can register it on a [DeviceMap]. Replaces
+    /// any previously installed receiver — the previous channel's sender
+    /// will start erroring on the next send, which is the correct shutdown
+    /// signal for an outgoing embedded-server / feedback-engine instance.
+    pub fn install_host_channel(&mut self) -> Sender<HostMessage> {
+        let (tx, rx) = unbounded();
+        self.host_rx = Some(rx);
+        tx
     }
 
-    pub fn send_hydra_code(&self, code: &str) {
-        self.send(ClientMessage::HydraCode(code.to_owned()));
+    /// Drains any host messages emitted by the in-process scheduler. Returns
+    /// an empty `Vec` when no host channel is installed (remote-only mode).
+    pub fn drain_host_messages(&mut self) -> Vec<HostMessage> {
+        let Some(rx) = &self.host_rx else {
+            return Vec::new();
+        };
+        rx.try_iter().collect()
     }
 }
 

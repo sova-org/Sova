@@ -25,7 +25,6 @@ mod widgets;
 
 use app_types::{AppPrefs, AudioControl, Dialogs, InputOwner, Panels, Session, VizScratch};
 use eframe::egui;
-use settings::VisualsSettings;
 
 
 fn main() -> eframe::Result {
@@ -95,7 +94,7 @@ fn main() -> eframe::Result {
 
             let doc_panel = panels::doc_panel::DocPanel::new(s.doc);
             let tools_panel = panels::tools_panel::ToolsPanel::new(s.tools);
-            let visuals = visuals::VisualsEngine::new(cc.gl.clone(), &s.visuals);
+            let visuals = visuals::VisualsEngine::new(cc.gl.clone());
             let sample_browser_panel = panels::sample_browser_panel::SampleBrowserPanel::new();
 
             let panels = Panels::new(
@@ -181,10 +180,6 @@ impl SovaApp {
             appearance: self.prefs.appearance.clone(),
             scope: self.panels.scope.settings.clone(),
             spectrum: self.panels.spectrum.settings.clone(),
-            visuals: VisualsSettings {
-                code: self.panels.visuals.code().to_owned(),
-                shared: self.panels.visuals.shared,
-            },
             doc: self.panels.doc.settings.clone(),
             scene: settings::SceneSettings {
                 prelude_collapsed: self.panels.scene.prelude_collapsed,

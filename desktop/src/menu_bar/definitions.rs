@@ -20,7 +20,6 @@ pub(crate) struct MenuContext<'a> {
     pub chat_open: bool,
     pub sample_browser_open: bool,
     pub sample_browser_available: bool,
-    pub visuals_open: bool,
     pub debug_open: bool,
     pub scene_view_mode: ViewMode,
     pub recent_scenes: &'a [PathBuf],
@@ -299,14 +298,6 @@ pub(crate) fn build_menus(ctx: &MenuContext<'_>) -> Vec<MenuDef> {
                 shortcut_text: Some(sc(&Shortcut::cmd_shift(Key::Char('E')))),
                 enabled: ctx.sample_browser_available,
                 action: MenuAction::Command(CommandId::SampleBrowser),
-            },
-            MenuItemDef::Checkbox {
-                label: t!("visuals.title").into_owned(),
-                mnemonic: 'i',
-                checked: ctx.visuals_open,
-                shortcut_text: Some(sc(&Shortcut::cmd_shift(Key::Char('V')))),
-                enabled: true,
-                action: MenuAction::Command(CommandId::Visuals),
             },
             MenuItemDef::Separator,
             MenuItemDef::Checkbox {

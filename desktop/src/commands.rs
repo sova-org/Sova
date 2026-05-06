@@ -17,7 +17,6 @@ impl SovaApp {
             sample_browser_open: self.panels.tools.settings.show_sample_browser,
             sample_browser_available: !self.bridge.is_connected()
                 || self.panels.server.is_running(),
-            visuals_open: self.panels.visuals.open,
             debug_open: self.panels.debug_open,
             scene_view_mode: self.panels.scene.view_mode,
             recent_scenes: &self.session.recent_scenes,
@@ -52,9 +51,10 @@ impl SovaApp {
                 );
             }
             MenuAction::StartServer => {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             MenuAction::StopServer => {
                 self.bridge.disconnect();
@@ -131,7 +131,6 @@ impl SovaApp {
                     self.panels.doc.settings.pinned = true;
                 }
             }
-            Visuals => self.panels.visuals.open = !self.panels.visuals.open,
             RestartCore => {
                 if self.bridge.is_connected() {
                     self.bridge.send(ClientMessage::RestartCore);

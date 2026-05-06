@@ -62,7 +62,6 @@ pub enum ServerMessage {
         start_stop_sync: bool,
         num_peers: u32,
     },
-    HydraCode(String, String),
     ScriptEdit {
         sender: String,
         frame_text_id: FrameTextId,

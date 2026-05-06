@@ -28,6 +28,7 @@ use crate::{
     protocol::{
         DeviceDirection, DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage,
         audio_engine_proxy::AudioEngineProxy,
+        host::{HostMessage, HostProxy},
         log::{LOG_NAME, LogMessage, Severity},
         midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
         osc::{OSCIn, OSCOut},
@@ -35,10 +36,12 @@ use crate::{
     vm::{event::ConcreteEvent, variable::VariableValue},
 };
 
+use crossbeam_channel::Sender;
 use midir::{Ignore, MidiInput, MidiOutput};
 
 /// Maximum number of user-assignable device slots (1-based).
-const MAX_DEVICE_SLOTS: usize = 16;
+pub const MAX_DEVICE_SLOTS: usize = 16;
+pub const HOST_PROXY_SLOT: usize = MAX_DEVICE_SLOTS + 1;
 const DEFAULT_LATENCY: f64 = 0.02;
 
 /// Manages device connections, slot assignments, and event-to-protocol mapping.
@@ -57,6 +60,7 @@ pub struct DeviceMap {
     pub slot_assignments: Mutex<[Option<String>; MAX_DEVICE_SLOTS]>,
     /// Log device
     pub log_device: Arc<ProtocolDevice>,
+    host_device: Mutex<Option<Arc<ProtocolDevice>>>,
     /// Optional handle to the system's MIDI input interface, managed by `midir`.
     midi_in: Option<Arc<Mutex<MidiInput>>>,
     /// Optional handle to the system's MIDI output interface, managed by `midir`.
@@ -99,6 +103,7 @@ impl DeviceMap {
             output_connections: Default::default(),
             slot_assignments: Default::default(),
             log_device: Arc::new(ProtocolDevice::Log),
+            host_device: Mutex::new(None),
             midi_in,
             midi_out,
             missing_devices: Default::default(),
@@ -258,6 +263,16 @@ impl DeviceMap {
         })
     }
 
+    pub fn register_host_proxy(&self, tx: Sender<HostMessage>) {
+        let device = ProtocolDevice::Host(HostProxy::new("host".to_string(), tx));
+        *self.host_device.lock().unwrap() = Some(Arc::new(device));
+        log_println!("Registered host proxy at slot {}", HOST_PROXY_SLOT);
+    }
+
+    pub fn host_device(&self) -> Option<Arc<ProtocolDevice>> {
+        self.host_device.lock().unwrap().as_ref().map(Arc::clone)
+    }
+
     /// Returns the latency for the given device name.
     pub fn get_latency(&self, name: &str) -> f64 {
         self.latencies
@@ -394,28 +409,33 @@ impl DeviceMap {
     ) -> Vec<TimedMessage> {
         if target_slot_id == 0 {
             return Self::map_event_to_device(&self.log_device, event, date, clock);
-        } else {
-            // Look up the device name assigned to the slot ID (1-N)
-            match self.get_name_for_slot(target_slot_id) {
-                Some(device_name) => {
-                    // Found an assigned device, map using its name
-                    self.map_event_for_device_name(&device_name, event, date, clock)
-                }
-                None => {
-                    // Slot is not assigned, generate a warning log message
-                    vec![
-                        ProtocolMessage {
-                            payload: LogMessage {
-                                level: Severity::Warn,
-                                event: Some(event), // Include the original event for context
-                                msg: format!("Slot {} is not assigned", target_slot_id),
-                            }
-                            .into(),
-                            device: Arc::clone(&self.log_device), // Send warning to log
+        }
+        if target_slot_id == HOST_PROXY_SLOT {
+            return match self.host_device() {
+                Some(device) => Self::map_event_to_device(&device, event, date, clock),
+                None => Vec::new(),
+            };
+        }
+        // Look up the device name assigned to the slot ID (1-N)
+        match self.get_name_for_slot(target_slot_id) {
+            Some(device_name) => {
+                // Found an assigned device, map using its name
+                self.map_event_for_device_name(&device_name, event, date, clock)
+            }
+            None => {
+                // Slot is not assigned, generate a warning log message
+                vec![
+                    ProtocolMessage {
+                        payload: LogMessage {
+                            level: Severity::Warn,
+                            event: Some(event), // Include the original event for context
+                            msg: format!("Slot {} is not assigned", target_slot_id),
                         }
-                        .timed(date),
-                    ]
-                }
+                        .into(),
+                        device: Arc::clone(&self.log_device), // Send warning to log
+                    }
+                    .timed(date),
+                ]
             }
         }
     }

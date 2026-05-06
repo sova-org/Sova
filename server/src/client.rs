@@ -9,7 +9,7 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
-pub const PROTOCOL_VERSION: u8 = 0x03;
+pub const PROTOCOL_VERSION: u8 = 0x04;
 pub const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024;
 
 pub fn serialize_to_wire_frame(msg: &ServerMessage) -> io::Result<Vec<u8>> {
@@ -121,7 +121,6 @@ pub enum ClientMessage {
     EnableFeedback,
     RestartCore,
     ResetScene(ActionTiming),
-    HydraCode(String),
     SetMasterVolume(f32),
     Hush,
     Panic,

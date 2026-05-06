@@ -83,11 +83,6 @@ pub(crate) fn show_keybindings_window(
                         &Shortcut::cmd_shift(Key::Char('E')),
                     );
                     shortcut::grid_row(ui, t!("doc.title"), &Shortcut::cmd_shift(Key::Char('H')));
-                    shortcut::grid_row(
-                        ui,
-                        t!("visuals.title"),
-                        &Shortcut::cmd_shift(Key::Char('V')),
-                    );
                     shortcut::grid_row(ui, t!("debug.title"), &Shortcut::cmd_shift(Key::Char('B')));
                     shortcut::grid_row(ui, t!("kb.title"), &Shortcut::plain(Key::F(1)));
                 });

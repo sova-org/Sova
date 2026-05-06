@@ -1,252 +1,32 @@
-mod syntax;
-pub use syntax::syntax as hydra_syntax;
-
 use std::sync::Arc;
 use std::time::Instant;
 
 use eframe::{egui, glow};
 use hydra_rust::renderer::{self, RenderUniforms, ShaderRenderer};
 
-use crate::settings::VisualsSettings;
-use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK};
-use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
-use crate::widgets::{CodeEditor, EditorContext, EditorSettings};
-
 pub struct VisualsEngine {
     renderer: Option<ShaderRenderer>,
     start_time: Instant,
-    error: Option<String>,
-    pub open: bool,
     code: String,
-    last_compiled: String,
-    editor: CodeEditor,
-    compiled_syntax: Option<CompiledSyntax>,
-    last_eval: Option<Instant>,
-    last_cursor: Option<(usize, usize)>,
-    pub shared: bool,
-    pending_broadcast: bool,
-    pub remote_sender: Option<String>,
 }
 
 impl VisualsEngine {
-    pub fn new(gl: Option<Arc<glow::Context>>, settings: &VisualsSettings) -> Self {
-        let renderer = gl.map(ShaderRenderer::new);
-        let mut engine = Self {
-            renderer,
+    pub fn new(gl: Option<Arc<glow::Context>>) -> Self {
+        Self {
+            renderer: gl.map(ShaderRenderer::new),
             start_time: Instant::now(),
-            error: None,
-            open: false,
-            code: settings.code.clone(),
-            last_compiled: String::new(),
-            editor: CodeEditor::new(),
-            compiled_syntax: CompiledSyntax::new(&syntax::syntax()),
-            last_eval: None,
-            last_cursor: None,
-            shared: settings.shared,
-            pending_broadcast: false,
-            remote_sender: None,
-        };
-        if !engine.code.is_empty() {
-            engine.compile_code();
-        }
-        engine
-    }
-
-    fn dirty(&self) -> bool {
-        self.code != self.last_compiled
-    }
-
-    pub fn code(&self) -> &str {
-        &self.code
-    }
-
-    pub fn show_editor(&mut self, ctx: &egui::Context, settings: &EditorSettings) {
-        if !self.open {
-            return;
-        }
-
-        let mut open = self.open;
-        egui::Window::new(t!("visuals.title"))
-            .id(egui::Id::new("visuals_editor"))
-            .open(&mut open)
-            .default_size([560.0, 420.0])
-            .min_size([300.0, 200.0])
-            .resizable(true)
-            .collapsible(true)
-            .show(ctx, |ui| {
-                egui::TopBottomPanel::top("visuals_header").show_inside(ui, |ui| {
-                    self.show_header(ui);
-                });
-
-                egui::TopBottomPanel::bottom("visuals_status")
-                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 1)))
-                    .show_inside(ui, |ui| {
-                        self.show_status(ui);
-                    });
-
-                let body = egui::CentralPanel::default()
-                    .frame(egui::Frame::NONE)
-                    .show_inside(ui, |ui| {
-                        self.show_body(ui, settings);
-                        self.handle_eval_shortcut(ui);
-                    });
-
-                if let Some(eval_time) = self.last_eval {
-                    let elapsed = eval_time.elapsed().as_secs_f32();
-                    if elapsed < 0.3 {
-                        let t = elapsed / 0.3;
-                        let alpha = ((1.0 - t) * 30.0) as u8;
-                        let flash = if self.error.is_some() {
-                            egui::Color32::from_rgba_unmultiplied(255, 60, 60, alpha)
-                        } else {
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha)
-                        };
-                        ui.painter().rect_filled(body.response.rect, 0.0, flash);
-                        ui.ctx().request_repaint();
-                    } else {
-                        self.last_eval = None;
-                    }
-                }
-            });
-        self.open = open;
-    }
-
-    fn show_header(&mut self, ui: &mut egui::Ui) {
-        egui::Frame::NONE
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let accent = ui.visuals().selection.bg_fill;
-                    let eval_text =
-                        crate::icons::button_text(ui, crate::icons::PLAY, t!("visuals.eval"));
-                    if ui.add(egui::Button::new(eval_text).fill(accent)).clicked() {
-                        self.evaluate();
-                    }
-
-                    self.show_compilation_dot(ui);
-
-                    if self.dirty() {
-                        ui.label(crate::icons::colored(crate::icons::MODIFIED, COLOR_ERROR));
-                    }
-
-                    ui.add_space(4.0);
-
-                    if ui
-                        .checkbox(&mut self.shared, t!("visuals.share"))
-                        .on_hover_text(if self.shared {
-                            t!("visuals.share_on")
-                        } else {
-                            t!("visuals.share_off")
-                        })
-                        .changed()
-                        && !self.shared
-                    {
-                        self.remote_sender = None;
-                    }
-                });
-            });
-    }
-
-    fn show_compilation_dot(&self, ui: &mut egui::Ui) {
-        let (color, tip) = if self.error.is_some() {
-            (COLOR_ERROR, t!("visuals.error"))
-        } else if self.last_eval.is_some() || (self.renderer.is_some() && !self.dirty()) {
-            (COLOR_OK, t!("visuals.compiled"))
-        } else {
-            (COLOR_MUTED, t!("visuals.title"))
-        };
-        let dot = crate::icons::colored(crate::icons::CIRCLE_LARGE_FILLED, color);
-        ui.label(dot).on_hover_text(tip);
-    }
-
-    fn show_body(&mut self, ui: &mut egui::Ui, settings: &EditorSettings) {
-        let editor_id = egui::Id::new("visuals_editor_body");
-        let theme = SyntaxTheme::from_pref(settings.syntax_theme);
-        let syn = self.compiled_syntax.as_ref().map(|cs| (cs, &theme));
-        let ctx = EditorContext {
-            settings,
-            syntax: syn,
-            reference: None,
-            peer_cursors: &[],
-            annotations: &[],
-            opacity: None,
-            sample_names: &[],
-        };
-        egui::ScrollArea::vertical()
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                let output = self.editor.show(ui, editor_id, &mut self.code, &ctx);
-                self.last_cursor = output.cursor_line.zip(output.cursor_col);
-            });
-    }
-
-    fn show_status(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if let Some(e) = &self.error {
-                ui.colored_label(COLOR_ERROR, e);
-            }
-
-            if let Some(sender) = &self.remote_sender {
-                ui.label(
-                    egui::RichText::new(format!("remote: {sender}"))
-                        .small()
-                        .color(COLOR_OK),
-                );
-            }
-
-            if let Some((line, col)) = self.last_cursor {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        egui::RichText::new(format!("Ln {}, Col {}", line + 1, col + 1))
-                            .small()
-                            .color(COLOR_MUTED),
-                    );
-                });
-            }
-        });
-    }
-
-    fn handle_eval_shortcut(&mut self, ui: &mut egui::Ui) {
-        let is_mac = ui.ctx().os().is_mac();
-        let eval = ui.input(|i| {
-            i.key_pressed(egui::Key::Enter)
-                && if is_mac {
-                    i.modifiers.mac_cmd
-                } else {
-                    i.modifiers.ctrl
-                }
-        });
-        if eval {
-            self.evaluate();
+            code: String::new(),
         }
     }
 
-    fn evaluate(&mut self) {
-        self.compile_code();
-        self.last_eval = Some(Instant::now());
-        if self.shared {
-            self.pending_broadcast = true;
-        }
-    }
-
-    pub fn take_pending_broadcast(&mut self) -> bool {
-        std::mem::replace(&mut self.pending_broadcast, false)
-    }
-
-    pub fn apply_remote_code(&mut self, code: &str) {
+    pub fn apply_scheduled_code(&mut self, code: String) {
         if self.code == code {
             return;
         }
-        self.code = code.to_owned();
-        self.compile_code();
-        self.last_eval = Some(Instant::now());
-    }
-
-    fn compile_code(&mut self) {
+        self.code = code;
         let Some(renderer) = &mut self.renderer else {
             return;
         };
-        self.last_compiled = self.code.clone();
         if self.code.is_empty() {
             renderer.compile_buffers(
                 &[
@@ -257,7 +37,6 @@ impl VisualsEngine {
                 ],
                 Default::default(),
             );
-            self.error = None;
             return;
         }
         match hydra_rust::eval(&self.code) {
@@ -266,9 +45,8 @@ impl VisualsEngine {
                     renderer.upload_text(td);
                 }
                 renderer.compile_buffers(&result.shaders, result.render_mode);
-                self.error = None;
             }
-            Err(e) => self.error = Some(e),
+            Err(e) => sova_core::log_eprintln!("[hydra] compile error: {e}"),
         }
     }
 
