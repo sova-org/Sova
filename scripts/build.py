@@ -473,6 +473,10 @@ def _make_appimage_native(root: Path, binary: Path, arch: str, output_dir: Path,
     return str(final)
 
 
+def _pull_appimage_base(docker_platform: str, log: list[str]) -> None:
+    run_cmd(["docker", "pull", "--platform", docker_platform, "ubuntu:22.04"], log)
+
+
 def _make_appimage_docker(root: Path, binary: Path, arch: str, output_dir: Path, log: list[str]) -> str:
     cache = root / ".cache"
     runtime = cache / f"runtime-{arch}"
@@ -490,9 +494,14 @@ def _make_appimage_docker(root: Path, binary: Path, arch: str, output_dir: Path,
 
     log.append(f"  Building Docker image {image_tag} ({docker_platform})")
     dockerfile = "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y --no-install-recommends squashfs-tools && rm -rf /var/lib/apt/lists/*\n"
-    run_cmd([
-        "docker", "build", "--platform", docker_platform, "-q", "-t", image_tag, "-",
-    ], log, input=dockerfile)
+    build_cmd = ["docker", "build", "--platform", docker_platform, "-q", "-t", image_tag, "-"]
+    _pull_appimage_base(docker_platform, log)
+    try:
+        run_cmd(build_cmd, log, input=dockerfile)
+    except subprocess.CalledProcessError:
+        log.append("  Docker build failed; re-pulling base image and retrying once")
+        _pull_appimage_base(docker_platform, log)
+        run_cmd(build_cmd, log, input=dockerfile)
 
     squashfs = cache / f"appimage-{arch}.squashfs"
     run_cmd([
