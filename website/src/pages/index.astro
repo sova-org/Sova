@@ -1,7 +1,7 @@
 ---
 import fs from 'node:fs';
-const cargo = fs.readFileSync('../desktop/Cargo.toml', 'utf-8');
-const version = cargo.match(/version\s*=\s*"([^"]+)"/)?.[1];
+const cargo = fs.readFileSync('../Cargo.toml', 'utf-8');
+const version = cargo.match(/\[workspace\.package\]\s*\nversion\s*=\s*"([^"]+)"/)?.[1];
 ---
 
 <!DOCTYPE html>
