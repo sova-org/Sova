@@ -391,6 +391,14 @@ const FUNCS: LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             args.swap_remove(index)
         }
     ));
+    funcs.insert("lalt".to_owned(), ItemFunc::define(
+        "Alternate between arguments according to the number of times the line has been started", 
+        |ctx, mut args| {
+            let len = args.len();
+            let index = ctx.line_iterations % len;
+            args.swap_remove(index)
+        }
+    ));
     funcs.insert(
         "seq".to_owned(),
         ItemFunc::define(
