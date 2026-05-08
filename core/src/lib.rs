@@ -11,7 +11,9 @@ pub mod util;
 pub mod vm;
 pub mod world;
 
+pub use device_map::{HOST_PROXY_SLOT, MAX_DEVICE_SLOTS};
 pub use protocol::TimedMessage;
+pub use protocol::host::HostMessage;
 pub use scene::Scene;
 
 // Re-export logging functionality

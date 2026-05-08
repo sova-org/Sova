@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex as StdMutex, RwLock,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     },
 };
 use tokio::time::{self, Duration, timeout};
@@ -36,8 +36,11 @@ pub type TokioSender<T> = tokio::sync::mpsc::Sender<T>;
 
 use crate::message::ServerMessage;
 
+mod frame_text_store;
 mod image_maintainer;
 mod message_processing;
+
+pub use frame_text_store::FrameTextStore;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -80,7 +83,7 @@ impl BroadcastItem {
         match self {
             BroadcastItem::Raw { droppable, .. } => *droppable,
             BroadcastItem::Feedback(_) => false,
-            BroadcastItem::Filtered(_, msg) => matches!(msg, ServerMessage::PeerCursorMoved(..)),
+            BroadcastItem::Filtered(_, msg) => matches!(msg, ServerMessage::Presence { .. }),
         }
     }
 }
@@ -143,6 +146,9 @@ pub struct ServerState {
     pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
+    pub frame_text: Arc<FrameTextStore>,
+    pub presence: Arc<loro::awareness::EphemeralStore>,
+    pub next_peer_id: Arc<AtomicU64>,
 }
 
 impl ServerState {
@@ -162,6 +168,9 @@ impl ServerState {
         core_restart_tx: TokioSender<CoreRestartRequest>,
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
+        frame_text: Arc<FrameTextStore>,
+        presence: Arc<loro::awareness::EphemeralStore>,
+        next_peer_id: Arc<AtomicU64>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -178,6 +187,9 @@ impl ServerState {
             core_restart_tx,
             password,
             master_gain,
+            frame_text,
+            presence,
+            next_peer_id,
         }
     }
 
@@ -198,6 +210,12 @@ pub struct Snapshot {
     pub quantum: f64,
     #[serde(default)]
     pub devices: Vec<sova_core::protocol::DeviceInfo>,
+    #[serde(default)]
+    pub frame_text_layout: Vec<((usize, usize), crate::FrameTextId)>,
+    #[serde(default)]
+    pub frame_doc_snapshots: Vec<(crate::FrameTextId, Vec<u8>)>,
+    #[serde(default)]
+    pub presence: Vec<u8>,
 }
 
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
@@ -235,6 +253,9 @@ pub struct SovaCoreServer {
     pub core_restart_tx: TokioSender<CoreRestartRequest>,
     pub password: Option<String>,
     pub master_gain: Arc<AtomicU32>,
+    pub frame_text: Arc<FrameTextStore>,
+    pub presence: Arc<loro::awareness::EphemeralStore>,
+    pub next_peer_id: Arc<AtomicU64>,
 }
 
 impl SovaCoreServer {
@@ -253,6 +274,9 @@ impl SovaCoreServer {
         audio_cmd_tx: Option<Sender<AudioCommand>>,
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
+        frame_text: Arc<FrameTextStore>,
+        presence: Arc<loro::awareness::EphemeralStore>,
+        next_peer_id: Arc<AtomicU64>,
     ) -> Self {
         let (core_restart_tx, core_restart_rx) = tokio::sync::mpsc::channel(128);
         SovaCoreServer {
@@ -274,6 +298,9 @@ impl SovaCoreServer {
             core_restart_tx,
             password,
             master_gain,
+            frame_text,
+            presence,
+            next_peer_id,
         }
     }
 
@@ -293,6 +320,9 @@ impl SovaCoreServer {
             self.core_restart_tx.clone(),
             self.password.clone(),
             self.master_gain.clone(),
+            self.frame_text.clone(),
+            self.presence.clone(),
+            self.next_peer_id.clone(),
         )
     }
 
@@ -408,6 +438,25 @@ impl SovaCoreServer {
             }
         });
 
+        // Presence TTL eviction is local to each peer's EphemeralStore; the
+        // server does not broadcast a fake presence frame every second. Each
+        // desktop client calls `remove_outdated()` periodically in its poll
+        // loop, which drains stale entries (e.g. from disconnected peers)
+        // without producing wire chatter.
+        let presence_token = token.child_token();
+        let presence_store = self.presence.clone();
+        tokio::task::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(1));
+            loop {
+                select! {
+                    _ = presence_token.cancelled() => break,
+                    _ = interval.tick() => {
+                        presence_store.remove_outdated();
+                    }
+                }
+            }
+        });
+
         loop {
             select! {
                 Ok((socket, client_addr)) = listener.accept() => {
@@ -473,6 +522,7 @@ impl SovaCoreServer {
             self.client_registry.clone(),
             self.is_playing.clone(),
             Clock::from(Arc::clone(&self.clock_server)),
+            self.frame_text.clone(),
         );
     }
 }
@@ -586,8 +636,19 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
                 client_addr_str, client_name, initial_is_playing
             );
+
+            // Allocate this client's Loro PeerID and snapshot every frame doc
+            // plus the current presence bytes for the handshake.
+            let assigned_peer_id = state.next_peer_id.fetch_add(1, Ordering::Relaxed);
+            let frame_text_layout = state.frame_text.layout_vec();
+            let frame_doc_snapshots = state.frame_text.export_full_snapshots();
+            let presence_bytes = state.presence.encode_all();
+            let snapshot_count = frame_doc_snapshots.len();
+            let presence_byte_count = presence_bytes.len();
+
             hello_msg = ServerMessage::Hello {
                 username: client_name.clone(),
+                peer_id: assigned_peer_id,
                 scene: initial_scene,
                 devices: initial_devices,
                 peers: initial_peers,
@@ -596,12 +657,31 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 languages: available_languages,
                 audio_engine_state: state.get_audio_engine_state(),
                 link_enabled: state.clock_server.link.is_enabled(),
+                frame_text_layout,
+                frame_doc_snapshots,
+                presence: presence_bytes,
             };
 
-            if !matches!(
-                timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await,
-                Ok(Ok(()))
-            ) {
+            let hello_result = timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await;
+            match &hello_result {
+                Ok(Ok(())) => {
+                    println!(
+                        "[ handshake ] Hello delivered to {} ({}). peer_id={}, frame_docs={}, presence_bytes={}",
+                        client_addr_str,
+                        client_name,
+                        assigned_peer_id,
+                        snapshot_count,
+                        presence_byte_count
+                    );
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[ handshake ] write error sending Hello to {}: {}", client_name, e);
+                }
+                Err(_) => {
+                    eprintln!("[ handshake ] timeout sending Hello to {}", client_name);
+                }
+            }
+            if !matches!(hello_result, Ok(Ok(()))) {
                 eprintln!("Failed to send Hello to {}", client_name);
                 let mut clients_guard = state.clients.lock().await;
                 if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
@@ -721,6 +801,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     let scene = state.scene_image.lock().await.clone();
                     let c = Clock::from(&state.clock_server);
                     let devices = state.devices.device_list();
+                    let frame_text_layout = state.frame_text.layout_vec();
+                    let frame_doc_snapshots = state.frame_text.export_full_snapshots();
+                    let presence_bytes = state.presence.encode_all();
                     let snapshot = Snapshot {
                         scene,
                         tempo: c.tempo(),
@@ -728,6 +811,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         micros: c.micros(),
                         quantum: c.quantum(),
                         devices,
+                        frame_text_layout,
+                        frame_doc_snapshots,
+                        presence: presence_bytes,
                     };
                     if !matches!(
                         timeout(WRITE_TIMEOUT, send_msg(&mut writer, ServerMessage::Snapshot(snapshot))).await,

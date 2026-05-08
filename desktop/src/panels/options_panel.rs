@@ -237,8 +237,8 @@ impl OptionsPanel {
                         );
                         ui.radio_value(
                             view_mode,
-                            ViewMode::Classic,
-                            t!("options.scene_view_mode.classic"),
+                            ViewMode::Stack,
+                            t!("options.scene_view_mode.stack"),
                         );
                     });
                     ui.end_row();

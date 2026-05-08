@@ -1,6 +1,7 @@
 use eframe::egui;
 use egui_file_dialog::FileDialog;
 use sova_core::schedule::ActionTiming;
+use sova_core::vm::variable::VariableValue;
 use sova_server::ClientMessage;
 
 use crate::{
@@ -40,6 +41,18 @@ impl SovaApp {
         if let widgets::ConfirmAction::Confirmed = self.dialogs.confirm_reset_scene.show(ctx) {
             self.bridge
                 .send(ClientMessage::ResetScene(ActionTiming::Immediate));
+        }
+
+        match self.dialogs.confirm_load_demo.show(ctx) {
+            widgets::ConfirmAction::Confirmed => {
+                if let Some((_, bytes)) = self.dialogs.pending_demo.take() {
+                    self.load_scene_from_bytes(bytes, ActionTiming::Immediate);
+                }
+            }
+            widgets::ConfirmAction::Cancelled => {
+                self.dialogs.pending_demo = None;
+            }
+            widgets::ConfirmAction::None => {}
         }
 
         if self.session.rename_input.is_some() {
@@ -253,9 +266,10 @@ impl SovaApp {
         }
         match sidebar_server_action {
             ServerAction::Start => {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             ServerAction::Stop => {
                 self.bridge.disconnect();
@@ -290,6 +304,7 @@ impl SovaApp {
                     self.panels.tools.settings.show_chat,
                     sample_browser_available && self.panels.tools.settings.show_sample_browser,
                     sample_browser_available,
+                    self.panels.scene.view_mode,
                 )
             })
             .inner;
@@ -308,6 +323,9 @@ impl SovaApp {
                 self.panels.tools.toggle_sample_browser();
             }
         }
+        if bar.toggle_view_mode {
+            self.dispatch(widgets::CommandId::ToggleViewMode);
+        }
 
         // Preprocess visualization data once for all panels
         let scope_gen = self.bridge.scope_generation();
@@ -315,10 +333,22 @@ impl SovaApp {
         if !scope_data.is_empty() && scope_gen != self.viz.last_scope_gen {
             self.viz.last_scope_gen = scope_gen;
             widgets::align_trigger(&mut self.viz.aligned_scope, scope_data);
+            let reported_sr = self.bridge.audio_state().sample_rate;
+            let sr = if reported_sr > 0.0 { reported_sr } else { 48_000.0 };
+            let needs_rebuild = self
+                .viz
+                .spectrum_analyzer
+                .as_ref()
+                .map(|a| (a.sample_rate() - sr).abs() > f32::EPSILON)
+                .unwrap_or(true);
+            if needs_rebuild {
+                self.viz.spectrum_analyzer = Some(widgets::SpectrumAnalyzer::new(sr));
+            }
             let analyzer = self
                 .viz
                 .spectrum_analyzer
-                .get_or_insert_with(|| widgets::SpectrumAnalyzer::new(44100.0));
+                .as_mut()
+                .expect("just initialised");
             self.viz.raw_bands = analyzer.analyze(scope_data);
         }
 
@@ -405,8 +435,6 @@ impl SovaApp {
             egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    let pending_edits: Vec<_> =
-                        self.bridge.pending_script_edits.drain(..).collect();
                     let sample_names = self.panels.sample_browser.sample_names();
                     self.panels.scene.show(
                         ui,
@@ -414,7 +442,6 @@ impl SovaApp {
                         self.prefs.appearance.visuals_enabled,
                         self.prefs.appearance.scene_opacity,
                         &self.prefs.editor,
-                        pending_edits,
                         &sample_names,
                         self.input_owner,
                     );
@@ -461,9 +488,10 @@ impl SovaApp {
                 })
                 .inner;
             if action.start_server {
+                let host_tx = self.bridge.install_host_channel();
                 self.panels
                     .server
-                    .start(self.panels.audio.generate_audio_config());
+                    .start(self.panels.audio.generate_audio_config(), host_tx);
             }
             if action.stop_server {
                 self.panels.server.stop();
@@ -523,16 +551,15 @@ impl SovaApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
 
-        self.panels.visuals.show_editor(ctx, &self.prefs.editor);
-
-        if self.panels.visuals.take_pending_broadcast() {
-            self.bridge.send_hydra_code(self.panels.visuals.code());
-        }
-        if self.panels.visuals.shared
-            && let Some((sender, code)) = self.bridge.take_remote_hydra()
-        {
-            self.panels.visuals.remote_sender = Some(sender);
-            self.panels.visuals.apply_remote_code(&code);
+        for msg in self.bridge.drain_host_messages() {
+            match msg.route.as_str() {
+                "hydra/eval" => {
+                    if let Some(VariableValue::Str(code)) = msg.args.into_iter().next() {
+                        self.panels.visuals.apply_scheduled_code(code);
+                    }
+                }
+                other => sova_core::log_eprintln!("[host] unhandled route '{}'", other),
+            }
         }
     }
 
@@ -564,7 +591,6 @@ impl SovaApp {
                     && (!self.bridge.is_connected() || self.panels.server.is_running()))
                     || self.panels.sample_browser.detached,
                 documentation: !self.panels.doc.settings.collapsed,
-                visuals: self.panels.visuals.open,
             });
         match self.panels.command_palette.show(ctx) {
             widgets::PaletteAction::Execute(cmd) => self.dispatch(cmd),

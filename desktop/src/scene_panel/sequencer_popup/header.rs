@@ -142,12 +142,13 @@ impl crate::scene_panel::ScenePanel {
                             self.toggle_line_field(li, bridge, |l| l.speed_factor = speed);
                         }
 
-                        let any_peer = bridge.peer_cursors().iter().any(|(name, &(pli, _, _))| {
-                            pli == li
-                                && bridge
-                                    .confirmed_username()
-                                    .is_none_or(|my| my != name.as_str())
-                        });
+                        let line_frame_count = bridge
+                            .scene()
+                            .and_then(|s| s.lines.get(li))
+                            .map(|l| l.frames.len())
+                            .unwrap_or(0);
+                        let any_peer = (0..line_frame_count)
+                            .any(|fi| !bridge.editing_peers_for_frame(li, fi).is_empty());
                         if any_peer {
                             ui.add(
                                 egui::Label::new(

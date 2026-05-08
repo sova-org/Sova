@@ -26,10 +26,6 @@ pub fn small(icon: &str) -> egui::RichText {
     rich(icon).small()
 }
 
-pub fn colored(icon: &str, color: egui::Color32) -> egui::RichText {
-    rich(icon).color(color)
-}
-
 fn text_format_with_color(
     ui: &egui::Ui,
     text_style: egui::TextStyle,

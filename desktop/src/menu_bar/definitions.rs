@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use eframe::egui;
 
+use crate::scene_panel::ViewMode;
 use crate::widgets::{
     CommandId,
     shortcut::{self, Key, Shortcut},
@@ -19,8 +20,8 @@ pub(crate) struct MenuContext<'a> {
     pub chat_open: bool,
     pub sample_browser_open: bool,
     pub sample_browser_available: bool,
-    pub visuals_open: bool,
     pub debug_open: bool,
+    pub scene_view_mode: ViewMode,
     pub recent_scenes: &'a [PathBuf],
     pub egui_ctx: &'a egui::Context,
 }
@@ -252,10 +253,36 @@ pub(crate) fn build_menus(ctx: &MenuContext<'_>) -> Vec<MenuDef> {
     };
 
     // ── View ──
+    let scene_view_submenu = MenuItemDef::SubMenu {
+        label: t!("menu.view.scene_view").into_owned(),
+        mnemonic: 'S',
+        enabled: true,
+        items: vec![
+            MenuItemDef::Checkbox {
+                label: t!("options.scene_view_mode.sequencer").into_owned(),
+                mnemonic: 'Q',
+                checked: ctx.scene_view_mode == ViewMode::Sequencer,
+                shortcut_text: None,
+                enabled: true,
+                action: MenuAction::SetSceneViewMode(ViewMode::Sequencer),
+            },
+            MenuItemDef::Checkbox {
+                label: t!("options.scene_view_mode.stack").into_owned(),
+                mnemonic: 'T',
+                checked: ctx.scene_view_mode == ViewMode::Stack,
+                shortcut_text: Some(sc(&Shortcut::plain(Key::Char('V')))),
+                enabled: true,
+                action: MenuAction::SetSceneViewMode(ViewMode::Stack),
+            },
+        ],
+    };
+
     let view = MenuDef {
         label: format!("{} (F5)", t!("menu.view")),
         mnemonic: 'V',
         items: vec![
+            scene_view_submenu,
+            MenuItemDef::Separator,
             MenuItemDef::Checkbox {
                 label: t!("chat.title").into_owned(),
                 mnemonic: 'h',
@@ -271,14 +298,6 @@ pub(crate) fn build_menus(ctx: &MenuContext<'_>) -> Vec<MenuDef> {
                 shortcut_text: Some(sc(&Shortcut::cmd_shift(Key::Char('E')))),
                 enabled: ctx.sample_browser_available,
                 action: MenuAction::Command(CommandId::SampleBrowser),
-            },
-            MenuItemDef::Checkbox {
-                label: t!("visuals.title").into_owned(),
-                mnemonic: 'i',
-                checked: ctx.visuals_open,
-                shortcut_text: Some(sc(&Shortcut::cmd_shift(Key::Char('V')))),
-                enabled: true,
-                action: MenuAction::Command(CommandId::Visuals),
             },
             MenuItemDef::Separator,
             MenuItemDef::Checkbox {

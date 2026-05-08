@@ -15,7 +15,7 @@ use sova_core::{
 
 use crate::{
     ClientRegistry, ServerMessage,
-    server::{POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
+    server::{FrameTextStore, POSITION_BROADCAST_INTERVAL_MS, broadcast_raw},
 };
 
 fn notification_to_server_message(
@@ -44,6 +44,7 @@ pub fn start_image_maintainer(
     client_registry: ClientRegistry,
     is_playing: Arc<AtomicBool>,
     mut clock: Clock,
+    frame_text: Arc<FrameTextStore>,
 ) {
     thread::spawn(move || {
         let position_broadcast_interval =
@@ -98,6 +99,44 @@ pub fn start_image_maintainer(
                         }
                         _ => (),
                     };
+
+                    // Keep FrameTextStore layout in sync with structural changes.
+                    // UpdatedScene is a full replacement (reset / load) and must
+                    // discard every prior doc so old text cannot leak back in.
+                    // Incremental notifications preserve doc identity for
+                    // positions that survive the change. UpdatedFrames is excluded
+                    // entirely: the Loro doc owns in-progress text and resetting
+                    // it on every evaluate would clobber typing.
+                    enum LayoutChange {
+                        FullReset,
+                        Incremental,
+                        None,
+                    }
+                    let change = match &p {
+                        SovaNotification::UpdatedScene(_) => LayoutChange::FullReset,
+                        SovaNotification::UpdatedLines(_)
+                        | SovaNotification::AddedLine(_, _)
+                        | SovaNotification::RemovedLine(_)
+                        | SovaNotification::AddedFrame(_, _, _)
+                        | SovaNotification::RemovedFrame(_, _) => LayoutChange::Incremental,
+                        _ => LayoutChange::None,
+                    };
+                    match change {
+                        LayoutChange::FullReset => frame_text.reset_from_scene(&guard),
+                        LayoutChange::Incremental => frame_text.rebuild_from_scene(&guard),
+                        LayoutChange::None => {}
+                    }
+                    if !matches!(change, LayoutChange::None) {
+                        broadcast_raw(
+                            &client_registry,
+                            &ServerMessage::FrameTextLayout {
+                                mapping: frame_text.layout_vec(),
+                                new_doc_snapshots: frame_text.export_full_snapshots(),
+                            },
+                            false,
+                        );
+                    }
+
                     drop(guard);
 
                     let should_broadcast = match &p {

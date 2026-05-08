@@ -21,7 +21,6 @@ impl ScenePanel {
         visuals_enabled: bool,
         scene_opacity: f32,
         editor_settings: &EditorSettings,
-        pending_edits: Vec<(usize, usize, Vec<sova_server::TextOp>)>,
         sample_names: &[String],
         input_owner: InputOwner,
     ) {
@@ -72,14 +71,6 @@ impl ScenePanel {
         self.sync_sequencer_line_speed_focus(scene);
         self.sync_prelude_states(&scene.prelude);
 
-        for (li, fi, ops) in pending_edits {
-            if let Some(state) = self.frame_states.get_mut(&(li, fi)) {
-                for op in &ops {
-                    state.integrate_remote_op(op);
-                }
-            }
-        }
-
         let theme = crate::widgets::syntax_highlight::SyntaxTheme::from_pref(
             editor_settings.syntax_theme,
         );
@@ -102,7 +93,7 @@ impl ScenePanel {
         };
 
         match self.view_mode {
-            ViewMode::Classic => self.show_classic(ui, scene, &head_progress, &ctx, available_height),
+            ViewMode::Stack => self.show_stack(ui, scene, &head_progress, &ctx, available_height),
             ViewMode::Sequencer => self.show_sequencer(ui, scene, &head_progress, &ctx),
         }
 
@@ -318,7 +309,7 @@ impl ScenePanel {
             .entry((fli, ffi))
             .or_insert_with(|| crate::widgets::inline_scene_view::InlineFrameState::new(frame));
 
-        let frame_ctx = super::classic_view::FrameCellCtx {
+        let frame_ctx = super::stack_view::FrameCellCtx {
             pos: (fli, ffi),
             n_frames: line.frames.len(),
             frame,

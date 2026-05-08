@@ -21,6 +21,7 @@ pub mod midi;
 pub mod osc;
 
 pub mod audio_engine_proxy;
+pub mod host;
 
 mod device;
 mod error;

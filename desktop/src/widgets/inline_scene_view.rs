@@ -7,11 +7,39 @@ use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
-use sova_server::{ClientMessage, TextOp};
+use sova_server::{ClientMessage, FrameTextId, FrameTextStore};
 
 use super::{CodeEditor, EditorContext};
-use crate::client_bridge::ClientBridge;
+use crate::client_bridge::{CURSOR_PUBLISH_THROTTLE_MS, ClientBridge};
 use crate::theme::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, cycled_accent};
+
+/// Toggle the language picker via Cmd/Ctrl+L when the editor has focus.
+/// Resets the picker filter and selection on each toggle.
+fn handle_lang_picker_shortcut(
+    ui: &egui::Ui,
+    editor_has_focus: bool,
+    open: &mut bool,
+    filter: &mut String,
+    selection: &mut usize,
+) {
+    if !editor_has_focus {
+        return;
+    }
+    let is_mac = ui.ctx().os().is_mac();
+    let shortcut_pressed = ui.input(|i| {
+        i.key_pressed(egui::Key::L)
+            && if is_mac {
+                i.modifiers.mac_cmd
+            } else {
+                i.modifiers.ctrl
+            }
+    });
+    if shortcut_pressed {
+        *open = !*open;
+        filter.clear();
+        *selection = 0;
+    }
+}
 
 /// Full-body language picker grid. Replaces the code editor area with a grid
 /// of clickable language tiles. Returns `Some(lang_name)` when a language is
@@ -229,17 +257,18 @@ pub struct InlineFrameState {
     pub lang_picker_selection: usize,
     pub last_eval: Option<Instant>,
     pub last_cursor: Option<(usize, usize)>,
-    pub sent_cursor: Option<(usize, usize)>,
-    pub last_cursor_send: Instant,
 
     pub editor_has_focus: bool,
     pub focus_request: FocusRequest,
     pub escape_pressed: bool,
     pub menu_open: bool,
-    pub prev_content: String,
-    pub pending_ops: Vec<TextOp>,
-    pub last_op_send: Instant,
-    pub has_remote_edits: bool,
+    pub frame_text_id: Option<FrameTextId>,
+    pub last_seen_doc_string: String,
+    /// Loro `Cursor` for the local user's caret — persists across frames so it
+    /// can be re-resolved into egui's `TextEditState` whenever a remote
+    /// `ScriptEdit` shifts the doc under the caret.
+    pub local_caret_cursor: Option<loro::cursor::Cursor>,
+    pub last_cursor_publish: Instant,
     pub height: f32,
     pub collapsed: bool,
     pub focus_toggled: bool,
@@ -249,8 +278,8 @@ impl InlineFrameState {
     pub fn new(frame: &Frame) -> Self {
         let content = frame.script().content().to_owned();
         Self {
-            prev_content: content.clone(),
             editor: CodeEditor::new(),
+            last_seen_doc_string: content.clone(),
             content,
             lang: frame.script().lang().to_owned(),
             dirty: false,
@@ -259,142 +288,82 @@ impl InlineFrameState {
             lang_picker_selection: 0,
             last_eval: None,
             last_cursor: None,
-            sent_cursor: None,
-            last_cursor_send: Instant::now(),
 
             editor_has_focus: false,
             focus_request: FocusRequest::None,
             escape_pressed: false,
             menu_open: false,
-            pending_ops: Vec::new(),
-            last_op_send: Instant::now(),
-            has_remote_edits: false,
+            frame_text_id: None,
+            local_caret_cursor: None,
+            last_cursor_publish: Instant::now(),
             height: crate::scene_panel::CELL_HEIGHT,
             collapsed: false,
             focus_toggled: false,
         }
     }
 
-    pub fn compute_diff_ops(&mut self) {
-        if self.content == self.prev_content {
-            return;
-        }
-        let old: Vec<char> = self.prev_content.chars().collect();
-        let new: Vec<char> = self.content.chars().collect();
-
-        let prefix = old
-            .iter()
-            .zip(new.iter())
-            .take_while(|(a, b)| a == b)
-            .count();
-        let old_rem = old.len() - prefix;
-        let new_rem = new.len() - prefix;
-        let suffix = old[prefix..]
-            .iter()
-            .rev()
-            .zip(new[prefix..].iter().rev())
-            .take_while(|(a, b)| a == b)
-            .count()
-            .min(old_rem)
-            .min(new_rem);
-
-        let del_len = old.len() - prefix - suffix;
-        let ins_len = new.len() - prefix - suffix;
-
-        let byte_prefix: usize = old.iter().take(prefix).map(|c| c.len_utf8()).sum();
-
-        if del_len > 0 {
-            let byte_del: usize = old[prefix..prefix + del_len]
-                .iter()
-                .map(|c| c.len_utf8())
-                .sum();
-            self.pending_ops.push(TextOp::Delete {
-                pos: byte_prefix,
-                len: byte_del,
-            });
-        }
-        if ins_len > 0 {
-            let ins_text: String = new[prefix..prefix + ins_len].iter().collect();
-            self.pending_ops.push(TextOp::Insert {
-                pos: byte_prefix,
-                text: ins_text,
-            });
-        }
-
-        self.prev_content = self.content.clone();
-    }
-
-    pub fn integrate_remote_op(&mut self, op: &TextOp) {
-        self.has_remote_edits = true;
-        match op {
-            TextOp::Insert { pos, text } => {
-                let pos = (*pos).min(self.content.len());
-                self.content.insert_str(pos, text);
-                self.prev_content = self.content.clone();
-            }
-            TextOp::Delete { pos, len } => {
-                let pos = (*pos).min(self.content.len());
-                let end = (pos + len).min(self.content.len());
-                if pos < end {
-                    self.content.drain(pos..end);
-                    self.prev_content = self.content.clone();
-                }
-            }
-        }
-    }
-
-    pub fn flush_pending_ops(&mut self, li: usize, fi: usize, bridge: &ClientBridge) {
-        if self.pending_ops.is_empty() {
-            return;
-        }
-        if self.last_op_send.elapsed().as_millis() < 30 {
-            return;
-        }
-        let ops = std::mem::take(&mut self.pending_ops);
-        bridge.send(ClientMessage::ScriptEdit { li, fi, ops });
-        self.last_op_send = Instant::now();
-    }
-
     pub fn sync_if_remote_changed(&mut self, frame: &Frame) {
+        // Lang is server-authoritative and changes only via SetFrames. Skip the
+        // sync while the user has uncommitted local changes (e.g. a freshly
+        // picked language waiting on the next evaluate), otherwise we revert
+        // the user's choice before evaluate() can ship it as SetFrames.
         if self.dirty {
             return;
         }
-        let remote_content = frame.script().content();
-        let remote_lang = frame.script().lang();
-        if self.has_remote_edits {
-            if remote_content == self.content {
-                self.has_remote_edits = false;
-                self.lang = remote_lang.to_owned();
-                self.prev_content = self.content.clone();
-            }
-            return;
-        }
-        if remote_content != self.content || remote_lang != self.lang {
-            self.content = remote_content.to_owned();
-            self.lang = remote_lang.to_owned();
-            self.prev_content = self.content.clone();
-            self.pending_ops.clear();
+        if frame.script().lang() != self.lang {
+            self.lang = frame.script().lang().to_owned();
         }
     }
 
     pub fn sync_from_frame(&mut self, frame: &Frame) {
+        // Discard local edits and reset the projection to the canonical content.
         self.content = frame.script().content().to_owned();
         self.lang = frame.script().lang().to_owned();
         self.dirty = false;
-        self.prev_content = self.content.clone();
-        self.pending_ops.clear();
-        self.has_remote_edits = false;
+        self.last_seen_doc_string = self.content.clone();
     }
 
     pub fn evaluate(&mut self, li: usize, fi: usize, frame: &Frame, bridge: &ClientBridge) {
+        // Always evaluate the live Loro doc text (in case other peers added
+        // characters that haven't been mirrored to self.content yet this frame).
+        let live = self
+            .frame_text_id
+            .and_then(|id| bridge.frame_doc_text(id))
+            .unwrap_or_else(|| self.content.clone());
         let mut f = frame.clone();
-        f.set_script(Script::new(self.content.clone(), self.lang.clone()));
+        f.set_script(Script::new(live, self.lang.clone()));
         bridge.send(SchedulerMessage::SetFrames(
             vec![(li, fi, f)],
             ActionTiming::Immediate,
         ));
         self.dirty = false;
         self.last_eval = Some(Instant::now());
+    }
+
+    /// Render the inline language picker. Returns `true` when the picker just
+    /// closed (via pick, escape, or click-out) so the caller can re-focus the
+    /// editor.
+    pub fn show_inline_lang_picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        accent: egui::Color32,
+        bridge: &ClientBridge,
+    ) -> bool {
+        let was_open = self.lang_picker_open;
+        if let Some(lang) = show_lang_picker(
+            ui,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+            &self.lang,
+            accent,
+            bridge,
+        ) {
+            self.lang = lang;
+            self.dirty = true;
+            return true;
+        }
+        was_open && !self.lang_picker_open
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -417,22 +386,13 @@ impl InlineFrameState {
         wv.inactive.bg_stroke = egui::Stroke::NONE;
 
         // Cmd/Ctrl+L shortcut — only for the frame whose editor has focus
-        if self.editor_has_focus {
-            let is_mac = ui.ctx().os().is_mac();
-            let shortcut_pressed = ui.input(|i| {
-                i.key_pressed(egui::Key::L)
-                    && if is_mac {
-                        i.modifiers.mac_cmd
-                    } else {
-                        i.modifiers.ctrl
-                    }
-            });
-            if shortcut_pressed {
-                self.lang_picker_open = !self.lang_picker_open;
-                self.lang_picker_filter.clear();
-                self.lang_picker_selection = 0;
-            }
-        }
+        handle_lang_picker_shortcut(
+            ui,
+            self.editor_has_focus,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+        );
 
         // Collapse toggle (chevron) — not in sequencer editor panel
         if !is_sequencer {
@@ -695,6 +655,38 @@ impl InlineFrameState {
             ui.memory_mut(|m| m.request_focus(editor_id_focus));
         }
 
+        // Resolve our FrameTextId from the current layout, refresh the projection
+        // from the Loro doc if remote ops have moved it ahead of last_seen_doc_string,
+        // and re-anchor egui's caret using the saved Loro Cursor so the local user's
+        // caret follows the character it was on through remote inserts/deletes.
+        self.frame_text_id = bridge.frame_text_id_at(li, fi);
+        if let Some(id) = self.frame_text_id
+            && let Some(doc) = bridge.frame_doc(id)
+        {
+            let live = doc.get_text(FrameTextStore::CONTENT_CONTAINER).to_string();
+            if live != self.last_seen_doc_string {
+                if let Some(cur) = &self.local_caret_cursor
+                    && let Ok(pq) = doc.get_cursor_pos(cur)
+                    && let Some(mut state) =
+                        egui::widgets::text_edit::TextEditState::load(ui.ctx(), editor_id_focus)
+                {
+                    let new_cp = pq.current.pos;
+                    let mut range = state.cursor.char_range().unwrap_or_else(|| {
+                        egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(new_cp),
+                            egui::text::CCursor::new(new_cp),
+                        )
+                    });
+                    range.primary = egui::text::CCursor::new(new_cp);
+                    range.secondary = egui::text::CCursor::new(new_cp);
+                    state.cursor.set_char_range(Some(range));
+                    state.store(ui.ctx(), editor_id_focus);
+                }
+                self.content = live.clone();
+                self.last_seen_doc_string = live;
+            }
+        }
+
         egui::ScrollArea::vertical()
             .id_salt(("editor_scroll", li, fi))
             .auto_shrink(false)
@@ -702,13 +694,17 @@ impl InlineFrameState {
                 let output = self.editor.show(ui, editor_id, &mut self.content, ctx);
                 if output.response.changed() {
                     self.dirty = true;
-                    self.compute_diff_ops();
+                    if let Some(id) = self.frame_text_id
+                        && let Some(doc) = bridge.frame_doc(id)
+                    {
+                        let text = doc.get_text(FrameTextStore::CONTENT_CONTAINER);
+                        apply_local_diff_to_loro(&text, &self.last_seen_doc_string, &self.content);
+                        doc.commit();
+                        self.last_seen_doc_string = self.content.clone();
+                    }
                 }
                 self.last_cursor = output.cursor_line.zip(output.cursor_col);
             });
-
-        // Flush pending CRDT operations (throttled)
-        self.flush_pending_ops(li, fi, bridge);
 
         // Track focus and handle edit mode shortcuts
         self.editor_has_focus = ui.memory(|m| m.has_focus(editor_id_focus));
@@ -741,14 +737,36 @@ impl InlineFrameState {
             }
         }
 
-        // Send text cursor position to peers (throttled)
-        if let Some(pos) = self.last_cursor
-            && self.sent_cursor != Some(pos)
-            && self.last_cursor_send.elapsed().as_millis() >= 50
+        // Capture the local caret as a Loro Cursor every frame the editor has
+        // focus. The same cursor anchors egui's caret across remote ops AND is
+        // what we publish for peer presence (throttled to ~10 Hz).
+        if self.editor_has_focus
+            && let Some(id) = self.frame_text_id
+            && let Some(doc) = bridge.frame_doc(id)
+            && let Some(state) =
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), editor_id_focus)
+            && let Some(range) = state.cursor.char_range()
         {
-            self.sent_cursor = Some(pos);
-            self.last_cursor_send = Instant::now();
-            bridge.send(ClientMessage::CursorPosition(li, fi, Some(pos)));
+            let text = doc.get_text(FrameTextStore::CONTENT_CONTAINER);
+            self.local_caret_cursor =
+                text.get_cursor(range.primary.index, loro::cursor::Side::Left);
+
+            if self.last_cursor_publish.elapsed().as_millis() >= CURSOR_PUBLISH_THROTTLE_MS
+                && let Some(cursor) = &self.local_caret_cursor
+                && let Some(name) = bridge.confirmed_username()
+                && !name.is_empty()
+            {
+                let frame_key = format!("peer/{}/cursor_frame", name);
+                let pos_key = format!("peer/{}/cursor_pos", name);
+                bridge
+                    .presence
+                    .set(&frame_key, loro::LoroValue::I64(id.0 as i64));
+                bridge.presence.set(
+                    &pos_key,
+                    loro::LoroValue::Binary(cursor.encode().into()),
+                );
+                self.last_cursor_publish = Instant::now();
+            }
         }
 
         // Eval flash
@@ -824,6 +842,31 @@ impl InlineScriptState {
         Script::new(self.content.clone(), self.lang.clone())
     }
 
+    /// Render the inline language picker. Returns `true` when the picker just
+    /// closed so the caller can re-focus the editor.
+    pub fn show_inline_lang_picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        accent: egui::Color32,
+        bridge: &ClientBridge,
+    ) -> bool {
+        let was_open = self.lang_picker_open;
+        if let Some(lang) = show_lang_picker(
+            ui,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+            &self.lang,
+            accent,
+            bridge,
+        ) {
+            self.lang = lang;
+            self.dirty = true;
+            return true;
+        }
+        was_open && !self.lang_picker_open
+    }
+
     pub fn show_header(
         &mut self,
         ui: &mut egui::Ui,
@@ -837,22 +880,13 @@ impl InlineScriptState {
         wv.inactive.bg_stroke = egui::Stroke::NONE;
 
         // Cmd/Ctrl+L shortcut — only for the script whose editor has focus
-        if self.editor_has_focus {
-            let is_mac = ui.ctx().os().is_mac();
-            let shortcut_pressed = ui.input(|i| {
-                i.key_pressed(egui::Key::L)
-                    && if is_mac {
-                        i.modifiers.mac_cmd
-                    } else {
-                        i.modifiers.ctrl
-                    }
-            });
-            if shortcut_pressed {
-                self.lang_picker_open = !self.lang_picker_open;
-                self.lang_picker_filter.clear();
-                self.lang_picker_selection = 0;
-            }
-        }
+        handle_lang_picker_shortcut(
+            ui,
+            self.editor_has_focus,
+            &mut self.lang_picker_open,
+            &mut self.lang_picker_filter,
+            &mut self.lang_picker_selection,
+        );
 
         // Language selector
         let lang_btn = ui.add(
@@ -1002,5 +1036,118 @@ impl InlineScriptState {
         ));
         self.dirty = false;
         self.last_eval = Some(Instant::now());
+    }
+}
+
+
+fn apply_local_diff_to_loro(text: &loro::LoroText, prev: &str, new: &str) {
+    if prev == new {
+        return;
+    }
+    let old_chars: Vec<char> = prev.chars().collect();
+    let new_chars: Vec<char> = new.chars().collect();
+    let prefix = old_chars
+        .iter()
+        .zip(new_chars.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let old_rem = old_chars.len() - prefix;
+    let new_rem = new_chars.len() - prefix;
+    let suffix = old_chars[prefix..]
+        .iter()
+        .rev()
+        .zip(new_chars[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count()
+        .min(old_rem)
+        .min(new_rem);
+    let del_codepoints = old_chars.len() - prefix - suffix;
+    let ins_text: String = new_chars[prefix..new_chars.len() - suffix].iter().collect();
+    if del_codepoints > 0 {
+        let _ = text.delete(prefix, del_codepoints);
+    }
+    if !ins_text.is_empty() {
+        let _ = text.insert(prefix, &ins_text);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loro::LoroDoc;
+
+    #[test]
+    fn local_diff_round_trip_through_loro() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "abc").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "abc", "aXbc");
+        doc.commit();
+        assert_eq!(text.to_string(), "aXbc");
+    }
+
+    #[test]
+    fn local_diff_handles_multibyte() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "héllo").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "héllo", "hZéllo");
+        doc.commit();
+        assert_eq!(text.to_string(), "hZéllo");
+    }
+
+    #[test]
+    fn local_diff_pure_delete() {
+        let doc = LoroDoc::new();
+        let text = doc.get_text("content");
+        text.insert(0, "hello world").unwrap();
+        doc.commit();
+        apply_local_diff_to_loro(&text, "hello world", "hello");
+        doc.commit();
+        assert_eq!(text.to_string(), "hello");
+    }
+
+    #[test]
+    fn sync_if_remote_changed_skips_when_dirty() {
+        let frame: Frame = Script::new(String::new(), "boinx".to_string()).into();
+        let mut state = InlineFrameState::new(&frame);
+        state.lang = "cagire".to_string();
+        state.dirty = true;
+        state.sync_if_remote_changed(&frame);
+        assert_eq!(state.lang, "cagire");
+    }
+
+    #[test]
+    fn sync_if_remote_changed_applies_when_clean() {
+        let frame: Frame = Script::new(String::new(), "boinx".to_string()).into();
+        let mut state = InlineFrameState::new(&frame);
+        state.lang = "cagire".to_string();
+        state.dirty = false;
+        state.sync_if_remote_changed(&frame);
+        assert_eq!(state.lang, "boinx");
+    }
+
+    #[test]
+    fn two_docs_converge_via_export_import() {
+        let a = LoroDoc::new();
+        a.set_peer_id(1).unwrap();
+        let b = LoroDoc::new();
+        b.set_peer_id(2).unwrap();
+        a.get_text("content").insert(0, "Hello").unwrap();
+        a.commit();
+        b.get_text("content").insert(0, "World").unwrap();
+        b.commit();
+
+        let a_to_b = a.export(loro::ExportMode::all_updates()).unwrap();
+        let b_to_a = b.export(loro::ExportMode::all_updates()).unwrap();
+        a.import(&b_to_a).unwrap();
+        b.import(&a_to_b).unwrap();
+
+        assert_eq!(
+            a.get_text("content").to_string(),
+            b.get_text("content").to_string()
+        );
     }
 }

@@ -13,6 +13,36 @@ use crate::{
 };
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
+    // Shallow-snapshot any frame doc whose canonical text was just committed via
+    // SetFrames. This bounds Loro doc memory across long sessions; the live text
+    // for every committed frame is now archived as the new doc snapshot baseline.
+    if let SchedulerMessage::SetFrames(frames, _) = &msg {
+        for (li, fi, _) in frames {
+            if let Some(id) = state.frame_text.lookup(*li, *fi) {
+                let doc_opt = state.frame_text.docs.read().unwrap().get(&id).cloned();
+                if let Some(doc) = doc_opt {
+                    let frontiers = doc.oplog_frontiers();
+                    if let Ok(blob) = doc.export(loro::ExportMode::shallow_snapshot(&frontiers))
+                        && let Ok(new_doc) = loro::LoroDoc::from_snapshot(&blob)
+                    {
+                        let _ = new_doc.set_peer_id(crate::FrameTextStore::SERVER_PEER_ID);
+                        state.frame_text.docs.write().unwrap().insert(id, new_doc);
+                    }
+                }
+            }
+        }
+        // Re-broadcast the post-checkpoint snapshots so clients reset their
+        // local docs to the freshly-pruned baseline.
+        broadcast_raw(
+            &state.client_registry,
+            &ServerMessage::FrameTextLayout {
+                mapping: state.frame_text.layout_vec(),
+                new_doc_snapshots: state.frame_text.export_full_snapshots(),
+            },
+            false,
+        );
+    }
+
     let iface = state.sched_iface.read().unwrap();
     if iface.send(msg.clone()).is_err() {
         return ServerMessage::InternalError("Scheduler communication error.".into());
@@ -30,7 +60,12 @@ pub async fn on_message(
     client_name: &mut String,
     is_host: bool,
 ) -> ServerMessage {
-    println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+    if !matches!(
+        msg,
+        ClientMessage::Presence { .. } | ClientMessage::ScriptEdit { .. }
+    ) {
+        println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+    }
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
@@ -84,6 +119,9 @@ pub async fn on_message(
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
             let devices = state.devices.create_device_snapshot();
+            let frame_text_layout = state.frame_text.layout_vec();
+            let frame_doc_snapshots = state.frame_text.export_full_snapshots();
+            let presence_bytes = state.presence.encode_all();
             let snapshot = Snapshot {
                 scene,
                 tempo: clock.tempo(),
@@ -91,6 +129,9 @@ pub async fn on_message(
                 micros: clock.micros(),
                 quantum: clock.quantum(),
                 devices,
+                frame_text_layout,
+                frame_doc_snapshots,
+                presence: presence_bytes,
             };
             ServerMessage::Snapshot(snapshot)
         }
@@ -108,16 +149,14 @@ pub async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::CursorPosition(line_idx, frame_idx, text_cursor) => {
-            state.client_registry.broadcast(BroadcastItem::Filtered(
-                client_name.clone(),
-                ServerMessage::PeerCursorMoved(
-                    client_name.clone(),
-                    line_idx,
-                    frame_idx,
-                    text_cursor,
-                ),
-            ));
+        ClientMessage::Presence { update } => {
+            // Apply locally first, then broadcast (droppable).
+            let _ = state.presence.apply(&update);
+            broadcast_raw(
+                &state.client_registry,
+                &ServerMessage::Presence { update },
+                true,
+            );
             ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
@@ -429,14 +468,6 @@ pub async fn on_message(
                 None => ServerMessage::InternalError("Core restart channel closed".into()),
             }
         }
-        ClientMessage::HydraCode(code) => {
-            broadcast_raw(
-                &state.client_registry,
-                &ServerMessage::HydraCode(client_name.clone(), code),
-                false,
-            );
-            ServerMessage::Success
-        }
         ClientMessage::SetMasterVolume(vol) => {
             let clamped = vol.clamp(0.0, 1.0);
             state
@@ -466,16 +497,34 @@ pub async fn on_message(
             state.devices.panic_all_midi_outputs();
             ServerMessage::Success
         }
-        ClientMessage::ScriptEdit { li, fi, ops } => {
+        ClientMessage::ScriptEdit {
+            frame_text_id,
+            update,
+        } => {
+            let doc_opt = state
+                .frame_text
+                .docs
+                .read()
+                .unwrap()
+                .get(&frame_text_id)
+                .cloned();
+            let Some(doc) = doc_opt else {
+                return ServerMessage::InternalError(format!(
+                    "Unknown frame_text_id {:?}",
+                    frame_text_id
+                ));
+            };
+            if let Err(e) = doc.import(&update) {
+                return ServerMessage::InternalError(format!("CRDT import failed: {e}"));
+            }
             broadcast_raw(
                 &state.client_registry,
                 &ServerMessage::ScriptEdit {
                     sender: client_name.clone(),
-                    li,
-                    fi,
-                    ops,
+                    frame_text_id,
+                    update,
                 },
-                true,
+                false,
             );
             ServerMessage::Success
         }

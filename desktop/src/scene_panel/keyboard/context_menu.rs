@@ -212,8 +212,9 @@ impl crate::scene_panel::ScenePanel {
                     let frames: Vec<(usize, usize)> = self.selection.iter().copied().collect();
                     if !frames.is_empty() {
                         self.request_remove_frames(frames);
+                    } else {
+                        self.overlay = Overlay::None;
                     }
-                    self.overlay = Overlay::None;
                 }
             }
             Some(ContextTarget::Header(li)) => {
@@ -312,7 +313,6 @@ impl crate::scene_panel::ScenePanel {
                     Some(&Shortcut::cmd(Key::Delete)),
                 ) {
                     self.request_remove_line(li);
-                    self.overlay = Overlay::None;
                 }
             }
             None => {}

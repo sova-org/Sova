@@ -1,4 +1,3 @@
-mod classic_view;
 mod hud;
 mod keyboard;
 mod lifecycle;
@@ -6,6 +5,7 @@ mod panel;
 mod prelude;
 mod sequencer_grid;
 mod sequencer_popup;
+mod stack_view;
 mod state;
 
 use std::collections::{BTreeSet, HashMap};
@@ -42,6 +42,7 @@ pub(crate) const DRAG_HANDLE_HEIGHT: f32 = 6.0;
 pub(crate) const HEADER_HEIGHT: f32 = 26.0;
 pub(crate) const LINE_HEADER_HEIGHT: f32 = 26.0;
 pub(crate) const GAP: f32 = 1.0;
+pub(crate) const KB_PREVIEW_LIFETIME: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub use crate::widgets::SceneOpacity;
 
@@ -58,7 +59,7 @@ pub(super) struct SceneRenderCtx<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     Sequencer,
-    Classic,
+    Stack,
 }
 
 pub struct PanelVisibility {
@@ -121,6 +122,8 @@ pub struct ScenePanel {
     pub(crate) sequencer_inline_edit: Option<SequencerInlineEdit>,
     pub(crate) sequencer_line_speed_focus: Option<usize>,
     pub(crate) confirm_dialog: crate::widgets::ConfirmDialog,
+    pub(crate) last_observed_cursor: Option<(usize, usize)>,
+    pub(crate) cursor_preview_deadline: Option<std::time::Instant>,
 }
 
 impl Default for ScenePanel {
@@ -145,6 +148,8 @@ impl Default for ScenePanel {
             sequencer_inline_edit: None,
             sequencer_line_speed_focus: None,
             confirm_dialog: crate::widgets::ConfirmDialog::new("scene_confirm"),
+            last_observed_cursor: None,
+            cursor_preview_deadline: None,
         }
     }
 }

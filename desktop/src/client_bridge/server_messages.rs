@@ -1,7 +1,9 @@
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::time::Instant;
 
 use sova_core::compiler::CompilationState;
+use sova_core::log_eprintln;
 use sova_core::schedule::SovaNotification;
 use sova_core::schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState};
 use sova_server::ServerMessage;
@@ -10,8 +12,8 @@ use crate::panels::log_panel::{LogEntry, LogSource};
 use crate::widgets::syntax_highlight::CompiledSyntax;
 
 use super::{
-    BridgeEvent, ClientBridge, COMPILATION_FLASH_SECS, MUTATION_FLASH_SECS, SCENE_HISTORY_CAP,
-    now_hhmm, scope_signature,
+    BridgeEvent, ClientBridge, COMPILATION_FLASH_SECS, MUTATION_FLASH_SECS,
+    PRESENCE_GC_INTERVAL_SECS, SCENE_HISTORY_CAP, now_hhmm, scope_signature,
 };
 
 impl ClientBridge {
@@ -20,6 +22,12 @@ impl ClientBridge {
             .retain(|_, (_, t)| t.elapsed().as_secs_f32() < COMPILATION_FLASH_SECS);
         self.mutation_flashes
             .retain(|_, t| t.elapsed().as_secs_f32() < MUTATION_FLASH_SECS);
+
+        // Drain expired peer presence entries (cursors of disconnected peers).
+        if self.last_presence_gc.elapsed().as_secs() >= PRESENCE_GC_INTERVAL_SECS {
+            self.presence.remove_outdated();
+            self.last_presence_gc = std::time::Instant::now();
+        }
 
         let events: Vec<BridgeEvent> = {
             let Some(rx) = &self.event_rx else { return };
@@ -72,6 +80,7 @@ impl ClientBridge {
         match msg {
             ServerMessage::Hello {
                 username,
+                peer_id,
                 scene,
                 devices,
                 peers,
@@ -80,12 +89,23 @@ impl ClientBridge {
                 languages,
                 audio_engine_state,
                 link_enabled,
+                frame_text_layout,
+                frame_doc_snapshots,
+                presence,
             } => {
                 self.confirmed_username = Some(username);
+                self.peer_id = Some(peer_id);
                 self.scene = Some(scene);
                 self.devices = devices;
                 self.peers = peers;
                 self.languages = languages;
+                self.frame_text_layout = frame_text_layout.into_iter().collect();
+                self.frame_docs.clear();
+                for (id, blob) in frame_doc_snapshots {
+                    self.install_frame_doc_from_snapshot(id, &blob);
+                }
+                let _ = self.presence.apply(&presence);
+                self.install_presence_wire();
                 for lang_def in &self.languages {
                     if let Some(syn) = &lang_def.syntax
                         && let Some(compiled) = CompiledSyntax::new(syn)
@@ -256,7 +276,10 @@ impl ClientBridge {
                         });
                     }
                 }
-                for p in &self.peers {
+                // Move out of self.peers so the iteration doesn't conflict with
+                // the &mut self call to forget_peer below.
+                let prev_peers = std::mem::take(&mut self.peers);
+                for p in &prev_peers {
                     if !new_peers.contains(p) {
                         self.chat_messages.push_back(super::ChatMessage {
                             time: time.clone(),
@@ -264,11 +287,7 @@ impl ClientBridge {
                             message: t!("chat.peer_left", name = p).to_string(),
                             system: true,
                         });
-                        self.peer_editing.retain(|_, names| {
-                            names.retain(|n| n != p);
-                            !names.is_empty()
-                        });
-                        self.peer_cursors.remove(p);
+                        self.forget_peer(p);
                     }
                 }
                 self.peers = new_peers;
@@ -323,9 +342,6 @@ impl ClientBridge {
                     }
                 }
             }
-            ServerMessage::PeerCursorMoved(name, li, fi, tc) => {
-                self.peer_cursors.insert(name, (li, fi, tc));
-            }
             ServerMessage::Notification(SovaNotification::Annotations(a)) => {
                 self.annotations = a;
             }
@@ -359,19 +375,38 @@ impl ClientBridge {
                     engine.send(msg);
                 }
             }
-            ServerMessage::HydraCode(sender, code) => {
-                if self.confirmed_username.as_deref() != Some(&sender) {
-                    self.remote_hydra = Some((sender, code));
-                }
-            }
             ServerMessage::ScriptEdit {
                 sender,
-                li,
-                fi,
-                ops,
+                frame_text_id,
+                update,
             } => {
-                if self.confirmed_username.as_deref() != Some(&sender) {
-                    self.pending_script_edits.push((li, fi, ops));
+                if self.confirmed_username.as_deref() == Some(&sender) {
+                    return ControlFlow::Continue(());
+                }
+                if let Some((doc, _)) = self.frame_docs.get(&frame_text_id)
+                    && let Err(e) = doc.import(&update)
+                {
+                    log_eprintln!("loro import failed for frame {:?}: {e}", frame_text_id);
+                }
+            }
+            ServerMessage::Presence { update } => {
+                if let Err(e) = self.presence.apply(&update) {
+                    log_eprintln!("loro presence apply failed: {e}");
+                }
+            }
+            ServerMessage::FrameTextLayout {
+                mapping,
+                new_doc_snapshots,
+            } => {
+                self.frame_text_layout = mapping.into_iter().collect();
+                let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
+                self.frame_docs.retain(|id, _| live.contains(id));
+                for (id, blob) in new_doc_snapshots {
+                    if let Some((doc, _)) = self.frame_docs.get(&id) {
+                        let _ = doc.import(&blob);
+                    } else {
+                        self.install_frame_doc_from_snapshot(id, &blob);
+                    }
                 }
             }
             ServerMessage::CoreRestarted => {
@@ -403,6 +438,20 @@ impl ClientBridge {
                 self.mutation_flashes.clear();
                 self.positions.clear();
                 self.position_start_beat.clear();
+
+                // Integrate Loro state. Importing into existing local docs
+                // merges concurrent edits; build fresh docs only for unknown ids.
+                self.frame_text_layout = snapshot.frame_text_layout.into_iter().collect();
+                let live: HashSet<_> = self.frame_text_layout.values().copied().collect();
+                self.frame_docs.retain(|id, _| live.contains(id));
+                for (id, blob) in snapshot.frame_doc_snapshots {
+                    if let Some((doc, _)) = self.frame_docs.get(&id) {
+                        let _ = doc.import(&blob);
+                    } else {
+                        self.install_frame_doc_from_snapshot(id, &blob);
+                    }
+                }
+                let _ = self.presence.apply(&snapshot.presence);
             }
             _ => {}
         }

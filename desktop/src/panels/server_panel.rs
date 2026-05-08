@@ -1,9 +1,12 @@
 use crate::theme::{COLOR_ERROR, COLOR_OK};
+use crossbeam_channel::Sender;
 use eframe::egui;
 use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use sova_core::{clock::ClockServer, device_map::DeviceMap, schedule::SovaNotification};
+use sova_core::{
+    HostMessage, clock::ClockServer, device_map::DeviceMap, schedule::SovaNotification,
+};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, ClientRegistry, SovaCoreServer};
 use tokio::sync::Mutex;
@@ -95,7 +98,11 @@ impl ServerPanel {
         }
     }
 
-    pub fn start(&mut self, initial_audio_config: sova_server::AudioRestartConfig) {
+    pub fn start(
+        &mut self,
+        initial_audio_config: sova_server::AudioRestartConfig,
+        host_tx: Sender<HostMessage>,
+    ) {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
@@ -134,10 +141,19 @@ impl ServerPanel {
         } else if let Err(e) = devices.assign_slot(1, "Sova") {
             sova_core::log_eprintln!("Failed to assign Sova to Slot 1: {}", e);
         }
+        devices.register_host_proxy(host_tx);
 
         let languages = Arc::new(langs::create_language_center());
 
         let scene_image = Arc::new(Mutex::new(demo.scene));
+
+        let frame_text = sova_server::FrameTextStore::new();
+        {
+            let initial = scene_image.blocking_lock();
+            frame_text.rebuild_from_scene(&initial);
+        }
+        let presence = std::sync::Arc::new(loro::awareness::EphemeralStore::new(30_000));
+        let next_peer_id = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1));
 
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
         let audio_thread = spawn_audio_thread(
@@ -171,6 +187,9 @@ impl ServerPanel {
             audio_cmd_tx,
             password,
             master_gain,
+            frame_text,
+            presence,
+            next_peer_id,
         );
 
         let cancel_token = CancellationToken::new();

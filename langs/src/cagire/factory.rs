@@ -72,6 +72,10 @@ impl Language for CagireInterpreterFactory {
             include_str!("../../docs/cagire/modulations.md").into(),
         ));
         doc.articles.push((
+            "Control LFOs".into(),
+            include_str!("../../docs/cagire/control_lfos.md").into(),
+        ));
+        doc.articles.push((
             "Notes".into(),
             include_str!("../../docs/cagire/notes.md").into(),
         ));
@@ -169,7 +173,7 @@ impl Language for CagireInterpreterFactory {
                 | "Filter" | "Reverb" | "Delay" | "Lo-fi" | "Stereo" | "Mod FX" | "MIDI"
                 | "Context" => &mut symbol_words,
                 "Sound" | "Probability" | "Time" | "Generator" | "Music" | "Chord" | "Scale"
-                | "LFO" | "Audio Modulation" | "Debug" => &mut special_words,
+                | "LFO" | "Audio Modulation" | "Control LFO" | "Debug" => &mut special_words,
                 _ => &mut builtin_words,
             };
             bucket.push(word.name);

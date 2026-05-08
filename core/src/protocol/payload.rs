@@ -1,5 +1,6 @@
 use crate::protocol::audio_engine_proxy::AudioEnginePayload;
 use crate::protocol::device::ProtocolDevice;
+use crate::protocol::host::HostMessage;
 use crate::protocol::message::ProtocolMessage;
 use crate::protocol::{log::LogMessage, midi::MIDIMessage, osc::OSCMessage};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub enum ProtocolPayload {
     MIDI(MIDIMessage),
     LOG(LogMessage),
     AudioEngine(AudioEnginePayload),
+    Host(HostMessage),
 }
 
 impl ProtocolPayload {
@@ -34,6 +36,7 @@ impl Display for ProtocolPayload {
             ProtocolPayload::MIDI(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::AudioEngine(m) => write!(f, "AudioEngine: {} args", m.args.len(),),
+            ProtocolPayload::Host(m) => write!(f, "Host: {} -> {} args", m.route, m.args.len()),
         }
     }
 }
@@ -59,5 +62,11 @@ impl From<LogMessage> for ProtocolPayload {
 impl From<AudioEnginePayload> for ProtocolPayload {
     fn from(value: AudioEnginePayload) -> Self {
         Self::AudioEngine(value)
+    }
+}
+
+impl From<HostMessage> for ProtocolPayload {
+    fn from(value: HostMessage) -> Self {
+        Self::Host(value)
     }
 }

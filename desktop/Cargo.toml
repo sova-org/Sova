@@ -26,7 +26,7 @@ egui-file-dialog = "0.12"
 serde = { workspace = true }
 serde_json = { workspace = true }
 confy = "2"
-doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.31", features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.35", features = ["native"] }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
@@ -37,6 +37,7 @@ font-kit = "0.14.3"
 ab_glyph = "0.2"
 egui-phosphor = { version = "0.11", default-features = false, features = ["fill"] }
 tokio-util = "0.7.18"
+loro = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1"

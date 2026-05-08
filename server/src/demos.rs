@@ -13,6 +13,9 @@ pub fn random_demo() -> crate::Snapshot {
             micros: 0,
             quantum: 4.0,
             devices: vec![],
+            frame_text_layout: Vec::new(),
+            frame_doc_snapshots: Vec::new(),
+            presence: Vec::new(),
         };
     }
     let nanos = std::time::SystemTime::now()
@@ -40,6 +43,9 @@ pub fn random_demo() -> crate::Snapshot {
                 micros: 0,
                 quantum: 4.0,
                 devices: vec![],
+                frame_text_layout: Vec::new(),
+                frame_doc_snapshots: Vec::new(),
+                presence: Vec::new(),
             }
         }
     }

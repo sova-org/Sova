@@ -187,6 +187,14 @@ async fn main() {
 
     let scene_image = Arc::new(Mutex::new(demo.scene));
 
+    let frame_text = sova_server::FrameTextStore::new();
+    {
+        let initial = scene_image.lock().await;
+        frame_text.rebuild_from_scene(&initial);
+    }
+    let presence = std::sync::Arc::new(loro::awareness::EphemeralStore::new(30_000));
+    let next_peer_id = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1));
+
     #[cfg(feature = "audio")]
     let master_gain = audio_thread
         .as_ref()
@@ -210,6 +218,9 @@ async fn main() {
         audio_cmd_tx,
         cli.password,
         master_gain,
+        frame_text,
+        presence,
+        next_peer_id,
     );
 
     println!("Starting Sova server on {}:{}...", server.ip, server.port);

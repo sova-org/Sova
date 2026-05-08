@@ -15,12 +15,14 @@ use eframe::egui;
 
 use std::path::PathBuf;
 
+use super::scene_panel::ViewMode;
 use super::widgets::CommandId;
 
 pub(crate) const MENU_MIN_WIDTH: f32 = 180.0;
 pub(crate) const MENU_MAX_WIDTH: f32 = 360.0;
 pub(crate) const MENU_LABEL_RIGHT_GAP: f32 = 24.0;
 pub(crate) const MENU_MAX_HEIGHT_FRACTION: f32 = 0.75;
+pub(crate) const MENU_MAX_TOTAL_WIDTH_FRACTION: f32 = 0.9;
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ pub(crate) enum MenuAction {
     Disconnect,
     BeginRename,
     RestartAudio,
+    SetSceneViewMode(ViewMode),
     Exit,
 }
 

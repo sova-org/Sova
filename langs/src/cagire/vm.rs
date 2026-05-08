@@ -13,7 +13,7 @@ use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
 
 use super::compiler::{Dictionary, compile_script};
-use super::ops::Op;
+use super::ops::{CtlShape, Op};
 use super::pattern;
 use super::theory::chords;
 use super::types::{
@@ -212,6 +212,7 @@ impl CagireVM {
                 Op::PushInt(n) => stack.push(Value::Int(*n), span!()),
                 Op::PushFloat(f) => stack.push(Value::Float(*f), span!()),
                 Op::PushStr(s) => stack.push(Value::Str(s.clone()), span!()),
+                Op::PushSilence => stack.push(Value::Silence, span!()),
 
                 Op::Dup => {
                     at!(stack.ensure(1))?;
@@ -356,6 +357,11 @@ impl CagireVM {
                 Op::Add => at!(stack.binary_op(|a, b| a + b))?,
                 Op::Sub => at!(stack.binary_op(|a, b| a - b))?,
                 Op::Mul => at!(stack.binary_op(|a, b| a * b))?,
+                Op::Concat => {
+                    let b = at!(stack.pop())?;
+                    let a = at!(stack.pop())?;
+                    stack.push(at!(lift_binary_str(&a, &b))?, span!());
+                }
                 Op::Div => {
                     let b = at!(stack.pop())?;
                     let a = at!(stack.pop())?;
@@ -1385,6 +1391,11 @@ impl CagireVM {
                     let freq = at!(stack.pop_float())?;
                     stack.push(Value::Float(perlin_noise_1d(freq * ctx.beat)), span!());
                 }
+                Op::Ctl { shape, bipolar } => {
+                    let val = at!(eval_ctl_shape(*shape, stack, ctx.beat))?;
+                    let val = if *bipolar { 2.0 * val - 1.0 } else { val };
+                    stack.push(Value::Float(val), span!());
+                }
 
                 Op::ClearCmd => {
                     cmd.clear();
@@ -1935,7 +1946,19 @@ impl CagireVM {
         };
 
         let resolved_sound = sound_opt.map(|sv| resolve_cycling(sv, poly_idx));
+        if matches!(resolved_sound.as_deref(), Some(Value::Silence)) {
+            return Ok(());
+        }
         let resolved_chord = chord_opt.map(|cv| resolve_cycling(cv, poly_idx));
+        if matches!(resolved_chord.as_deref(), Some(Value::Silence)) {
+            return Ok(());
+        }
+        if params
+            .iter()
+            .any(|(_, v)| matches!(resolve_cycling(v, poly_idx).as_ref(), Value::Silence))
+        {
+            return Ok(());
+        }
 
         let has_sound = resolved_sound.as_ref().is_some_and(|v| match v.as_ref() {
             Value::Str(s) => !s.is_empty(),
@@ -2030,13 +2053,6 @@ impl CagireVM {
                         VariableValue::Float(ctx.step_duration),
                     );
                 }
-                if !args.contains_key("delaytime") {
-                    args.insert(
-                        "delaytime".to_string(),
-                        VariableValue::Float(ctx.step_duration),
-                    );
-                }
-
                 let gate_secs = match args.get("gate") {
                     Some(VariableValue::Float(f)) => *f,
                     Some(VariableValue::Integer(i)) => *i as f64,
@@ -2513,6 +2529,33 @@ where
     Ok(float_to_value(f(a.as_float()?, b.as_float()?)))
 }
 
+fn lift_binary_str(a: &Value, b: &Value) -> Result<Value, String> {
+    match (a, b) {
+        (Value::CycleList(items), b) => {
+            let mapped: Result<Vec<_>, _> = items.iter().map(|x| lift_binary_str(x, b)).collect();
+            Ok(Value::CycleList(Arc::from(mapped?)))
+        }
+        (a, Value::CycleList(items)) => {
+            let mapped: Result<Vec<_>, _> = items.iter().map(|x| lift_binary_str(a, x)).collect();
+            Ok(Value::CycleList(Arc::from(mapped?)))
+        }
+        (a, b) => {
+            if matches!(
+                a,
+                Value::Quotation(..) | Value::Tuning { .. } | Value::Scale { .. }
+            ) || matches!(
+                b,
+                Value::Quotation(..) | Value::Tuning { .. } | Value::Scale { .. }
+            ) {
+                return Err("++ expects strings or numbers".into());
+            }
+            let mut s = a.to_param_string();
+            s.push_str(&b.to_param_string());
+            Ok(Value::Str(Arc::from(s)))
+        }
+    }
+}
+
 fn sort_paired(values: &mut [Value], origins: &mut [Span], reverse: bool) {
     let mut indices: Vec<usize> = (0..values.len()).collect();
     indices.sort_by(|&a, &b| {
@@ -2578,6 +2621,46 @@ fn perlin_noise_1d(x: f64) -> f64 {
     let d0 = perlin_grad(x0) * t;
     let d1 = perlin_grad(x0 + 1) * (t - 1.0);
     (d0 + s * (d1 - d0)) * 0.5 + 0.5
+}
+
+fn bin_noise(bin: i64, salt: u64) -> f64 {
+    let mut z = (bin as u64)
+        .wrapping_add(salt)
+        .wrapping_add(0x9E3779B97F4A7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^= z >> 31;
+    (z >> 11) as f64 / (1u64 << 53) as f64
+}
+
+const CTL_NOISE_SALT: u64 = 0xA1B2C3D4E5F60718;
+const CTL_SH_SALT: u64 = 0x5E6F70819A2B3C4D;
+
+fn wrap_phase(x: f64) -> f64 {
+    let p = x.fract();
+    if p < 0.0 { p + 1.0 } else { p }
+}
+
+fn eval_ctl_shape(shape: CtlShape, stack: &mut Stack, beat: f64) -> Result<f64, String> {
+    if shape == CtlShape::Ramp {
+        let curve = stack.pop_float()?;
+        let freq = stack.pop_float()?;
+        return Ok(wrap_phase(freq * beat).powf(curve));
+    }
+    let freq = stack.pop_float()?;
+    let t = freq * beat;
+    let phase = wrap_phase(t);
+    Ok(match shape {
+        CtlShape::Sine => 0.5 + 0.5 * (std::f64::consts::TAU * phase).sin(),
+        CtlShape::Triangle => 1.0 - (2.0 * phase - 1.0).abs(),
+        CtlShape::Saw => phase,
+        CtlShape::Square if phase < 0.5 => 0.0,
+        CtlShape::Square => 1.0,
+        CtlShape::Perlin => perlin_noise_1d(t),
+        CtlShape::Noise => bin_noise(t.floor() as i64, CTL_NOISE_SALT),
+        CtlShape::Sh => bin_noise(t.floor() as i64, CTL_SH_SALT),
+        CtlShape::Ramp => unreachable!("ramp handled in early return"),
+    })
 }
 
 #[cfg(test)]
@@ -3742,5 +3825,137 @@ mod tests {
             }
             other => panic!("expected Dirt event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn concat_two_strings() {
+        let stack = eval_stack("\"a\" \"b\" ++");
+        assert_eq!(stack, vec![Value::Str(Arc::from("ab"))]);
+    }
+
+    #[test]
+    fn concat_int_and_string() {
+        let stack = eval_stack("\"gm\" 7 ++");
+        assert_eq!(stack, vec![Value::Str(Arc::from("gm7"))]);
+    }
+
+    #[test]
+    fn concat_rejects_quotation() {
+        let res = eval_stack_result("( 1 ) \"x\" ++");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn rest_skips_emission() {
+        let events = eval("rest sound .");
+        assert!(events.is_empty(), "rest as sound name must skip emit");
+    }
+
+    #[test]
+    fn rest_in_param_skips_emission() {
+        let events = eval("\"sine\" sound rest freq .");
+        assert!(events.is_empty(), "silence in any param skips emit");
+    }
+
+    #[test]
+    fn rest_pushes_silence() {
+        let stack = eval_stack("rest");
+        assert_eq!(stack, vec![Value::Silence]);
+    }
+
+    #[test]
+    fn alt_single_angle_compiles_like_pcycle() {
+        // < 10 20 30 > is sugar for [ 10 20 30 ] pcycle.
+        // At iter 0 (default ctx), both pick the first item.
+        let from_alt = eval_stack("< 10 20 30 >");
+        let from_bracket = eval_stack("[ 10 20 30 ] pcycle");
+        assert_eq!(from_alt, from_bracket);
+    }
+
+    #[test]
+    fn alt_double_angle_compiles_like_cycle() {
+        let from_alt = eval_stack("<< 10 20 30 >>");
+        let from_bracket = eval_stack("[ 10 20 30 ] cycle");
+        assert_eq!(from_alt, from_bracket);
+    }
+
+    #[test]
+    fn alt_unmatched_close_errors() {
+        let res = eval_stack_result("10 20 >");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn alt_empty_errors() {
+        let res = eval_stack_result("< >");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn alt_nested() {
+        // Just confirm nesting compiles and runs without error.
+        let stack = eval_stack("< < 1 2 > < 3 4 > >");
+        assert_eq!(stack.len(), 1);
+    }
+
+    #[test]
+    fn ctl_sine_unipolar_in_unit_range() {
+        // freq=0 keeps phase=0, sine returns 0.5.
+        let stack = eval_stack("0 ctlsine");
+        assert_eq!(stack, vec![Value::Float(0.5)]);
+    }
+
+    #[test]
+    fn ctl_sine_bipolar_centered_at_zero() {
+        let stack = eval_stack("0 ctlbsine");
+        assert_eq!(stack, vec![Value::Float(0.0)]);
+    }
+
+    #[test]
+    fn ctl_saw_at_phase_zero() {
+        let stack = eval_stack("0 ctlsaw");
+        assert_eq!(stack, vec![Value::Float(0.0)]);
+    }
+
+    #[test]
+    fn ctl_triangle_at_phase_zero() {
+        // 1.0 - |2*0 - 1| = 0.0
+        let stack = eval_stack("0 ctltriangle");
+        assert_eq!(stack, vec![Value::Float(0.0)]);
+    }
+
+    #[test]
+    fn ctl_square_first_half_is_zero() {
+        let stack = eval_stack("0 ctlsquare");
+        assert_eq!(stack, vec![Value::Float(0.0)]);
+    }
+
+    #[test]
+    fn ctl_ramp_consumes_curve() {
+        // phase=0, anything ^ curve = 0
+        let stack = eval_stack("0 2.0 ctlramp");
+        assert_eq!(stack, vec![Value::Float(0.0)]);
+    }
+
+    #[test]
+    fn ctl_linramp_desugars_curve_one() {
+        let from_sugar = eval_stack("0 ctllinramp");
+        let from_explicit = eval_stack("0 1.0 ctlramp");
+        assert_eq!(from_sugar, from_explicit);
+    }
+
+    #[test]
+    fn ctl_noise_deterministic_per_bin() {
+        // Same freq, same beat -> same value.
+        let a = eval_stack("4 ctlnoise");
+        let b = eval_stack("4 ctlnoise");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn ctl_noise_and_sh_are_independent() {
+        let n = eval_stack("4 ctlnoise");
+        let s = eval_stack("4 ctlsh");
+        assert_ne!(n, s, "ctlnoise and ctlsh must use distinct streams");
     }
 }
