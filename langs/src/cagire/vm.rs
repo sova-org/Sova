@@ -2053,13 +2053,6 @@ impl CagireVM {
                         VariableValue::Float(ctx.step_duration),
                     );
                 }
-                if !args.contains_key("delaytime") {
-                    args.insert(
-                        "delaytime".to_string(),
-                        VariableValue::Float(ctx.step_duration),
-                    );
-                }
-
                 let gate_secs = match args.get("gate") {
                     Some(VariableValue::Float(f)) => *f,
                     Some(VariableValue::Integer(i)) => *i as f64,

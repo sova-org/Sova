@@ -333,10 +333,22 @@ impl SovaApp {
         if !scope_data.is_empty() && scope_gen != self.viz.last_scope_gen {
             self.viz.last_scope_gen = scope_gen;
             widgets::align_trigger(&mut self.viz.aligned_scope, scope_data);
+            let reported_sr = self.bridge.audio_state().sample_rate;
+            let sr = if reported_sr > 0.0 { reported_sr } else { 48_000.0 };
+            let needs_rebuild = self
+                .viz
+                .spectrum_analyzer
+                .as_ref()
+                .map(|a| (a.sample_rate() - sr).abs() > f32::EPSILON)
+                .unwrap_or(true);
+            if needs_rebuild {
+                self.viz.spectrum_analyzer = Some(widgets::SpectrumAnalyzer::new(sr));
+            }
             let analyzer = self
                 .viz
                 .spectrum_analyzer
-                .get_or_insert_with(|| widgets::SpectrumAnalyzer::new(44100.0));
+                .as_mut()
+                .expect("just initialised");
             self.viz.raw_bands = analyzer.analyze(scope_data);
         }
 
