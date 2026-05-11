@@ -51,4 +51,3 @@ loro = "=1.12.0"
 
 [patch."https://github.com/sova-org/sova"]
 core = { path = "core" }
-
