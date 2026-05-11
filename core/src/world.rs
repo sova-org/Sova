@@ -14,7 +14,6 @@ pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 10;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
-const RT_YIELD_FLOOR: Duration = Duration::from_micros(50);
 const RT_BUDGET_REQUEST_FRAMES: u32 = 200_000;
 const RT_BUDGET_REQUEST_HZ: u32 = 1_000_000;
 
@@ -28,12 +27,6 @@ pub struct World {
     midi_early_threshold: SyncTime,
     /// Lookahead for non-MIDI messages (OSC, AudioEngine) - send early for internal scheduling
     non_midi_lookahead: SyncTime,
-}
-
-fn recv_remaining(next_timeout: Duration) -> Duration {
-    next_timeout
-        .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS))
-        .max(RT_YIELD_FLOOR)
 }
 
 impl World {
@@ -80,6 +73,11 @@ impl World {
         (handle, tx)
     }
 
+    fn recv_remaining(&self) -> Duration {
+        self.next_timeout
+            .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS))
+    }
+
     /// Main loop of the [World], performing until the channel is closed:
     /// - Wait for a [TimedMessage] until a timeout corresponding to the next event, minus an active waiting threshold
     /// - If the time until the next [TimedMessage] date is smaller than the active waiting threshold, active wait
@@ -88,7 +86,7 @@ impl World {
     pub fn live(&mut self) {
         log_println!("Starting world");
         loop {
-            let remaining = recv_remaining(self.next_timeout);
+            let remaining = self.recv_remaining();
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
