@@ -67,7 +67,7 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
         Sub(reg!(LIST_LEN_REG), 1.into(), reg!(LIST_LEN_REG)),
         RelJumpIfLessOrEqual(reg!(LIST_LEN_REG), 0.into(), 3),
         CallProcedure(EXECUTE_ELEM_ADDR),
-        RelJump(-3),
+        RelJump(-4),
         Push(reg!(LIST_REG)),
         GoTo("quit".to_string()),
 
@@ -79,7 +79,7 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
         Sub(reg!(LIST_LEN_REG), 1.into(), reg!(LIST_LEN_REG)),
         PopList(reg!(LIST_LEN_REG), StackBack),
 
-        DynIsSet(reg!(FN_NAME_REG), Variable::reg(FN_SCOPE_REG), reg!(FLAG_REG)),
+        DynIsSet(reg!(FN_NAME_REG), reg!(FN_SCOPE_REG), reg!(FLAG_REG)),
         RelJumpIf(reg!(FLAG_REG), 2),
         GoTo("lookup_fn".to_string()),
 
