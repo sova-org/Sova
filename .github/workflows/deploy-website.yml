@@ -3,7 +3,7 @@ name: Deploy website
 on:
   push:
     branches: [main]
-    paths: ['website/**']
+    paths: ['website/**', 'Cargo.toml']
   workflow_dispatch:
 
 permissions:
@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: withastro/action@v5
+      - uses: withastro/action@v6
         with:
           path: ./website
-          package-manager: pnpm@latest
+          package-manager: pnpm@9
 
   deploy:
     needs: build

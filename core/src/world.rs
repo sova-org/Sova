@@ -14,6 +14,9 @@ pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 10;
 pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
+const RT_BUDGET_REQUEST_FRAMES: u32 = 200_000;
+const RT_BUDGET_REQUEST_HZ: u32 = 1_000_000;
+
 /// Creates an audio-priority thread that receives [TimedMessage] and send them to the corresponding device at their precise date.
 pub struct World {
     queue: BinaryHeap<TimedMessage>,
@@ -37,7 +40,10 @@ impl World {
             .name("sova-world")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
-                match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
+                match audio_thread_priority::promote_current_thread_to_real_time(
+                    RT_BUDGET_REQUEST_FRAMES,
+                    RT_BUDGET_REQUEST_HZ,
+                ) {
                     Ok(_) => log_println!("World: real-time priority set"),
                     Err(e) => {
                         log_eprintln!("World: failed to set RT priority: {:?}", e);
@@ -67,6 +73,11 @@ impl World {
         (handle, tx)
     }
 
+    fn recv_remaining(&self) -> Duration {
+        self.next_timeout
+            .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS))
+    }
+
     /// Main loop of the [World], performing until the channel is closed:
     /// - Wait for a [TimedMessage] until a timeout corresponding to the next event, minus an active waiting threshold
     /// - If the time until the next [TimedMessage] date is smaller than the active waiting threshold, active wait
@@ -75,9 +86,7 @@ impl World {
     pub fn live(&mut self) {
         log_println!("Starting world");
         loop {
-            let remaining = self
-                .next_timeout
-                .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS)); // Reduced for better precision
+            let remaining = self.recv_remaining();
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
