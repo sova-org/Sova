@@ -7,8 +7,6 @@ pub const LET : Word = Word {
     example: None,
     prog: || sova_prog![
         
-        Index(Variable::StackBack, Variable::reg(INDEX_REG), Variable::StackBack),
-        CallProcedure(EXECUTE_ELEM_ADDR),
         Return
     ]
 };

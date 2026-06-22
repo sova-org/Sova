@@ -85,20 +85,23 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
 
         DynSrcMov(reg!(FN_NAME_REG), reg!(FN_SCOPE_REG), StackBack),
         IsFunction(StackBack, reg!(FLAG_REG)),
-        RelJumpIfNot(reg!(FLAG_REG), 8),
+        RelJumpIf(reg!(FLAG_REG), 8),
         Delete(reg!(COMPUTE_REG)),
         Pop(reg!(COMPUTE_REG)),
-        Pop(reg!(LIST_REG)),
+        //Pop(reg!(LIST_REG)),
 
         GoTo("quit".to_string()),
 
         Symbol("lookup_fn".to_string()),
         Contains(reg!(DICTIONARY_REG), reg!(FN_NAME_REG), reg!(FLAG_REG)),
-        RelJumpIfNot(reg!(FLAG_REG), 3),
+        RelJumpIf(reg!(FLAG_REG), 3),
+        
         Error(vec!["Cannot find a value for word: ".into(), reg!(FN_NAME_REG)]),
         GoTo("quit".to_string()),
-        Index(reg!(DICTIONARY_REG), reg!(FN_NAME_REG), StackBack),
 
+        Index(reg!(DICTIONARY_REG), reg!(FN_NAME_REG), StackBack),
+        
+        Symbol("execute".to_string()),
         CallFunction(StackBack),
 
         Symbol("quit".to_string()),
