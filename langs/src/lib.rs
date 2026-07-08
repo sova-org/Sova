@@ -12,6 +12,7 @@ pub fn create_language_center() -> LanguageCenter {
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(bali::BaliCompiler);
     transcoder.add_compiler(bob::BobCompiler);
+    transcoder.add_compiler(alisp::ALispCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(boinx::BoinxInterpreterFactory);

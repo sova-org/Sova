@@ -1,7 +1,5 @@
-use sova_core::compiler::CompilationError;
+use sova_core::{compiler::CompilationError, vm::variable::VariableValue};
 
-use crate::alisp::ast::ALispAST;
-
-pub fn parse_alisp(text: &str) -> Result<Vec<ALispAST>, CompilationError> {
+pub fn parse_alisp(text: &str) -> Result<VariableValue, CompilationError> {
     todo!()
 }

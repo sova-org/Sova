@@ -6,7 +6,6 @@ use sova_core::{compiler::{CompilationError, Compiler}, reg, sova_prog, vm::{Ins
 use crate::alisp::parser::parse_alisp;
 
 mod parser;
-mod ast;
 mod words;
 
 const CONTEXT_REG       : usize = 0;
@@ -59,9 +58,10 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
         IsMap(StackBack, reg!(FLAG_REG)), // assert new first item is a Word 
         RelJumpIfNot(reg!(FLAG_REG), 3),
         Contains(StackBack, "_sym".into(), reg!(FLAG_REG)),
-        RelJumpIf(reg!(FLAG_REG), 9),     // If symbol, continue
+        RelJumpIf(reg!(FLAG_REG), 10),     // If symbol, continue
 
         // Execute each element of the list, then push it and quit
+        Symbol("iter_return".to_string()),
         Mov(Vec::<VariableValue>::new().into(), reg!(LIST_REG)), 
         VecPush(reg!(LIST_REG), StackBack, reg!(LIST_REG)),
         Sub(reg!(LIST_LEN_REG), 1.into(), reg!(LIST_LEN_REG)),
@@ -85,12 +85,15 @@ const EXEC_PROG : LazyCell<Program> = LazyCell::new(|| {
 
         DynSrcMov(reg!(FN_NAME_REG), reg!(FN_SCOPE_REG), StackBack),
         IsFunction(StackBack, reg!(FLAG_REG)),
-        RelJumpIf(reg!(FLAG_REG), 8),
+        RelJumpIfNot(reg!(FLAG_REG), 2),
+        GoTo("execute".to_string()),
+        CallProcedure(EXECUTE_ELEM_ADDR),
         Delete(reg!(COMPUTE_REG)),
         Pop(reg!(COMPUTE_REG)),
-        //Pop(reg!(LIST_REG)),
-
-        GoTo("quit".to_string()),
+        PushList(StackBack),
+        Push(reg!(COMPUTE_REG)),
+        Add(reg!(LIST_LEN_REG), 1.into(), reg!(LIST_LEN_REG)),
+        GoTo("iter_return".to_string()),
 
         Symbol("lookup_fn".to_string()),
         Contains(reg!(DICTIONARY_REG), reg!(FN_NAME_REG), reg!(FLAG_REG)),
@@ -137,7 +140,9 @@ impl Language for ALispCompiler {
 impl Compiler for ALispCompiler {
     fn compile(&self, text: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
         let ast = parse_alisp(text)?;
-        let exec = EXEC_PROG;
-        todo!()
+        let mut main = EXEC_PROG.clone();
+        main.push(ControlASM::Push(ast.into()).into());
+        main.push(ControlASM::CallProcedure(EXECUTE_ELEM_ADDR).into());
+        Ok(main)
     }
 }

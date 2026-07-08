@@ -5,6 +5,7 @@ use sova_core::vm::{Program, variable::VariableValue};
 pub mod generative;
 pub mod memory;
 pub mod context;
+pub mod control;
 
 pub struct Word {
     name: &'static str,
