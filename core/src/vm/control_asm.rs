@@ -106,6 +106,7 @@ pub enum ControlASM {
     PopFront(Variable),
     PushList(Variable),
     PopList(Variable, Variable),
+    FreeStack(Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
@@ -527,6 +528,13 @@ impl ControlASM {
                     res[i] = ctx.stack.pop_back().unwrap();
                 }
                 ctx.set_var(z, res);
+                ReturnInfo::None
+            }
+            ControlASM::FreeStack(n) => {
+                let n = ctx.evaluate(n).as_integer(ctx) as usize;
+                let stack_len = ctx.stack.len();
+                let new_size = stack_len.saturating_sub(n);
+                ctx.stack.truncate(new_size);
                 ReturnInfo::None
             }
             ControlASM::Insert(cont, key, val, res) => {
