@@ -58,6 +58,12 @@ pub enum LanguageElement {
     Brackets(String, String),
 }
 
+impl<T : ToString> From<T> for LanguageElement {
+    fn from(value: T) -> Self {
+        Self::Word(value.to_string())
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ReferenceEntry {
     pub description: String,
@@ -95,22 +101,18 @@ impl ReferenceEntry {
     }
 }
 
-impl From<String> for ReferenceEntry {
-    fn from(s: String) -> Self {
-        Self::new(s)
+impl<T : ToString> From<T> for ReferenceEntry {
+    fn from(s: T) -> Self {
+        Self::new(s.to_string())
     }
 }
 
-impl From<&str> for ReferenceEntry {
-    fn from(s: &str) -> Self {
-        Self::new(s)
-    }
-}
+pub type Reference = BTreeMap<LanguageElement, ReferenceEntry>;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LanguageDocumentation {
     pub articles: Vec<(String, String)>,
-    pub reference: BTreeMap<LanguageElement, ReferenceEntry>,
+    pub reference: Reference,
     pub escape: Vec<(String, String)>,
 }
 

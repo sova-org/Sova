@@ -4,6 +4,7 @@ use crate::alisp::{COMPUTE_REG, EXECUTE_ELEM_ADDR, LIST_LEN_REG, LIST_REG, words
 
 pub const IF : Word = Word {
     name: "if",
+    description: "According to the truth value of the first item, executes either the second or the third.",
     example: None,
     prog: || sova_prog![
         Pop(reg!(LIST_REG)),
@@ -24,3 +25,14 @@ pub const IF : Word = Word {
         Return
     ],
 };
+
+pub const QUOTE : Word = Word {
+    name: "'",
+    description: "Quotes the next item, returning it as without executing.",
+    example: None,
+    prog: || sova_prog![
+        Return
+    ]
+};
+
+pub const CONTROL_WORDS : [Word ; 2] = [IF, QUOTE];

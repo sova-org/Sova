@@ -4,6 +4,7 @@ use sova_core::{reg, sova_prog, vm::{EnvironmentFunc::*, control_asm::ControlASM
 
 pub const ALTERNATIVE : Word = Word {
     name: "alt",
+    description: "Alternates between the items using the number of times the frame has been triggered.",
     example: None,
     prog: || sova_prog![
         Mod(FrameTriggers.into(), reg!(LIST_LEN_REG), reg!(INDEX_REG)),
@@ -15,6 +16,7 @@ pub const ALTERNATIVE : Word = Word {
 
 pub const CHOICE : Word = Word {
     name: "choice",
+    description: "Randomly (uniform distribution) chooses an item.",
     example: None,
     prog: || sova_prog![
         Mod(RandomInt.into(), reg!(LIST_LEN_REG), reg!(INDEX_REG)),

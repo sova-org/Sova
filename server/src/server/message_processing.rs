@@ -12,6 +12,8 @@ use crate::{
     DEFAULT_CLIENT_NAME, ServerMessage, ServerState, Snapshot, server::broadcast_raw,
 };
 
+pub const DEFAULT_LINE_SIZE : usize = 4;
+
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
     // Shallow-snapshot any frame doc whose canonical text was just committed via
     // SetFrames. This bounds Loro doc memory across long sessions; the live text
@@ -449,7 +451,7 @@ pub async fn on_message(
             }
         }
         ClientMessage::ResetScene(timing) => {
-            let lines = (0..4).map(|_| Line::new(vec![1.0; 8])).collect();
+            let lines = (0..4).map(|_| Line::new(vec![1.0; DEFAULT_LINE_SIZE])).collect();
             send_and_relay(state, SchedulerMessage::SetScene(Scene::new(lines), timing))
         }
         ClientMessage::RestartCore => {

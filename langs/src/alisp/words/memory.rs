@@ -4,6 +4,7 @@ use sova_core::{sova_prog, vm::{EnvironmentFunc::*, control_asm::ControlASM::*, 
 
 pub const LET : Word = Word {
     name: "let",
+    description: "Saves an item in a variable",
     example: None,
     prog: || sova_prog![
         

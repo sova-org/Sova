@@ -21,8 +21,9 @@ line_qualif = { "l_" }
 frame_qualif = { "f_" }
 env_func = { "_" }
 qualif = _{ (seq_var ~ (line_qualif | frame_qualif)?) | env_func }
-name = @{ (letter | digit | op)+ }
-ident = ${ !int ~ !note ~ qualif? ~ name }
+quote = { "'" }
+name = @{ (letter | digit | op | quote)+ }
+ident = ${ !note ~ qualif? ~ name }
 
 note_letter = { 'A'..'G' | 'a'..'g' }
 sharp = { "#" }

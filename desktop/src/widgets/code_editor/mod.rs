@@ -16,7 +16,7 @@ use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use sova_core::vm::interpreter::Annotation;
-use sova_core::vm::language::{LanguageElement, ReferenceEntry};
+use sova_core::vm::language::{LanguageElement, Reference, ReferenceEntry};
 
 use crate::scene_panel::SceneOpacity;
 
@@ -60,7 +60,7 @@ pub struct PeerCursor {
 pub struct EditorContext<'a> {
     pub settings: &'a EditorSettings,
     pub syntax: Option<(&'a CompiledSyntax, &'a SyntaxTheme)>,
-    pub reference: Option<&'a BTreeMap<LanguageElement, ReferenceEntry>>,
+    pub reference: Option<&'a Reference>,
     pub peer_cursors: &'a [PeerCursor],
     pub annotations: &'a [Annotation],
     pub opacity: Option<&'a SceneOpacity>,
@@ -707,7 +707,7 @@ fn byte_offset_at_pos(
 
 fn lookup_reference<'a>(
     word: &str,
-    reference: &'a BTreeMap<LanguageElement, ReferenceEntry>,
+    reference: &'a Reference,
 ) -> Option<&'a ReferenceEntry> {
     let word_lower = word.to_ascii_lowercase();
     for (elem, entry) in reference {
@@ -733,7 +733,7 @@ fn show_hover_tooltip(
     ui: &egui::Ui,
     output: &egui::text_edit::TextEditOutput,
     text: &str,
-    reference: &BTreeMap<LanguageElement, ReferenceEntry>,
+    reference: &Reference,
     syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
     sample_names: &[String],
 ) {
@@ -820,7 +820,7 @@ fn word_prefix_at_cursor(text: &str, cursor_char: usize) -> (usize, usize, usize
 
 fn compute_completions(
     prefix: &str,
-    reference: &BTreeMap<LanguageElement, ReferenceEntry>,
+    reference: &Reference,
     sample_names: &[String],
 ) -> Vec<CompletionEntry> {
     if prefix.is_empty() {
