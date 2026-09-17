@@ -19,7 +19,7 @@ use crate::{
 };
 
 fn default_generator_rng() -> Mutex<ChaCha20Rng> {
-    Mutex::new(ChaCha20Rng::from_os_rng())
+    Mutex::new(ChaCha20Rng::from_rng(&mut rand::rng()))
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -5,22 +5,22 @@ edition = "2024"
 publish = false
 
 [dependencies]
-midir = "0.10.1"
-rosc = "0.10.1"
-rusty_link = "0.4.4"
+midir = "0.11.0"
+rosc = "0.11.4"
+rusty_link = "0.4.9"
 thread-priority = { workspace = true }
-audio_thread_priority = "0.32"
+audio_thread_priority = "0.38"
 lalrpop-util = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
-toml = "0.8.0"
+toml = "1.1.6"
 rand = { workspace = true }
-simple-easing = "1.0.1"
+simple-easing = "1.0.2"
 crossbeam-channel = { workspace = true }
-dirs = "5.0"
+dirs = "7.0"
 pest = { workspace = true }
 pest_derive = { workspace = true }
-rand_chacha = "0.9.0"
+rand_chacha = "0.10.0"
 tokio = { workspace = true, features = ["sync"] }
 
 [lib]
@@ -28,4 +28,4 @@ name = "sova_core"
 path = "src/lib.rs"
 
 [dev-dependencies]
-tempfile = "3.0"
+tempfile = "3.27"

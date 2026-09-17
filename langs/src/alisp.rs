@@ -21,7 +21,7 @@ const COMPUTE_REG       : usize = 9;
 const DUR_REG           : usize = 10;
 const DEVICE_REG        : usize = 11;
 const CHANNEL_REG       : usize = 12;
-
+ 
 const EXECUTE_ELEM_ADDR : usize = 1;
 
 const APPLY_CTX : LazyCell<Program> = LazyCell::new(|| {

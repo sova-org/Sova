@@ -16,4 +16,17 @@ pub const DEVICE : Word = Word {
     ]
 };
 
+// const CONTEXT : LazyCell<Program> = LazyCell::new(|| {
+//     sova_prog![
+//         Delete(reg!(COMPUTE_REG)),
+//         Pop(reg!(COMPUTE_REG)),
+
+//         CallProcedure(EXECUTE_ELEM_ADDR), // Execute first item
+
+//         Insert(reg!(CONTEXT_REG), reg!(COMPUTE_REG), StackBack, reg!(CONTEXT_REG)),
+
+//         CallProcedure(EXECUTE_ELEM_ADDR)
+//     ]
+// });
+
 pub const CONTEXT_WORDS : [Word ; 1] = [DEVICE]; 

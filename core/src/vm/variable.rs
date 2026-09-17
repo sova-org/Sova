@@ -1225,6 +1225,108 @@ impl VariableValue {
         }
     }
 
+    pub fn as_integer_detached(&self) -> i64 {
+        match self {
+            VariableValue::Integer(i) => *i,
+            VariableValue::Float(f) => f.round() as i64,
+            VariableValue::Decimal(d) => (*d).into(),
+            VariableValue::Bool(b) => *b as i64,
+            VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
+            VariableValue::Func(p) => p.len() as i64,
+            VariableValue::Map(m) => m.len() as i64,
+            VariableValue::Vec(v) => v.len() as i64,
+            VariableValue::Blob(b) => {
+                let mut arr = [0u8; 8];
+                for i in 0..std::cmp::min(b.len(), 8) {
+                    arr[i] = b[i];
+                }
+                i64::from_le_bytes(arr)
+            }
+            VariableValue::Dur(_) => 0,
+            VariableValue::Generator(_) => 0,
+        }
+    }
+
+    pub fn as_float_detached(&self) -> f64 {
+        match self {
+            VariableValue::Integer(i) => *i as f64,
+            VariableValue::Float(f) => *f,
+            VariableValue::Decimal(d) => (*d).into(),
+            VariableValue::Bool(b) => *b as i8 as f64,
+            VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
+            VariableValue::Func(p) => p.len() as f64,
+            VariableValue::Map(m) => m.len() as f64,
+            VariableValue::Vec(v) => v.len() as f64,
+            VariableValue::Blob(b) => {
+                let mut arr = [0u8; 8];
+                for i in 0..std::cmp::min(b.len(), 8) {
+                    arr[i] = b[i];
+                }
+                f64::from_le_bytes(arr)
+            }
+            VariableValue::Dur(_) => 0.0,
+            VariableValue::Generator(_) => 0.0,
+        }
+    }
+
+    pub fn as_decimal_detached(&self) -> Decimal {
+        match self {
+            VariableValue::Integer(i) => Decimal::from(*i),
+            VariableValue::Float(f) => Decimal::from(*f),
+            VariableValue::Decimal(d) => *d,
+            VariableValue::Bool(b) => {
+                if *b {
+                    Decimal::one()
+                } else {
+                    Decimal::zero()
+                }
+            }
+            VariableValue::Str(s) => match s.parse::<f64>() {
+                Ok(n) => Decimal::from(n),
+                Err(_) => Decimal::zero(),
+            },
+            VariableValue::Func(p) => Decimal::from(p.len() as u64),
+            VariableValue::Map(m) => Decimal::from(m.len() as u64),
+            VariableValue::Vec(v) => Decimal::from(v.len() as u64),
+            VariableValue::Generator(_) => Decimal::zero(),
+            VariableValue::Dur(_) => Decimal::zero(),
+            x if matches!(x, VariableValue::Blob(_)) => Decimal::from(x.as_float_detached()),
+            VariableValue::Blob(_) => unreachable!(),
+        }
+    }
+
+    pub fn as_bool_detached(&self) -> bool {
+        match self {
+            VariableValue::Integer(i) => *i != 0,
+            VariableValue::Float(f) => *f != 0.0,
+            VariableValue::Decimal(d) => !d.is_zero(),
+            VariableValue::Bool(b) => *b,
+            VariableValue::Str(s) => !s.is_empty(),
+            VariableValue::Func(p) => !p.is_empty(),
+            VariableValue::Map(map) => !map.is_empty(),
+            VariableValue::Vec(vec) => !vec.is_empty(),
+            VariableValue::Blob(b) => b.iter().any(|byte| *byte > 0),
+            VariableValue::Dur(_) => false,
+            VariableValue::Generator(_) => false,
+        }
+    }
+
+    pub fn as_str_detached(&self) -> String {
+        match self {
+            VariableValue::Integer(i) => i.to_string(),
+            VariableValue::Float(f) => f.to_string(),
+            VariableValue::Decimal(d) => f64::from(*d).to_string(),
+            VariableValue::Bool(b) => b.to_string(),
+            VariableValue::Str(s) => s.to_string(),
+            VariableValue::Func(f) => serde_json::to_string(&f).unwrap_or_default(),
+            VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
+            VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
+            VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
+            VariableValue::Dur(_) => String::new(),
+            VariableValue::Generator(_) => String::new(),
+        }
+    }
+
     pub fn is_int(&self) -> bool {
         matches!(self, VariableValue::Integer(_))
     }

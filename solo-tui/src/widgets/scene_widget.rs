@@ -305,7 +305,7 @@ impl StatefulWidget for &SceneWidget {
         let (x, y) = self.compute_start_coordinates(state, area);
         set_selected(state, state.selected.0, state.selected.1);
         Canvas::default()
-            .marker(Marker::Braille)
+            .marker(Marker::Octant)
             .paint(|ctx| {
                 self.draw_scene(state, ctx, area);
             })

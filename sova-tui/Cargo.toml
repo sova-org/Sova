@@ -1,0 +1,28 @@
+[package]
+name = "sova-tui"
+version = "0.1.0"
+description = "An example generated using the event-driven template"
+authors = ["TanguyDubois <dubois.tanguy@gmail.com>"]
+license = "MIT"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.29.0"
+ratatui = "0.30.2"
+color-eyre = "0.6.5"
+tui-big-text = "0.8.9"
+tui-checkbox = "0.4.6"
+sova_core = { path = "../core", package = "core" }
+langs = { path = "../langs", package = "langs" }
+doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.35", package = "doux-sova", optional = true }
+arboard = "3.6.1"
+ratatui-textarea = "0.9.2"
+tui-menu = "0.3.1"
+scope-tui = "0.3.5"
+
+# Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

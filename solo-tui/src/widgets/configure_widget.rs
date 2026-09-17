@@ -43,6 +43,9 @@ impl ConfigureWidget {
                             micros,
                             quantum: state.clock.quantum(),
                             devices: Vec::new(),
+                            frame_text_layout: todo!(),
+                            frame_doc_snapshots: todo!(),
+                            presence: todo!(),
                         };
                         let Ok(snapshot) = serde_json::to_vec(&snapshot) else {
                             state

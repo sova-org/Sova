@@ -1,28 +1,40 @@
 [workspace]
 members = [
     "core",
+    "desktop",
     "langs",
     "server",
     "solo-tui",
-    "desktop",
+    "sova-tui",
 ]
 resolver = "3"
 
 [workspace.package]
 version = "0.1.1"
 
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "unwind"
-strip = true
+[workspace.dependencies]
+crossbeam-channel = "0.5.17"
+loro = "=1.12.0"
+pest = "2.9.1"
+pest_derive = "2.9.1"
+rand = "0.10.2"
+serde_json = "1.0.151"
+thread-priority = "3.1.1"
+tokio = "1.53.1"
+
+[workspace.dependencies.lalrpop-util]
+version = "0.23.1"
+features = [
+    "lexer",
+    "unicode",
+]
+
+[workspace.dependencies.serde]
+version = "1.0.229"
+features = ["derive"]
 
 [profile.dev]
 opt-level = 0
-
-[profile.dev.package."*"]
-opt-level = 2
 
 [profile.dev.package.core]
 opt-level = 2
@@ -33,21 +45,19 @@ opt-level = 2
 [profile.dev.package.langs]
 opt-level = 2
 
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.profiling]
+debug = 2
 inherits = "release"
-debug = true
 
-[workspace.dependencies]
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.145"
-crossbeam-channel = "0.5.15"
-lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
-pest = "2.8.3"
-pest_derive = "2.8.3"
-tokio = "1.44.1"
-rand = "0.9.0"
-thread-priority = "1.2.0"
-loro = "=1.12.0"
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = true
 
-[patch."https://github.com/sova-org/sova"]
-core = { path = "core" }
+[patch."https://github.com/sova-org/sova".core]
+path = "core"

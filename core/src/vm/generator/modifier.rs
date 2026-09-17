@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 
 use crate::vm::{EvaluationContext, variable::VariableValue};
