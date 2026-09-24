@@ -4,7 +4,6 @@ members = [
     "desktop",
     "langs",
     "server",
-    "solo-tui",
     "sova-tui",
 ]
 resolver = "3"
