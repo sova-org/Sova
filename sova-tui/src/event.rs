@@ -6,11 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::{app::{AppPage, AppState}, popup::PopupValue};
+
 /// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
 
 /// Representation of all possible events.
-#[derive(Clone, Debug)]
 pub enum Event {
     /// An event that is emitted on a regular schedule.
     ///
@@ -31,22 +32,25 @@ pub enum Event {
 /// Application events.
 ///
 /// You can extend this enum with your own custom events.
-#[derive(Clone, Debug)]
 pub enum AppEvent {
-    /// Increment the counter.
-    Increment,
-    /// Decrement the counter.
-    Decrement,
-    /// Quit the application.
+    GoTo(AppPage),
+    Popup(
+        String,
+        String,
+        PopupValue,
+        Box<dyn FnOnce(&mut AppState, PopupValue) + Send>,
+    ),
+    Info(String),
+    Positive(String),
+    Negative(String),
+    RefreshScript,
     Quit,
 }
 
 /// Terminal event handler.
 #[derive(Debug)]
 pub struct EventHandler {
-    /// Event sender channel.
     sender: mpsc::Sender<Event>,
-    /// Event receiver channel.
     receiver: mpsc::Receiver<Event>,
 }
 
@@ -83,9 +87,7 @@ impl EventHandler {
     }
 }
 
-/// A thread that handles reading crossterm events and emitting tick events on a regular schedule.
 struct EventThread {
-    /// Event sender channel.
     sender: mpsc::Sender<Event>,
 }
 
@@ -116,10 +118,7 @@ impl EventThread {
         }
     }
 
-    /// Sends an event to the receiver.
     fn send(&self, event: Event) {
-        // Ignores the result because shutting down the app drops the receiver, which causes the send
-        // operation to fail. This is expected behavior and should not panic.
         let _ = self.sender.send(event);
     }
 }

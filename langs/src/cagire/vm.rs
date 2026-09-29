@@ -1,5 +1,5 @@
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
@@ -102,7 +102,7 @@ impl CagireVM {
             source: String::new(),
             vars: HashMap::new(),
             dict: Dictionary::new(),
-            rng: StdRng::from_os_rng(),
+            rng: rand::make_rng(),
             resolved: Vec::new(),
             selected: Vec::new(),
             event_annotations: Vec::new(),
@@ -116,7 +116,7 @@ impl CagireVM {
             source: String::new(),
             vars: HashMap::new(),
             dict,
-            rng: StdRng::from_os_rng(),
+            rng: rand::make_rng(),
             resolved: Vec::new(),
             selected: Vec::new(),
             event_annotations: Vec::new(),

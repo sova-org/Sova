@@ -1,0 +1,252 @@
+use std::str::FromStr;
+
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Constraint, Flex, Layout, Rect},
+    style::{Color, Style, Stylize},
+    widgets::{
+        Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
+        StatefulWidget, Widget, Wrap,
+    },
+};
+use ratatui_textarea::{CursorMove, TextArea};
+
+use crate::app::AppState;
+
+mod popup_value;
+pub use popup_value::PopupValue;
+
+#[derive(Default)]
+pub struct Popup {
+    pub showing: bool,
+    pub title: String,
+    pub content: String,
+    pub value: PopupValue,
+    callback: Option<Box<dyn FnOnce(&mut AppState, PopupValue)>>,
+    text_area: TextArea<'static>,
+    list_state: ListState,
+}
+
+impl Popup {
+    pub fn open(
+        &mut self,
+        title: String,
+        content: String,
+        value: PopupValue,
+        callback: Box<dyn FnOnce(&mut AppState, PopupValue)>,
+    ) {
+        self.title = title;
+        self.content = content;
+        self.value = value;
+        self.callback = Some(callback);
+        self.showing = true;
+
+        if let PopupValue::Choice(i, _) = &self.value {
+            self.list_state.select(Some(*i));
+        }
+
+        Self::update_textarea(&mut self.text_area, &self.value);
+    }
+
+    pub fn info(&mut self, title: String, content: String) {
+        self.title = title;
+        self.content = content;
+        self.value = Default::default();
+        self.callback = None;
+        self.showing = true;
+    }
+
+    pub fn hide(&mut self) {
+        self.showing = false;
+    }
+
+    fn validate_input<T>(text_area: &mut TextArea, dst: &mut T)
+    where
+        T: FromStr,
+    {
+        let text = text_area.lines().get(0).cloned().unwrap_or_default();
+        let mut color = Color::LightGreen;
+        match text.parse::<T>() {
+            Ok(x) => *dst = x,
+            Err(_) => color = Color::LightRed,
+        }
+        text_area.set_block(
+            Block::bordered()
+                .border_style(color)
+                .border_type(BorderType::Rounded),
+        );
+    }
+
+    fn update_textarea(text_area: &mut TextArea, value: &PopupValue) {
+        match &value {
+            PopupValue::Text(txt) => *text_area = vec![txt.clone()].into(),
+            PopupValue::Float(f) => *text_area = vec![f.to_string()].into(),
+            PopupValue::Int(i) => *text_area = vec![i.to_string()].into(),
+            _ => (),
+        }
+        text_area.set_block(
+            Block::bordered()
+                .border_style(Color::LightGreen)
+                .border_type(BorderType::Rounded),
+        );
+        text_area.move_cursor(CursorMove::End);
+    }
+
+    pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) {
+        match event.code {
+            KeyCode::Esc => self.hide(),
+            KeyCode::Enter => self.complete(state),
+            _ => match &mut self.value {
+                PopupValue::None => (),
+                PopupValue::Bool(b) => match event.code {
+                    KeyCode::Left => *b = true,
+                    KeyCode::Right => *b = false,
+                    _ => (),
+                },
+                PopupValue::Choice(i, values) => {
+                    let len = values.len();
+                    match event.code {
+                        KeyCode::Up if self.list_state.selected() != Some(0) => {
+                            self.list_state.select_previous()
+                        }
+                        KeyCode::Down if self.list_state.selected() != Some(len - 1) => {
+                            self.list_state.select_next()
+                        }
+                        KeyCode::Left => self.list_state.select_first(),
+                        KeyCode::Right => self.list_state.select_last(),
+                        _ => (),
+                    }
+                    *i = self.list_state.selected().unwrap_or_default();
+                }
+                PopupValue::Text(txt) => {
+                    self.text_area.input(event);
+                    *txt = self.text_area.lines().get(0).cloned().unwrap_or_default()
+                }
+                PopupValue::Float(f) => {
+                    match event.code {
+                        KeyCode::Up => {
+                            *f += 1.0;
+                            Self::update_textarea(&mut self.text_area, &(*f).into());
+                        }
+                        KeyCode::Down => {
+                            *f -= 1.0;
+                            Self::update_textarea(&mut self.text_area, &(*f).into());
+                        }
+                        _ => {
+                            let _ = self.text_area.input(event);
+                        }
+                    }
+                    Self::validate_input(&mut self.text_area, f);
+                }
+                PopupValue::Int(i) => {
+                    match event.code {
+                        KeyCode::Up => {
+                            *i += 1;
+                            Self::update_textarea(&mut self.text_area, &(*i).into());
+                        }
+                        KeyCode::Down => {
+                            *i -= 1;
+                            Self::update_textarea(&mut self.text_area, &(*i).into());
+                        }
+                        _ => {
+                            let _ = self.text_area.input(event);
+                        }
+                    }
+                    Self::validate_input(&mut self.text_area, i);
+                }
+            },
+        }
+    }
+
+    pub fn complete(&mut self, state: &mut AppState) {
+        let value = std::mem::take(&mut self.value);
+        if let Some(callback) = std::mem::take(&mut self.callback) {
+            callback(state, value);
+        }
+        self.showing = false;
+    }
+
+    fn popup_area(area: Rect, percent_x: u16, len: usize, additional_lines: u16) -> Rect {
+        let len = 125 * (len as u16) / 100;
+        let width = percent_x * area.width / 100;
+        let lines = 3 + len / width + u16::from(len % width > 0) + additional_lines;
+        let horizontal = Layout::horizontal([Constraint::Length(width)]).flex(Flex::Center);
+        let vertical = Layout::vertical([Constraint::Length(lines)]).flex(Flex::Center);
+        let [area] = horizontal.areas(area);
+        let [area] = vertical.areas(area);
+        area
+    }
+}
+
+impl Widget for &mut Popup {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if !self.showing {
+            return;
+        }
+        let button_block = Block::bordered().border_type(BorderType::Rounded);
+        let selected_style = Style::default().bg(Color::White).fg(Color::Black).bold();
+        let additional_lines = match &self.value {
+            PopupValue::Choice(_, v) => std::cmp::min(10, v.len() as u16),
+            _ => 3,
+        };
+        let area = Popup::popup_area(area, 30, self.content.len(), additional_lines);
+        Clear.render(area, buf);
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(self.title.as_str())
+            .on_black();
+        let layout = Layout::vertical([Constraint::Min(0), Constraint::Length(additional_lines)]);
+        let [text_area, input_area] = layout.areas(block.inner(area));
+        block.render(area, buf);
+        Paragraph::new(self.content.as_str())
+            .wrap(Wrap { trim: true })
+            .render(text_area, buf);
+        match &self.value {
+            PopupValue::None => {
+                let horizontal = Layout::horizontal([Constraint::Length(10)]).flex(Flex::Center);
+                let [input_area] = horizontal.areas(input_area);
+                Paragraph::new("Ok")
+                    .on_white()
+                    .black()
+                    .centered()
+                    .block(button_block)
+                    .render(input_area, buf)
+            }
+            PopupValue::Bool(b) => {
+                let horizontal = Layout::horizontal([
+                    Constraint::Length(10),
+                    Constraint::Length(6),
+                    Constraint::Length(10),
+                ])
+                .flex(Flex::Center);
+                let [yes_area, _, no_area] = horizontal.areas(input_area);
+                Paragraph::new("Yes")
+                    .style(if *b { selected_style } else { Style::default() })
+                    .centered()
+                    .block(button_block.clone())
+                    .render(yes_area, buf);
+                Paragraph::new("No")
+                    .style(if !*b {
+                        selected_style
+                    } else {
+                        Style::default()
+                    })
+                    .centered()
+                    .block(button_block)
+                    .render(no_area, buf)
+            }
+            PopupValue::Text(_) | PopupValue::Float(_) | PopupValue::Int(_) => {
+                self.text_area.render(input_area, buf);
+            }
+            PopupValue::Choice(_, v) => {
+                let items: Vec<ListItem> = v.iter().map(|s| ListItem::from(s.as_str())).collect();
+                let list = List::new(items)
+                    .highlight_style(selected_style)
+                    .highlight_symbol(">")
+                    .highlight_spacing(HighlightSpacing::Always);
+                StatefulWidget::render(list, input_area, buf, &mut self.list_state);
+            }
+        }
+    }
+}
