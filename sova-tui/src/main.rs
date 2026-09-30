@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use langs::create_language_center;
+use ratatui_themes::{Theme, ThemeName};
 use sova_core::{Scene, clock::ClockServer, device_map::DeviceMap, init::start_scheduler_and_world, scene::Line, schedule::playback::PlaybackState};
 
 use crate::{app::{App, AppPage, AppState}, event::EventHandler};
@@ -10,6 +11,7 @@ pub mod event;
 pub mod ui;
 pub mod notification;
 pub mod popup;
+pub mod theme;
 
 const DEFAULT_TEMPO : f64 = 120.0; 
 const DEFAULT_QUANTUM : f64 = 4.0;
@@ -51,6 +53,7 @@ fn main() -> color_eyre::Result<()> {
         devices: Vec::new(),
         device_map: devices,
         languages,
+        palette: Theme::new(ThemeName::Dracula).into()
     };
 
     let result = App::new(state).run(terminal);

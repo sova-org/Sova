@@ -19,6 +19,8 @@ arboard = "3.6.1"
 ratatui-textarea = "0.9.2"
 tui-menu = "0.3.1"
 tachyonfx = "0.25.2"
+nerd-font-symbols = "0.3.0"
+ratatui-themes = "0.3.0"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

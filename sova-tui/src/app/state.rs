@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use arboard::Clipboard;
+use ratatui_themes::Theme;
 use sova_core::{Scene, clock::Clock, device_map::DeviceMap, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, vm::LanguageCenter};
 
-use crate::{app::page::AppPage, event::EventHandler};
+use crate::{app::page::AppPage, event::EventHandler, theme::Palette};
 
 pub struct AppState {
     pub scene_image: Scene,
@@ -16,7 +17,8 @@ pub struct AppState {
     pub clock: Clock,
     pub devices: Vec<DeviceInfo>,
     pub device_map: Arc<DeviceMap>,
-    pub languages: Arc<LanguageCenter>
+    pub languages: Arc<LanguageCenter>,
+    pub palette: Palette
 }
 
 impl AppState {

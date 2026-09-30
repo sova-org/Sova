@@ -51,11 +51,11 @@ impl App {
             Event::App(app_event) => match app_event {
                 AppEvent::Quit => self.quit(),
                 AppEvent::Popup(title, content, value, callback) => {
-                    self.popup.open(title, content, value, callback)
+                    self.popup.open(title, content, value, callback, self.state.palette)
                 }
-                AppEvent::Info(text) => self.notification.info(text),
-                AppEvent::Positive(text) => self.notification.positive(text),
-                AppEvent::Negative(text) => self.notification.negative(text),
+                AppEvent::Info(text) => self.notification.info(text, self.state.palette),
+                AppEvent::Positive(text) => self.notification.positive(text, self.state.palette),
+                AppEvent::Negative(text) => self.notification.negative(text, self.state.palette),
                 _ => ()
             },
         }
@@ -84,6 +84,17 @@ impl App {
             }
             KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.state.events.send(AppEvent::Quit)
+            }
+            KeyCode::Char('a' | 'A') => {
+                self.state.events.send(AppEvent::Positive("test de truc".to_owned()))
+            }
+            KeyCode::Char('z') => {
+                self.state.events.send(AppEvent::Popup(
+                    "Test d'input".to_owned(), 
+                    "Quelle valeur ????".to_owned(), 
+                    PopupValue::Choice(1, vec!["Test".to_owned() ; 6]), 
+                    Box::new(|_, _| ())
+                ));
             }
             _ => {
                 match self.state.page {

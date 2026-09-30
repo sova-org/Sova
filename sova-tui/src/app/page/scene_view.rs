@@ -1,10 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Margin, Rect}, style::{Color, Stylize}, text::{Line, Text}, widgets::{Block, Paragraph, StatefulWidget, Widget}};
+use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget}};
 use sova_core::scene::Frame;
 
-use crate::{app::AppState, event::AppEvent};
+use crate::{app::AppState, event::AppEvent, theme::Palette};
 
-const FRAME_WIDTH : u16 = 12;
+const FRAME_WIDTH : u16 = 15;
 const FRAME_HEIGHT : u16 = 4;
 const FRAME_HEADER_HEIGHT : u16 = 1;
 const LINE_HEADER_WIDTH : u16 = 5;
@@ -13,15 +13,16 @@ pub struct SceneView;
 
 impl SceneView {
 
-    fn render_frame(area: Rect, buf: &mut Buffer, _j: usize, frame: &Frame, selected: bool) {
-        let b_color = if selected {
-            Color::Rgb(127, 0, 0)
+    fn render_frame(area: Rect, buf: &mut Buffer, _j: usize, frame: &Frame, selected: bool, palette: &Palette) {
+        let b = if selected {
+            Block::bordered()
+                .border_type(BorderType::Rounded)
+                .border_style(palette.accent)
+                .bg(palette.selection)
         } else {
-            Color::Rgb(127, 127, 127)
+            Block::default().bg(palette.surface)
         };
 
-        let b = Block::default().bg(b_color);
-        let block_area = b.inner(area);
         b.render(area, buf);
 
         let mut lines = Vec::new();
@@ -32,18 +33,21 @@ impl SceneView {
             Constraint::Min(0),
             Constraint::Length(lines.len() as u16),
             Constraint::Min(0)
-        ]).split(block_area.inner(Margin::new(1, 0)));
+        ]).split(area.inner(Margin::new(2, 0)));
 
         let t = Text::from(lines);
-        let p = Paragraph::new(t);
+        let mut p = Paragraph::new(t).style(palette.text());
+        if selected {
+            p = p.bold()
+        }
         p.render(layout[1], buf);
     }
 
-    fn render_frame_header(area: Rect, buf: &mut Buffer, i: usize, selected: bool) {
+    fn render_frame_header(area: Rect, buf: &mut Buffer, i: usize, selected: bool, palette: &Palette) {
         let b_color = if selected {
-            Color::Rgb(127, 0, 0)
+            palette.selection
         } else {
-            Color::Rgb(127, 127, 127)
+            palette.surface
         };
 
         let b = Block::default().bg(b_color);
@@ -59,15 +63,25 @@ impl SceneView {
         ]).split(area);
 
         let t = Text::from(lines);
-        let p = Paragraph::new(t).centered();
+        let mut p = Paragraph::new(t).centered().style(palette.text());
+        if selected {
+            p = p.bold()
+        }
         p.render(layout[1], buf);
     }
 
-    fn render_line_header(area: Rect, buf: &mut Buffer, i: usize, line: &sova_core::scene::Line, selected: bool) {
+    fn render_line_header(
+        area: Rect, 
+        buf: &mut Buffer, 
+        i: usize, 
+        line: &sova_core::scene::Line, 
+        selected: bool, 
+        palette: &Palette
+    ) {
         let b_color = if selected {
-            Color::Rgb(127, 0, 0)
+            palette.selection
         } else {
-            Color::Rgb(127, 127, 127)
+            palette.surface
         };
 
         let b = Block::default().bg(b_color);
@@ -76,9 +90,9 @@ impl SceneView {
         let mut lines = Vec::new();
         lines.push(Line::from(format!("L{}", i)));
         lines.push(Line::from(format!("{}{}{}", 
-            if line.manual { "M" } else { " " },
-            if line.looping { "L" } else { " " },
-            if line.trailing { "T" } else { " " },
+            if line.manual { nerd_font_symbols::oct::OCT_GEAR } else { " " },
+            if line.looping { nerd_font_symbols::oct::OCT_SYNC } else { " " },
+            if line.trailing { nerd_font_symbols::md::MD_ARROW_COLLAPSE_RIGHT } else { " " },
         )));
 
         let layout = Layout::vertical([
@@ -88,7 +102,10 @@ impl SceneView {
         ]).split(area);
 
         let t = Text::from(lines);
-        let p = Paragraph::new(t).centered();
+        let mut p = Paragraph::new(t).centered().style(palette.text());;
+        if selected {
+            p = p.bold()
+        }
         p.render(layout[1], buf);
     }
 
@@ -165,7 +182,7 @@ impl StatefulWidget for SceneView {
                 FRAME_HEADER_HEIGHT
             );
             let f_j = j + first_frame;
-            Self::render_frame_header(header_area, buf, f_j, f_j == state.selected.1);
+            Self::render_frame_header(header_area, buf, f_j, f_j == state.selected.1, &state.palette);
         }
         for (i, line) in state.scene_image.lines[first_line..].iter().enumerate() {
             if i >= visible_lines {
@@ -178,7 +195,7 @@ impl StatefulWidget for SceneView {
                 FRAME_HEIGHT
             );
             let f_i = i + first_line;
-            Self::render_line_header(header_area, buf, f_i, line, f_i == state.selected.0);
+            Self::render_line_header(header_area, buf, f_i, line, f_i == state.selected.0, &state.palette);
             if line.n_frames() <= first_frame {
                 continue;
             }
@@ -200,7 +217,8 @@ impl StatefulWidget for SceneView {
                     buf, 
                     f_j, 
                     frame, 
-                    selected
+                    selected,
+                    &state.palette
                 );
             }
         }

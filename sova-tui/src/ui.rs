@@ -12,7 +12,7 @@ impl Widget for &mut App {
             _ => ()
         }
 
-        self.popup.render(area, buf);
+        self.popup.render(area, buf, &mut self.state);
         self.notification.render(area, buf);
     }
 }
