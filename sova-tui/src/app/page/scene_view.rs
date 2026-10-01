@@ -1,10 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget}};
+use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Margin, Rect}, style::Stylize, symbols::scrollbar::Set, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
 use sova_core::scene::Frame;
 
 use crate::{app::AppState, event::AppEvent, theme::Palette};
 
-const FRAME_WIDTH : u16 = 15;
+const FRAME_WIDTH : u16 = 14;
 const FRAME_HEIGHT : u16 = 4;
 const FRAME_HEADER_HEIGHT : u16 = 1;
 const LINE_HEADER_WIDTH : u16 = 5;
@@ -171,6 +171,10 @@ impl StatefulWidget for SceneView {
         } else {
             0
         };
+        let mut x_scroll_state = ScrollbarState::new(max_frames.saturating_sub(visible_frames) + 1)
+            .position(first_frame);
+        let mut y_scroll_state = ScrollbarState::new(state.scene_image.n_lines().saturating_sub(visible_lines) + 1)
+            .position(first_line);
         for j in 0..max_frames {
             if j >= visible_frames {
                 break;
@@ -221,6 +225,16 @@ impl StatefulWidget for SceneView {
                     &state.palette
                 );
             }
+        }
+        if visible_lines < state.scene_image.n_lines() {
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .style(state.palette.surface);
+            scrollbar.render(area.inner(Margin { horizontal: 0, vertical: 1 }), buf, &mut y_scroll_state);
+        }
+        if visible_frames < max_frames {
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+                .style(state.palette.surface);
+            scrollbar.render(area.inner(Margin { horizontal: 1, vertical: 0 }), buf, &mut x_scroll_state);
         }
     }
 }

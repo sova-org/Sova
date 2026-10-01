@@ -36,6 +36,15 @@ fn main() -> color_eyre::Result<()> {
         Line::new(vec![3.0 ; 1]),
         Line::new(Vec::new()),
         Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
+        Line::new(vec![1.4 ; 2]),
     ]);
     scene.line_mut(2).manual = true;
     scene.line_mut(2).looping = true;
