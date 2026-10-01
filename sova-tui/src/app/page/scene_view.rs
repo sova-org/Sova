@@ -228,12 +228,17 @@ impl StatefulWidget for SceneView {
         }
         if visible_lines < state.scene_image.n_lines() {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .style(state.palette.surface);
+                .thumb_style(state.palette.selection)
+                .style(state.palette.surface)
+                .end_symbol(None).begin_symbol(None);
             scrollbar.render(area.inner(Margin { horizontal: 0, vertical: 1 }), buf, &mut y_scroll_state);
         }
         if visible_frames < max_frames {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-                .style(state.palette.surface);
+                .style(state.palette.surface)
+                .thumb_style(state.palette.selection)
+                .thumb_symbol("🬋")
+                .end_symbol(None).begin_symbol(None);
             scrollbar.render(area.inner(Margin { horizontal: 1, vertical: 0 }), buf, &mut x_scroll_state);
         }
     }
