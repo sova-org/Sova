@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use arboard::Clipboard;
-use ratatui_themes::Theme;
 use sova_core::{Scene, clock::Clock, device_map::DeviceMap, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, vm::LanguageCenter};
 
 use crate::{app::page::AppPage, event::EventHandler, theme::Palette};

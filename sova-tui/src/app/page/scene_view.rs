@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Margin, Rect}, style::Stylize, symbols::scrollbar::Set, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
+use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
 use sova_core::scene::Frame;
 
 use crate::{app::AppState, event::AppEvent, theme::Palette};
@@ -30,17 +30,15 @@ impl SceneView {
         lines.push(Line::from(format!("{}", frame.script().lang())));
 
         let layout = Layout::vertical([
-            Constraint::Min(0),
             Constraint::Length(lines.len() as u16),
-            Constraint::Min(0)
-        ]).split(area.inner(Margin::new(2, 0)));
+        ]).flex(Flex::Center).split(area.inner(Margin::new(2, 0)));
 
         let t = Text::from(lines);
         let mut p = Paragraph::new(t).style(palette.text());
         if selected {
             p = p.bold()
         }
-        p.render(layout[1], buf);
+        p.render(layout[0], buf);
     }
 
     fn render_frame_header(area: Rect, buf: &mut Buffer, i: usize, selected: bool, palette: &Palette) {
@@ -57,17 +55,15 @@ impl SceneView {
         lines.push(Line::from(format!("F{}", i)));
 
         let layout = Layout::vertical([
-            Constraint::Min(0),
             Constraint::Length(lines.len() as u16),
-            Constraint::Min(0)
-        ]).split(area);
+        ]).flex(Flex::Center).split(area);
 
         let t = Text::from(lines);
         let mut p = Paragraph::new(t).centered().style(palette.text());
         if selected {
             p = p.bold()
         }
-        p.render(layout[1], buf);
+        p.render(layout[0], buf);
     }
 
     fn render_line_header(
@@ -96,17 +92,15 @@ impl SceneView {
         )));
 
         let layout = Layout::vertical([
-            Constraint::Min(0),
             Constraint::Length(lines.len() as u16),
-            Constraint::Min(0)
-        ]).split(area);
+        ]).flex(Flex::Center).split(area);
 
         let t = Text::from(lines);
-        let mut p = Paragraph::new(t).centered().style(palette.text());;
+        let mut p = Paragraph::new(t).centered().style(palette.text());
         if selected {
             p = p.bold()
         }
-        p.render(layout[1], buf);
+        p.render(layout[0], buf);
     }
 
     pub fn on_key_event(event: KeyEvent, state: &mut AppState) {

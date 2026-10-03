@@ -1,14 +1,16 @@
 use ratatui::{
-    buffer::Buffer, layout::{Alignment, Rect}, style::{Color, Stylize}, widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
+    buffer::Buffer, layout::Rect, widgets::{StatefulWidget, Widget},
 };
 
-use crate::app::{App, AppPage, scene_view::SceneView};
+use crate::app::{App, AppPage, connecting_view::ConnectingView, scene_view::SceneView};
 
 impl Widget for &mut App {
     /// Renders the user interface widgets.
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.state.page {
             AppPage::Scene => SceneView.render(area, buf, &mut self.state),
+            AppPage::Connection => self.connection_view.render(area, buf, &mut self.state),
+            AppPage::Connecting => ConnectingView.render(area, buf, &mut self.state),
             _ => ()
         }
 

@@ -1,7 +1,7 @@
-use crate::{app::scene_view::SceneView, event::{AppEvent, Event}, notification::Notification, popup::{Popup, PopupValue}};
+use crate::{app::{connecting_view::ConnectingView, connection_view::ConnectionView, scene_view::SceneView}, event::{AppEvent, Event}, notification::Notification, popup::{Popup, PopupValue}};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::DefaultTerminal;
+use ratatui::{DefaultTerminal, widgets::Widget};
 
 mod state;
 pub use state::*;
@@ -14,7 +14,9 @@ pub struct App {
     pub running: bool,
     pub state: AppState,
     pub popup: Popup,
-    pub notification: Notification
+    pub notification: Notification,
+    
+    pub connection_view: ConnectionView
 }
 
 impl App {
@@ -24,21 +26,23 @@ impl App {
             running: true, 
             state, 
             popup: Popup::default(),
-            notification: Notification::new()
+            notification: Notification::new(),
+
+            connection_view: ConnectionView::new()
         }
     }
 
     /// Run the application's main loop.
-    pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         while self.running {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
-            self.handle_events()?;
+            self.handle_events().await?;
         }
         Ok(())
     }
 
-    pub fn handle_events(&mut self) -> color_eyre::Result<()> {
-        match self.state.events.next()? {
+    pub async fn handle_events(&mut self) -> color_eyre::Result<()> {
+        match self.state.events.next().await? {
             Event::Tick => self.tick(),
             Event::Crossterm(event) => match event {
                 crossterm::event::Event::Key(key_event)
@@ -56,6 +60,12 @@ impl App {
                 AppEvent::Info(text) => self.notification.info(text, self.state.palette),
                 AppEvent::Positive(text) => self.notification.positive(text, self.state.palette),
                 AppEvent::Negative(text) => self.notification.negative(text, self.state.palette),
+                AppEvent::Connect(ip, port, username, pass) => {
+                    self.state.page = AppPage::Connecting;
+                }
+                AppEvent::Server(port, username, pass) => {
+                    self.state.page = AppPage::Connecting;
+                }
                 _ => ()
             },
         }
@@ -82,22 +92,11 @@ impl App {
                     }),
                 ));
             }
-            KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
-                self.state.events.send(AppEvent::Quit)
-            }
-            KeyCode::Char('a' | 'A') => {
-                self.state.events.send(AppEvent::Positive("test de truc".to_owned()))
-            }
-            KeyCode::Char('z') => {
-                self.state.events.send(AppEvent::Popup(
-                    "Test d'input".to_owned(), 
-                    "Quelle valeur ????".to_owned(), 
-                    PopupValue::Choice(1, vec!["Test".to_owned() ; 6]), 
-                    Box::new(|_, _| ())
-                ));
-            }
             _ => {
                 match self.state.page {
+                    AppPage::Connection => {
+                        self.connection_view.on_key_event(key_event, &mut self.state);
+                    }
                     AppPage::Scene => {
                         SceneView::on_key_event(key_event, &mut self.state);
                     }

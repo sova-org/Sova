@@ -1,10 +1,8 @@
-use color_eyre::eyre::WrapErr;
-use crossterm::event::{self, Event as CrosstermEvent};
-use std::{
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
-};
+use color_eyre::eyre::OptionExt;
+use crossterm::event::{Event as CrosstermEvent};
+use futures::{FutureExt, StreamExt};
+use std::time::Duration;
+use tokio::sync::mpsc;
 
 use crate::{app::{AppPage, AppState}, popup::PopupValue};
 
@@ -44,22 +42,24 @@ pub enum AppEvent {
     Positive(String),
     Negative(String),
     RefreshScript,
+    Connect(String, u16, String, String),
+    Server(u16, String, String),
     Quit,
 }
 
 /// Terminal event handler.
 #[derive(Debug)]
 pub struct EventHandler {
-    sender: mpsc::Sender<Event>,
-    receiver: mpsc::Receiver<Event>,
+    sender: mpsc::UnboundedSender<Event>,
+    receiver: mpsc::UnboundedReceiver<Event>,
 }
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-        let actor = EventThread::new(sender.clone());
-        thread::spawn(|| actor.run());
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let actor = EventTask::new(sender.clone());
+        tokio::spawn(async { actor.run().await });
         Self { sender, receiver }
     }
 
@@ -72,8 +72,8 @@ impl EventHandler {
     /// This function returns an error if the sender channel is disconnected. This can happen if an
     /// error occurs in the event thread. In practice, this should not happen unless there is a
     /// problem with the underlying terminal.
-    pub fn next(&self) -> color_eyre::Result<Event> {
-        Ok(self.receiver.recv()?)
+    pub async fn next(&mut self) -> color_eyre::Result<Event> {
+        self.receiver.recv().await.ok_or_eyre("Failed to receive event")
     }
 
     /// Queue an app event to be sent to the event receiver.
@@ -87,35 +87,39 @@ impl EventHandler {
     }
 }
 
-struct EventThread {
-    sender: mpsc::Sender<Event>,
+struct EventTask {
+    sender: mpsc::UnboundedSender<Event>,
 }
 
-impl EventThread {
+impl EventTask {
     /// Constructs a new instance of [`EventThread`].
-    fn new(sender: mpsc::Sender<Event>) -> Self {
+    fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
         Self { sender }
     }
 
     /// Runs the event thread.
     ///
     /// This function emits tick events at a fixed rate and polls for crossterm events in between.
-    fn run(self) -> color_eyre::Result<()> {
-        let tick_interval = Duration::from_secs_f64(1.0 / TICK_FPS);
-        let mut last_tick = Instant::now();
+    async fn run(self) -> color_eyre::Result<()> {
+        let tick_rate = Duration::from_secs_f64(1.0 / TICK_FPS);
+        let mut reader = crossterm::event::EventStream::new();
+        let mut tick = tokio::time::interval(tick_rate);
         loop {
-            // emit tick events at a fixed rate
-            let timeout = tick_interval.saturating_sub(last_tick.elapsed());
-            if timeout == Duration::ZERO {
-                last_tick = Instant::now();
-                self.send(Event::Tick);
-            }
-            // poll for crossterm events, ensuring that we don't block the tick interval
-            if event::poll(timeout).wrap_err("failed to poll for crossterm events")? {
-                let event = event::read().wrap_err("failed to read crossterm event")?;
-                self.send(Event::Crossterm(event));
-            }
+            let tick_delay = tick.tick();
+            let crossterm_event = reader.next().fuse();
+            tokio::select! {
+                _ = self.sender.closed() => {
+                    break;
+                }
+                _ = tick_delay => {
+                    self.send(Event::Tick);
+                }
+                Some(Ok(evt)) = crossterm_event => {
+                    self.send(Event::Crossterm(evt));
+                }
+            };
         }
+        Ok(())
     }
 
     fn send(&self, event: Event) {

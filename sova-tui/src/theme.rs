@@ -58,5 +58,5 @@ const fn surface(theme: &Theme) -> Color {
 }
 
 const fn midpoint(first: u8, second: u8) -> u8 {
-    ((first as u16 + second as u16) / 2) as u8
+    ((first as u16 + second as u16) * 2 / 5) as u8
 }

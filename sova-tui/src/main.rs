@@ -16,7 +16,8 @@ pub mod theme;
 const DEFAULT_TEMPO : f64 = 120.0; 
 const DEFAULT_QUANTUM : f64 = 4.0;
 
-fn main() -> color_eyre::Result<()> {
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
     let devices = Arc::new(DeviceMap::new());
     let languages = Arc::new(create_language_center());
@@ -28,23 +29,9 @@ fn main() -> color_eyre::Result<()> {
     let terminal = ratatui::init();
 
     let mut scene = Scene::new(vec![
-        Line::new(vec![1.4 ; 16]),
+        Line::new(vec![1.4 ; 7]),
         Line::new(vec![1.0 ; 8]),
         Line::new(vec![12.4 ; 7]),
-        Line::new(vec![2.0 ; 26]),
-        Line::new(vec![1.4 ; 9]),
-        Line::new(vec![3.0 ; 1]),
-        Line::new(Vec::new()),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
-        Line::new(vec![1.4 ; 2]),
     ]);
     scene.line_mut(2).manual = true;
     scene.line_mut(2).looping = true;
@@ -57,15 +44,15 @@ fn main() -> color_eyre::Result<()> {
         events: EventHandler::new(),
         selected: (0, 0),
         clipboard: None,
-        page: AppPage::Scene,
+        page: AppPage::Connection,
         clock: clock_server.into(),
         devices: Vec::new(),
         device_map: devices,
         languages,
-        palette: Theme::new(ThemeName::Dracula).into()
+        palette: Theme::new(ThemeName::GruvboxDark).into()
     };
 
-    let result = App::new(state).run(terminal);
+    let result = App::new(state).run(terminal).await;
     ratatui::restore();
     result
 }
