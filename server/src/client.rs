@@ -30,7 +30,7 @@ pub use message::*;
 use tokio::select;
 use tokio::sync::Mutex;
 use tokio::sync::MutexGuard;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -111,7 +111,7 @@ pub async fn read_wire_frame<R: AsyncReadExt + Unpin>(reader: &mut R) -> io::Res
     Ok(buf)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ClientState {
     pub connected: bool,
     pub peer_id: u64,
@@ -272,7 +272,7 @@ impl SovaClient {
         let writer = self
             .writer
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Client not connected"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Unable to send: client not connected"))?;
 
         let frame = build_frame_raw(&payload);
 
@@ -303,16 +303,9 @@ impl SovaClient {
     }
 
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
-        if !self.state().await.connected {
-            return Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Client not connected",
-            ));
-        }
-
         let mut reader = self
             .take_reader()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Client not connected"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Unable to read: client not connected"))?;
 
         let res = read_client(&mut reader, &self.client_state).await;
 
@@ -323,12 +316,12 @@ impl SovaClient {
 
     /// Spawns a tokio task waiting for server messages and updating the client state
     /// This method consumes the reader, call `stop_task` in order to restore it.
-    pub fn run(&mut self, relay: Option<Sender<ServerMessage>>) -> io::Result<()> {
+    pub fn run(&mut self, relay: Option<UnboundedSender<ServerMessage>>) -> io::Result<()> {
         self.cancel_token = CancellationToken::new();
         let child_token = self.cancel_token.child_token();
         let state = self.client_state.clone();
         let mut reader = self.take_reader()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Client not connected"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "Unable to take reader: client not connected"))?;
         let sched_iface = self.sched_iface.clone();
         let handle = tokio::spawn(async move {
             while state.lock().await.connected {
@@ -346,7 +339,7 @@ impl SovaClient {
                         match &relay {
                             Some(relay) => {
                                 handle_server_message(&mut guard, msg.clone(), &sched_iface);
-                                let _ = relay.send(msg).await;
+                                let _ = relay.send(msg);
                             }
                             None => {
                                 handle_server_message(&mut guard, msg, &sched_iface);

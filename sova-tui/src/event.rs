@@ -1,6 +1,7 @@
 use color_eyre::eyre::OptionExt;
 use crossterm::event::{Event as CrosstermEvent};
 use futures::{FutureExt, StreamExt};
+use sova_server::{SovaClient, client::ClientState};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -44,8 +45,9 @@ pub enum AppEvent {
     RefreshScript,
     Connect(String, u16, String, String),
     Server(u16, String, String),
-    Connected,
+    Connected(SovaClient),
     ConnectionFailed(String),
+    UpdateClientState(ClientState),
     Quit,
 }
 
@@ -85,6 +87,20 @@ impl EventHandler {
     pub fn send(&mut self, app_event: AppEvent) {
         // Ignore the result as the reciever cannot be dropped while this struct still has a
         // reference to it
+        let _ = self.sender.send(Event::App(app_event));
+    }
+
+    pub fn get_sender(&self) -> EventSender {
+        EventSender { sender: self.sender.clone() }
+    }
+}
+
+pub struct EventSender {
+    sender: mpsc::UnboundedSender<Event>,
+}
+
+impl EventSender {
+    pub fn send(&mut self, app_event: AppEvent) {
         let _ = self.sender.send(Event::App(app_event));
     }
 }

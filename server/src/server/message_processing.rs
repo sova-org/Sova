@@ -1,10 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use sova_core::{
-    Scene,
-    clock::Clock,
-    scene::Line,
-    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
+    Scene, clock::Clock, log_eprintln, log_println, scene::Line, schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
 
 use crate::{
@@ -66,7 +63,7 @@ pub async fn on_message(
         msg,
         ClientMessage::Presence { .. } | ClientMessage::ScriptEdit { .. }
     ) {
-        println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+        log_println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
     }
 
     match msg {
@@ -83,13 +80,13 @@ pub async fn on_message(
             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
 
             if is_new_client {
-                println!("Client identified as: {}", new_name);
+                log_println!("Client identified as: {}", new_name);
                 clients_guard.push(new_name.clone());
             } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
-                println!("Client {} changed name to {}", clients_guard[i], new_name);
+                log_println!("Client {} changed name to {}", clients_guard[i], new_name);
                 clients_guard[i] = new_name.clone();
             } else {
-                eprintln!(
+                log_eprintln!(
                     "Error: Could not find old name '{}' to replace. Adding '{}'.",
                     old_name, new_name
                 );
@@ -161,7 +158,7 @@ pub async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
-            println!("[ info ] Client '{}' requested device list.", client_name);
+            log_println!("[ info ] Client '{}' requested device list.", client_name);
             ServerMessage::Notification(SovaNotification::DeviceListChanged(
                 state.devices.device_list(),
             ))

@@ -1,6 +1,8 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use sova_core::log_eprintln;
+
 static SOUNDFONT: &[u8] = include_bytes!("../../assets/soundfont/generaluser_gs.sf2");
 const FILENAME: &str = "generaluser_gs.sf2";
 
@@ -22,7 +24,7 @@ pub fn ensure_default_soundfont() -> PathBuf {
     std::fs::create_dir_all(&dir).expect("failed to create default soundfont directory");
     std::fs::write(dir.join(FILENAME), SOUNDFONT).expect("failed to write default soundfont");
     std::fs::write(&fp_file, &embedded_fp).ok();
-    eprintln!("[sova] extracted default soundfont to {}", dir.display());
+    log_eprintln!("[sova] extracted default soundfont to {}", dir.display());
     dir
 }
 

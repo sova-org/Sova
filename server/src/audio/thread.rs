@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
+use sova_core::{log_eprintln, log_println};
 use sova_core::schedule::SovaNotification;
 
 use super::{AudioCommand, AudioEngineState, DouxConfig, DouxManager, PeakCapture, ScopeCapture};
@@ -50,18 +51,18 @@ pub fn spawn_audio_thread(
                 match mgr.start(sync_time) {
                     Ok(proxy) => {
                         if let Err(e) = devices.connect_audio_engine("Doux", proxy) {
-                            eprintln!("Failed to register Doux engine: {}", e);
+                            log_eprintln!("Failed to register Doux engine: {}", e);
                             if let Ok(mut state) = state_cache.lock() {
                                 state.error = Some(format!("Failed to register: {}", e));
                             }
                             None
                         } else {
-                            println!("Doux audio engine started successfully.");
+                            log_println!("Doux audio engine started successfully.");
                             if let Some(prev) = devices.get_name_for_slot(1) {
                                 let _ = devices.assign_slot(2, &prev);
                             }
                             if let Err(e) = devices.assign_slot(1, "Doux") {
-                                eprintln!("Failed to assign Doux to Slot 1: {}", e);
+                                log_eprintln!("Failed to assign Doux to Slot 1: {}", e);
                             }
                             let msg = ServerMessage::Notification(
                                 SovaNotification::DeviceListChanged(devices.device_list()),
@@ -89,7 +90,7 @@ pub fn spawn_audio_thread(
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to start Doux audio engine: {:?}", e);
+                        log_eprintln!("Failed to start Doux audio engine: {:?}", e);
                         if let Ok(mut state) = state_cache.lock() {
                             state.error = Some(format!("{:?}", e));
                         }
@@ -98,7 +99,7 @@ pub fn spawn_audio_thread(
                 }
             }
             Err(e) => {
-                eprintln!("Failed to create Doux manager: {:?}", e);
+                log_eprintln!("Failed to create Doux manager: {:?}", e);
                 if let Ok(mut state) = state_cache.lock() {
                     state.error = Some(format!("{:?}", e));
                 }
@@ -110,7 +111,7 @@ pub fn spawn_audio_thread(
 
         while running_flag.load(Ordering::Relaxed) {
             if let Ok(request) = restart_rx.try_recv() {
-                println!("[ audio ] Received restart request");
+                log_println!("[ audio ] Received restart request");
 
                 if let Some(ref mut mgr) = manager {
                     mgr.hush();
@@ -137,7 +138,7 @@ pub fn spawn_audio_thread(
                                         let _ = devices.assign_slot(2, &prev);
                                     }
                                     if let Err(e) = devices.assign_slot(1, "Doux") {
-                                        eprintln!("Failed to assign Doux to Slot 1: {}", e);
+                                        log_eprintln!("Failed to assign Doux to Slot 1: {}", e);
                                     }
                                     let msg = ServerMessage::Notification(
                                         SovaNotification::DeviceListChanged(devices.device_list()),
@@ -163,7 +164,7 @@ pub fn spawn_audio_thread(
                                         &request.config.sample_paths,
                                     ));
                                     manager = Some(new_mgr);
-                                    println!("[ audio ] Restart successful");
+                                    log_println!("[ audio ] Restart successful");
                                     Ok(new_state)
                                 }
                             }
@@ -201,11 +202,11 @@ pub fn spawn_audio_thread(
 
             if let Some(ref mut mgr) = manager {
                 if mgr.needs_reconnect() {
-                    eprintln!("[ audio ] Device lost, attempting reconnection...");
+                    log_eprintln!("[ audio ] Device lost, attempting reconnection...");
                     std::thread::sleep(std::time::Duration::from_secs(1));
                     match mgr.reconnect_streams() {
                         Ok(()) => {
-                            eprintln!("[ audio ] Reconnected to audio device");
+                            log_eprintln!("[ audio ] Reconnected to audio device");
                             if let Ok(mut state) = state_cache.lock() {
                                 *state = mgr.state();
                             }
@@ -217,7 +218,7 @@ pub fn spawn_audio_thread(
                             }
                         }
                         Err(e) => {
-                            eprintln!("[ audio ] Reconnection failed: {e:?}");
+                            log_eprintln!("[ audio ] Reconnection failed: {e:?}");
                         }
                     }
                 }

@@ -18,14 +18,7 @@ const DEFAULT_TEMPO : f64 = 120.0;
 const DEFAULT_QUANTUM : f64 = 4.0;
 
 #[tokio::main]
-async fn main() -> color_eyre::Result<()> {
-    let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
-    let devices = Arc::new(DeviceMap::new());
-    let languages = Arc::new(create_language_center());
-    
-    // let (world_handle, sched_handle, sched_iface, sched_update) 
-    //     = start_scheduler_and_world(clock_server, devices, languages);
-
+async fn main() -> color_eyre::Result<()> {    
     color_eyre::install()?;
     let terminal = ratatui::init();
 
@@ -39,19 +32,15 @@ async fn main() -> color_eyre::Result<()> {
     scene.line_mut(2).trailing = true;
     scene.line_mut(4).manual = true;
     let state = AppState {
-        scene_image: scene,
-        playing: PlaybackState::Playing,
-        positions: Vec::new(),
+        client_state: Default::default(),
         events: EventHandler::new(),
         selected: (0, 0),
         clipboard: None,
         page: AppPage::Connection,
-        devices: Vec::new(),
-        device_map: devices,
-        languages,
         palette: Theme::new(ThemeName::GruvboxDark).into(),
         client: None,
-        connection_task: None
+        server_task: None,
+        logs: Default::default()
     };
 
     let result = App::new(state).run(terminal).await;

@@ -5,6 +5,7 @@ use crate::server::message_processing::on_message;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
+use sova_core::{log_eprintln, log_println};
 use sova_core::{Scene, vm::LanguageCenter};
 use std::sync::OnceLock;
 use std::thread::JoinHandle;
@@ -380,7 +381,7 @@ impl SovaCoreServer {
     pub async fn start(&mut self, token: CancellationToken) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
-        println!("Server listening on {}", addr);
+        log_println!("Server listening on {}", addr);
 
         let (mut world_handle, mut sched_handle, _) = self.start_core().await;
 
@@ -459,15 +460,15 @@ impl SovaCoreServer {
         loop {
             select! {
                 Ok((socket, client_addr)) = listener.accept() => {
-                    println!("New connection from {}", client_addr);
+                    log_println!("New connection from {}", client_addr);
                     let client_state = self.state();
                     tokio::spawn(async move {
                         match process_client(socket, client_state).await {
                             Ok(client_name) => {
-                                println!("Client '{}' disconnected.", client_name);
+                                log_println!("Client '{}' disconnected.", client_name);
                             },
                             Err(e) => {
-                                eprintln!("Error handling client {}: {}", client_addr, e);
+                                log_eprintln!("Error handling client {}: {}", client_addr, e);
                             }
                         }
                     });
@@ -497,12 +498,12 @@ impl SovaCoreServer {
                     }
                 }
                 _ = token.cancelled() => {
-                    println!("\n[!] Server task cancelled, shutting down server...");
+                    log_println!("\n[!] Server task cancelled, shutting down server...");
                     break;
                 }
                 _ = signal::ctrl_c() => {
                     token.cancel();
-                    println!("\n[!] Ctrl+C received, shutting down server...");
+                    log_println!("\n[!] Ctrl+C received, shutting down server...");
                     break;
                 }
             }
@@ -552,7 +553,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         })) => {
             if let Some(required) = &state.password {
                 if password.as_deref() != Some(required.as_str()) {
-                    eprintln!(
+                    log_eprintln!(
                         "Connection rejected: Invalid password from {}",
                         client_addr_str
                     );
@@ -567,7 +568,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
 
             if new_name.is_empty() || new_name == DEFAULT_CLIENT_NAME {
-                eprintln!(
+                log_eprintln!(
                     "Connection rejected: Invalid username '{}' from {}",
                     new_name, client_addr_str
                 );
@@ -583,7 +584,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
             let mut clients_guard = state.clients.lock().await;
             if clients_guard.iter().any(|name| name == &new_name) {
-                eprintln!(
+                log_eprintln!(
                     "Connection rejected: Username '{}' already taken by {}",
                     new_name, client_addr_str
                 );
@@ -600,7 +601,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
 
             client_name = new_name;
-            println!("Client {} identified as: {}", client_addr_str, client_name);
+            log_println!("Client {} identified as: {}", client_addr_str, client_name);
             clients_guard.push(client_name.clone());
 
             let initial_scene = state.scene_image.lock().await.clone();
@@ -622,7 +623,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             #[cfg(feature = "audio")]
             enrich_with_sound_docs(&mut available_languages);
 
-            println!(
+            log_println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
                 client_addr_str, client_name, initial_is_playing
             );
@@ -655,7 +656,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             let hello_result = timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await;
             match &hello_result {
                 Ok(Ok(())) => {
-                    println!(
+                    log_println!(
                         "[ handshake ] Hello delivered to {} ({}). peer_id={}, frame_docs={}, presence_bytes={}",
                         client_addr_str,
                         client_name,
@@ -665,14 +666,14 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     );
                 }
                 Ok(Err(e)) => {
-                    eprintln!("[ handshake ] write error sending Hello to {}: {}", client_name, e);
+                    log_eprintln!("[ handshake ] write error sending Hello to {}: {}", client_name, e);
                 }
                 Err(_) => {
-                    eprintln!("[ handshake ] timeout sending Hello to {}", client_name);
+                    log_eprintln!("[ handshake ] timeout sending Hello to {}", client_name);
                 }
             }
             if !matches!(hello_result, Ok(Ok(()))) {
-                eprintln!("Failed to send Hello to {}", client_name);
+                log_eprintln!("Failed to send Hello to {}", client_name);
                 let mut clients_guard = state.clients.lock().await;
                 if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
                     clients_guard.remove(i);
@@ -691,7 +692,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
         }
         Ok(Some(other_msg)) => {
-            eprintln!(
+            log_eprintln!(
                 "Connection rejected: Expected Login, received {:?} from {}",
                 other_msg, client_addr_str
             );
@@ -704,11 +705,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             ));
         }
         Ok(None) => {
-            println!("Connection closed by {} during handshake.", client_addr_str);
+            log_println!("Connection closed by {} during handshake.", client_addr_str);
             return Ok(client_name);
         }
         Err(e) => {
-            eprintln!(
+            log_eprintln!(
                 "Read error during handshake with {}: {}",
                 client_addr_str, e
             );
@@ -741,7 +742,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     break;
                 }
                 Err(e) if e.kind() == ErrorKind::InvalidData => {
-                    eprintln!("Bad frame from {}: {}. Skipping.", reader_client_name, e);
+                    log_eprintln!("Bad frame from {}: {}. Skipping.", reader_client_name, e);
                 }
                 Err(e) => {
                     let _ = client_msg_tx.send(ClientRead::Error(e));
@@ -767,20 +768,20 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                             timeout(WRITE_TIMEOUT, send_msg(&mut writer, response)).await,
                             Ok(Ok(()))
                         ) {
-                            eprintln!("Failed write direct response to {}", client_name);
+                            log_eprintln!("Failed write direct response to {}", client_name);
                             break;
                         }
                     },
                     Some(ClientRead::Closed) => {
-                        println!("Connection closed cleanly by {}.", client_name);
+                        log_println!("Connection closed cleanly by {}.", client_name);
                         break;
                     },
                     Some(ClientRead::Error(_e)) => {
-                        eprintln!("Read error for client {}. Closing connection.", client_name);
+                        log_eprintln!("Read error for client {}. Closing connection.", client_name);
                         break;
                     }
                     None => {
-                        eprintln!("Reader task ended for {}. Closing connection.", client_name);
+                        log_eprintln!("Reader task ended for {}. Closing connection.", client_name);
                         break;
                     }
                 }
@@ -809,7 +810,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         timeout(WRITE_TIMEOUT, send_msg(&mut writer, ServerMessage::Snapshot(snapshot))).await,
                         Ok(Ok(()))
                     ) {
-                        eprintln!("Resync write failed for {}, evicting", client_name);
+                        log_eprintln!("Resync write failed for {}, evicting", client_name);
                         break;
                     }
                     while update_receiver.try_recv().is_ok() {}
@@ -858,12 +859,12 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
     reader_task.abort();
 
-    println!("Cleaning up connection for client: {}", client_name);
+    log_println!("Cleaning up connection for client: {}", client_name);
     if client_name != DEFAULT_CLIENT_NAME {
         let mut clients_guard = state.clients.lock().await;
         if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
             clients_guard.remove(i);
-            println!("Removed {} from client list.", client_name);
+            log_println!("Removed {} from client list.", client_name);
             let updated_clients = clients_guard.clone();
             drop(clients_guard);
             broadcast_raw(
@@ -872,13 +873,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 false,
             );
         } else {
-            eprintln!(
+            log_eprintln!(
                 "Client '{}' not found in list during cleanup, though name was set.",
                 client_name
             );
         }
     } else {
-        println!(
+        log_println!(
             "Client disconnected before setting a name (still '{}'). No list removal needed.",
             DEFAULT_CLIENT_NAME
         );
@@ -896,7 +897,7 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     let payload = match read_wire_frame(reader).await {
         Ok(buf) => buf,
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-            println!("Connection closed by {} (EOF).", client_id_for_logging);
+            log_println!("Connection closed by {} (EOF).", client_id_for_logging);
             return Ok(None);
         }
         Err(e) => return Err(e),

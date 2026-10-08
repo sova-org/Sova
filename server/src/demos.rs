@@ -1,4 +1,4 @@
-use sova_core::scene::{Line, Scene};
+use sova_core::{log_eprintln, log_println, scene::{Line, Scene}};
 
 // Language demos (auto-generated from assets/demos/cagire/ and assets/demos/boinx/)
 include!(concat!(env!("OUT_DIR"), "/demos_generated.rs"));
@@ -31,11 +31,11 @@ pub fn random_demo() -> crate::Snapshot {
     let (name, bytes) = demos[idx];
     match serde_json::from_slice::<crate::Snapshot>(bytes) {
         Ok(snap) => {
-            println!("Loaded demo: {name}");
+            log_println!("Loaded demo: {name}");
             snap
         }
         Err(e) => {
-            eprintln!("Failed to load demo '{name}': {e}");
+            log_eprintln!("Failed to load demo '{name}': {e}");
             crate::Snapshot {
                 scene: Scene::new(vec![Line::new(vec![1.0])]),
                 tempo: 120.0,

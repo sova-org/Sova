@@ -1,4 +1,5 @@
 use include_dir::{Dir, include_dir};
+use sova_core::log_eprintln;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
@@ -26,7 +27,7 @@ pub fn ensure_default_samples() -> PathBuf {
     std::fs::create_dir_all(&target).expect("failed to create default samples directory");
     extract_dir(&SAMPLES, &target);
     std::fs::write(&fp_file, &embedded_fp).ok();
-    eprintln!("[sova] extracted default samples to {}", target.display());
+    log_eprintln!("[sova] extracted default samples to {}", target.display());
     target
 }
 

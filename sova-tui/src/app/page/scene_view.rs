@@ -114,7 +114,7 @@ impl SceneView {
                 state.selected.1 = state.selected.1.saturating_sub(1)
             }
             KeyCode::Down => {
-                let max_l = state.scene_image.n_lines().saturating_sub(1);
+                let max_l = state.client_state.scene.n_lines().saturating_sub(1);
                 state.selected.0 = std::cmp::min(state.selected.0 + 1, max_l);
                 state.selected.1 = std::cmp::min(
                     state.selected.1, 
@@ -141,8 +141,9 @@ impl StatefulWidget for SceneView {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let scene_image = &state.client_state.scene;
         let mut max_frames = 0;
-        for line in state.scene_image.lines.iter() {
+        for line in scene_image.lines.iter() {
             max_frames = std::cmp::max(max_frames, line.n_frames());
         }
         let visible_lines = (
@@ -156,7 +157,7 @@ impl StatefulWidget for SceneView {
         let mid_h = visible_lines / 2;
         let mid_w = visible_frames / 2;
         let first_line = if state.selected.0 > mid_h {
-            std::cmp::min(state.selected.0 - mid_h, state.scene_image.n_lines().saturating_sub(visible_lines))
+            std::cmp::min(state.selected.0 - mid_h, state.client_state.scene.n_lines().saturating_sub(visible_lines))
         } else {
             0
         };
@@ -167,7 +168,7 @@ impl StatefulWidget for SceneView {
         };
         let mut x_scroll_state = ScrollbarState::new(max_frames.saturating_sub(visible_frames) + 1)
             .position(first_frame);
-        let mut y_scroll_state = ScrollbarState::new(state.scene_image.n_lines().saturating_sub(visible_lines) + 1)
+        let mut y_scroll_state = ScrollbarState::new(scene_image.n_lines().saturating_sub(visible_lines) + 1)
             .position(first_line);
         for j in 0..max_frames {
             if j >= visible_frames {
@@ -182,7 +183,7 @@ impl StatefulWidget for SceneView {
             let f_j = j + first_frame;
             Self::render_frame_header(header_area, buf, f_j, f_j == state.selected.1, &state.palette);
         }
-        for (i, line) in state.scene_image.lines[first_line..].iter().enumerate() {
+        for (i, line) in scene_image.lines[first_line..].iter().enumerate() {
             if i >= visible_lines {
                 break;
             }
@@ -220,7 +221,7 @@ impl StatefulWidget for SceneView {
                 );
             }
         }
-        if visible_lines < state.scene_image.n_lines() {
+        if visible_lines < scene_image.n_lines() {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .thumb_style(state.palette.selection)
                 .style(state.palette.surface)
