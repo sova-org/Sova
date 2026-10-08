@@ -152,8 +152,6 @@ impl ServerPanel {
             let initial = scene_image.blocking_lock();
             frame_text.rebuild_from_scene(&initial);
         }
-        let presence = std::sync::Arc::new(loro::awareness::EphemeralStore::new(30_000));
-        let next_peer_id = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1));
 
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
         let audio_thread = spawn_audio_thread(
@@ -188,8 +186,6 @@ impl ServerPanel {
             password,
             master_gain,
             frame_text,
-            presence,
-            next_peer_id,
         );
 
         let cancel_token = CancellationToken::new();

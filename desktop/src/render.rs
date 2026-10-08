@@ -74,7 +74,7 @@ impl SovaApp {
                     }
                 });
             if let Some(new_name) = confirmed_name {
-                self.bridge.send(ClientMessage::SetName {
+                self.bridge.send(ClientMessage::Login {
                     name: new_name.clone(),
                     password: None,
                 });

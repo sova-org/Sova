@@ -41,6 +41,7 @@ mod image_maintainer;
 mod message_processing;
 
 pub use frame_text_store::FrameTextStore;
+pub use image_maintainer::apply_notification;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -275,8 +276,6 @@ impl SovaCoreServer {
         password: Option<String>,
         master_gain: Arc<AtomicU32>,
         frame_text: Arc<FrameTextStore>,
-        presence: Arc<loro::awareness::EphemeralStore>,
-        next_peer_id: Arc<AtomicU64>,
     ) -> Self {
         let (core_restart_tx, core_restart_rx) = tokio::sync::mpsc::channel(128);
         SovaCoreServer {
@@ -299,8 +298,8 @@ impl SovaCoreServer {
             password,
             master_gain,
             frame_text,
-            presence,
-            next_peer_id,
+            presence: std::sync::Arc::new(loro::awareness::EphemeralStore::new(30_000)),
+            next_peer_id: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
         }
     }
 
@@ -431,7 +430,7 @@ impl SovaCoreServer {
                     }
                     _ = tick_interval.tick() => {
                         clock.capture_app_state();
-                        let msg = ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum());
+                        let msg = clock.snapshot().into();
                         broadcast_raw(&tick_registry, &msg, true);
                     }
                 }
@@ -544,12 +543,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut writer = BufWriter::with_capacity(32 * 1024, writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string();
 
-    let clock = Clock::from(&state.clock_server);
-
     let hello_msg: ServerMessage;
 
     match read_message_internal(&mut reader, &client_addr_str).await {
-        Ok(Some(ClientMessage::SetName {
+        Ok(Some(ClientMessage::Login {
             name: new_name,
             password,
         })) => {
@@ -619,13 +616,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 false,
             );
 
-            let initial_link_state = (
-                clock.tempo(),
-                clock.beat(),
-                clock.beat() % clock.quantum(),
-                state.clock_server.link.num_peers() as u32,
-                state.clock_server.link.is_start_stop_sync_enabled(),
-            );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
             let mut available_languages: Vec<_> = state.languages.definitions().collect();
@@ -652,11 +642,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 scene: initial_scene,
                 devices: initial_devices,
                 peers: initial_peers,
-                link_state: initial_link_state,
+                clock_state: state.clock_server.snapshot(),
                 is_playing: initial_is_playing,
                 languages: available_languages,
                 audio_engine_state: state.get_audio_engine_state(),
-                link_enabled: state.clock_server.link.is_enabled(),
+                link_state: state.clock_server.link_state(),
                 frame_text_layout,
                 frame_doc_snapshots,
                 presence: presence_bytes,
@@ -702,7 +692,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         }
         Ok(Some(other_msg)) => {
             eprintln!(
-                "Connection rejected: Expected SetName, received {:?} from {}",
+                "Connection rejected: Expected Login, received {:?} from {}",
                 other_msg, client_addr_str
             );
             let refuse_msg =

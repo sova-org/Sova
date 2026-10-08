@@ -82,15 +82,11 @@ impl ConnectionView {
                 }
                 self.current_input = (self.current_input + 1).min(6);
             }
-            KeyCode::Left => {
-                if self.current_input == 6 {
-                    self.current_input = 5;
-                }
+            KeyCode::Left if self.current_input == 6 => {
+                self.current_input = 5; 
             }
-            KeyCode::Right => {
-                if self.current_input == 5 {
-                    self.current_input = 6;
-                }
+            KeyCode::Right if self.current_input == 5 => {
+                self.current_input = 6;
             }
             KeyCode::Enter => {
                 if self.current_input == 4 {

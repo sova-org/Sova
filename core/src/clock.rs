@@ -8,7 +8,7 @@ use std::{
 };
 
 use rusty_link::{AblLink, SessionState};
-use serde::{Deserialize, Serialize, ser::SerializeStruct};
+use serde::{Deserialize, Serialize};
 
 /// Type alias for time measured in microseconds.
 pub type SyncTime = u64;
@@ -268,19 +268,49 @@ impl ClockServer {
         ClockSnapshot {
             tempo: ss.tempo(),
             beat: ss.beat_at_time(micros, quantum),
-            phase: ss.phase_at_time(micros, quantum),
-            playing: ss.is_playing(),
+            micros: micros as SyncTime,
             quantum,
+        }
+    }
+
+    pub fn link_state(&self) -> LinkState {
+        LinkState { 
+            enabled: self.link.is_enabled(), 
+            start_stop_sync: self.link.is_start_stop_sync_enabled(), 
+            num_peers: self.link.num_peers() as u32
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct ClockSnapshot {
     pub tempo: f64,
     pub beat: f64,
-    pub phase: f64,
-    pub playing: bool,
+    pub micros: SyncTime,
     pub quantum: f64,
+}
+
+impl ClockSnapshot {
+    pub fn phase(&self) -> f64 {
+        if self.quantum > 0.0 { self.beat % self.quantum } else { 0.0 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LinkState {
+    pub enabled: bool,
+    pub start_stop_sync: bool,
+    pub num_peers: u32,
+}
+
+impl Default for LinkState {
+    fn default() -> Self {
+        Self { 
+            enabled: true, 
+            start_stop_sync: true, 
+            num_peers: 1
+        }
+    }
 }
 
 /// Represents a snapshot of the Ableton Link session state.
@@ -517,6 +547,21 @@ impl Clock {
         );
         self.commit_app_state();
     }
+
+    pub fn snapshot(&self) -> ClockSnapshot {
+        let micros = self.micros();
+        let quantum = self.quantum();
+        ClockSnapshot {
+            tempo: self.tempo(),
+            beat: self.beat(),
+            micros,
+            quantum,
+        }
+    }
+
+    pub fn link_state(&self) -> LinkState {
+        self.server.link_state()
+    }
 }
 
 impl Serialize for Clock {
@@ -524,12 +569,7 @@ impl Serialize for Clock {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("Clock", 4)?;
-        state.serialize_field("micros", &self.micros())?;
-        state.serialize_field("beat", &self.beat())?;
-        state.serialize_field("tempo", &self.tempo())?;
-        state.serialize_field("quantum", &self.quantum())?;
-        state.end()
+        self.snapshot().serialize(serializer)
     }
 }
 

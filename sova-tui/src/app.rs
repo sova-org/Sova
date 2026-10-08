@@ -1,13 +1,18 @@
-use crate::{app::{connecting_view::ConnectingView, connection_view::ConnectionView, scene_view::SceneView}, event::{AppEvent, Event}, notification::Notification, popup::{Popup, PopupValue}};
+use std::{io::ErrorKind, time::Duration};
+
+use crate::{app::{connecting_view::ConnectingView, connection_view::ConnectionView, scene_view::SceneView}, event::{AppEvent, Event}, network::server::start_server, notification::Notification, popup::{Popup, PopupValue}};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{DefaultTerminal, widgets::Widget};
 
 mod state;
+use sova_core::Scene;
+use sova_server::{SovaClient, SovaCoreServer};
 pub use state::*;
 
 mod page;
 pub use page::*;
+use tokio::{io, task::JoinHandle, time::timeout};
 
 /// Application.
 pub struct App {
@@ -16,7 +21,7 @@ pub struct App {
     pub popup: Popup,
     pub notification: Notification,
     
-    pub connection_view: ConnectionView
+    pub connection_view: ConnectionView,
 }
 
 impl App {
@@ -28,7 +33,7 @@ impl App {
             popup: Popup::default(),
             notification: Notification::new(),
 
-            connection_view: ConnectionView::new()
+            connection_view: ConnectionView::new(),
         }
     }
 
@@ -43,7 +48,7 @@ impl App {
 
     pub async fn handle_events(&mut self) -> color_eyre::Result<()> {
         match self.state.events.next().await? {
-            Event::Tick => self.tick(),
+            Event::Tick => self.tick().await,
             Event::Crossterm(event) => match event {
                 crossterm::event::Event::Key(key_event)
                     if key_event.kind == crossterm::event::KeyEventKind::Press =>
@@ -62,9 +67,36 @@ impl App {
                 AppEvent::Negative(text) => self.notification.negative(text, self.state.palette),
                 AppEvent::Connect(ip, port, username, pass) => {
                     self.state.page = AppPage::Connecting;
+                    let mut client = SovaClient::new(ip, port);
+                    client.name = username;
+                    if !pass.is_empty() {
+                        client.password = Some(pass)
+                    } else {
+                        client.password = None;
+                    }
+                    self.state.connection_task = Some(tokio::spawn(async move {
+                        let res = client.connect_with_timeout(Duration::from_secs(5)).await;
+                        (client, res)
+                    }));
                 }
                 AppEvent::Server(port, username, pass) => {
-                    self.state.page = AppPage::Connecting;
+                    self.state.page = AppPage::Scene;
+                    let pass = if pass.is_empty() { None } else { Some(pass) };
+                    let serv = start_server(port, pass.clone());
+                    let mut client = SovaClient::new("127.0.0.1".to_string(), port);
+                    client.name = username;
+                    client.password = pass;
+                    self.state.connection_task = Some(tokio::spawn(async move {
+                        let res = client.connect_with_timeout(Duration::from_secs(5)).await;
+                        (client, res)
+                    }));
+                }
+                AppEvent::Connected => {
+                    self.state.page = AppPage::Scene;
+                }
+                AppEvent::ConnectionFailed(msg) => {
+                    self.notification.negative(msg, self.state.palette);
+                    self.state.page = AppPage::Connection;
                 }
                 _ => ()
             },
@@ -111,7 +143,14 @@ impl App {
     ///
     /// The tick event is where you can update the state of your application with any logic that
     /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
-    pub fn tick(&self) {}
+    pub async fn tick(&mut self) {
+        match self.state.page {
+            AppPage::Connecting => {
+                ConnectingView::update_state(&mut self.state).await;
+            }
+            _ => ()
+        }
+    }
 
     /// Set running to false to quit the application.
     pub fn quit(&mut self) {

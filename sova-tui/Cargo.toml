@@ -13,6 +13,7 @@ color-eyre = "0.6.5"
 tui-big-text = "0.8.9"
 tui-checkbox = "0.4.6"
 sova_core = { path = "../core", package = "core" }
+sova_server = { path = "../server", package = "sova-server", features = ["audio"] }
 langs = { path = "../langs", package = "langs" }
 doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.35", package = "doux-sova", optional = true }
 arboard = "3.6.1"
@@ -23,6 +24,7 @@ nerd-font-symbols = "0.3.0"
 ratatui-themes = "0.3.0"
 tokio = { workspace = true, features = ["full"] }
 futures = "0.3.34"
+tokio-util.workspace = true
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

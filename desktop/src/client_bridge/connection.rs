@@ -51,7 +51,7 @@ impl ClientBridge {
             }
 
             if let Err(e) = client
-                .send(ClientMessage::SetName {
+                .send(ClientMessage::Login {
                     name: username,
                     password,
                 })
@@ -63,7 +63,7 @@ impl ClientBridge {
             }
 
             match client.read().await {
-                Ok(Some(msg @ ServerMessage::Hello { .. })) => {
+                Ok(msg @ ServerMessage::Hello { .. }) => {
                     let _ = event_tx.send(msg);
                     ctx.request_repaint();
                     if feedback && let Err(e) = client.send(ClientMessage::EnableFeedback).await {
@@ -72,28 +72,18 @@ impl ClientBridge {
                         return;
                     }
                 }
-                Ok(Some(ServerMessage::ConnectionRefused(reason))) => {
+                Ok(ServerMessage::ConnectionRefused(reason)) => {
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(reason));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
                     return;
                 }
-                Ok(Some(other)) => {
+                Ok(other) => {
                     let kind = format!("{:?}", std::mem::discriminant(&other));
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(format!(
                         "Unexpected first server message (variant {kind}); expected Hello — \
                          is the server running an older protocol?",
                     )));
-                    ctx.request_repaint();
-                    let _ = client.disconnect().await;
-                    return;
-                }
-                Ok(None) => {
-                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
-                        "Failed to deserialize handshake (server replied with malformed bytes; \
-                         likely a protocol-version mismatch — rebuild server and client \
-                         from the same commit)".into(),
-                    ));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
                     return;

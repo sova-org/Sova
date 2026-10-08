@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::time::Instant;
 
+use sova_core::clock::LinkState;
 use sova_core::compiler::CompilationState;
 use sova_core::log_eprintln;
 use sova_core::schedule::SovaNotification;
@@ -84,11 +85,11 @@ impl ClientBridge {
                 scene,
                 devices,
                 peers,
-                link_state,
+                clock_state,
                 is_playing,
                 languages,
                 audio_engine_state,
-                link_enabled,
+                link_state,
                 frame_text_layout,
                 frame_doc_snapshots,
                 presence,
@@ -114,14 +115,14 @@ impl ClientBridge {
                     }
                 }
                 self.clock = super::ClockState {
-                    tempo: link_state.0,
-                    beat: link_state.1,
-                    phase: 0.0,
-                    quantum: link_state.2,
+                    tempo: clock_state.tempo,
+                    beat: clock_state.beat,
+                    phase: clock_state.phase(),
+                    quantum: clock_state.quantum,
                     playing: is_playing,
-                    num_peers: link_state.3,
-                    start_stop_sync: link_state.4,
-                    link_enabled,
+                    num_peers: link_state.num_peers,
+                    start_stop_sync: link_state.start_stop_sync,
+                    link_enabled: link_state.enabled,
                 };
                 self.audio_state = audio_engine_state;
                 self.status = super::ConnectionStatus::Connected;
@@ -236,11 +237,11 @@ impl ClientBridge {
                 }
                 self.positions = p;
             }
-            ServerMessage::ClockState(tempo, beat, _micros, quantum) => {
-                self.clock.tempo = tempo;
-                self.clock.beat = beat;
-                self.clock.phase = if quantum > 0.0 { beat % quantum } else { 0.0 };
-                self.clock.quantum = quantum;
+            ServerMessage::ClockState(clock_snap) => {
+                self.clock.tempo = clock_snap.tempo;
+                self.clock.beat = clock_snap.beat;
+                self.clock.phase = clock_snap.phase();
+                self.clock.quantum = clock_snap.quantum;
             }
             ServerMessage::Notification(SovaNotification::PlaybackStateChanged(state)) => {
                 self.clock.playing = !matches!(state, PlaybackState::Stopped);
@@ -352,20 +353,15 @@ impl ClientBridge {
                 ));
                 self.errors.insert((e.line, e.frame), e);
             }
-            ServerMessage::FeedbackEnabled {
-                scene,
-                tempo,
-                quantum,
-                is_playing,
-            } => {
+            ServerMessage::FeedbackEnabled => {
                 if let Some(engine) = &self.feedback_engine {
-                    engine.send(SchedulerMessage::SetScene(scene, ActionTiming::Immediate));
-                    engine.send(SchedulerMessage::SetTempo(tempo, ActionTiming::Immediate));
+                    engine.send(SchedulerMessage::SetScene(self.scene.unwrap_or_default(), ActionTiming::Immediate));
+                    engine.send(SchedulerMessage::SetTempo(self.clock.tempo, ActionTiming::Immediate));
                     engine.send(SchedulerMessage::SetQuantum(
-                        quantum,
+                        self.clock.quantum,
                         ActionTiming::Immediate,
                     ));
-                    if is_playing {
+                    if self.clock.playing {
                         engine.send(SchedulerMessage::TransportStart(ActionTiming::Immediate));
                     }
                 }
@@ -417,11 +413,11 @@ impl ClientBridge {
                 self.positions.clear();
                 self.position_start_beat.clear();
             }
-            ServerMessage::LinkState {
+            ServerMessage::LinkState(LinkState {
                 enabled,
                 start_stop_sync,
                 num_peers,
-            } => {
+            }) => {
                 self.clock.link_enabled = enabled;
                 self.clock.start_stop_sync = start_stop_sync;
                 self.clock.num_peers = num_peers;

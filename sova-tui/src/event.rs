@@ -44,6 +44,8 @@ pub enum AppEvent {
     RefreshScript,
     Connect(String, u16, String, String),
     Server(u16, String, String),
+    Connected,
+    ConnectionFailed(String),
     Quit,
 }
 

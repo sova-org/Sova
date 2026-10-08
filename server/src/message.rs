@@ -1,18 +1,16 @@
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime,
-    protocol::DeviceInfo,
-    scene::Scene,
-    schedule::{SchedulerMessage, SovaNotification},
-    vm::language::LanguageDefinition,
+    clock::{ClockSnapshot, LinkState}, protocol::DeviceInfo, scene::Scene, schedule::{SchedulerMessage, SovaNotification}, vm::language::LanguageDefinition,
 };
 
 use crate::FrameTextId;
 use crate::server::Snapshot;
 
-fn default_true() -> bool {
-    true
+impl From<ClockSnapshot> for ServerMessage {
+    fn from(value: ClockSnapshot) -> Self {
+        ServerMessage::ClockState(value)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -23,12 +21,12 @@ pub enum ServerMessage {
         scene: Scene,
         devices: Vec<DeviceInfo>,
         peers: Vec<String>,
-        link_state: (f64, f64, f64, u32, bool),
+        clock_state: ClockSnapshot,
         is_playing: bool,
         languages: Vec<LanguageDefinition>,
         audio_engine_state: AudioEngineState,
-        #[serde(default = "default_true")]
-        link_enabled: bool,
+        #[serde(default)]
+        link_state: LinkState,
         frame_text_layout: Vec<((usize, usize), FrameTextId)>,
         frame_doc_snapshots: Vec<(FrameTextId, Vec<u8>)>,
         presence: Vec<u8>,
@@ -41,7 +39,7 @@ pub enum ServerMessage {
     InternalError(String),
     ConnectionRefused(String),
     Snapshot(Snapshot),
-    ClockState(f64, f64, SyncTime, f64),
+    ClockState(ClockSnapshot),
     DevicesRestored {
         missing_devices: Vec<String>,
     },
@@ -49,19 +47,10 @@ pub enum ServerMessage {
     ScopeData(Vec<f32>),
     PeakData(Vec<f32>),
 
-    FeedbackEnabled {
-        scene: Scene,
-        tempo: f64,
-        quantum: f64,
-        is_playing: bool,
-    },
+    FeedbackEnabled,
     Feedback(SchedulerMessage),
     CoreRestarted,
-    LinkState {
-        enabled: bool,
-        start_stop_sync: bool,
-        num_peers: u32,
-    },
+    LinkState(LinkState),
     ScriptEdit {
         sender: String,
         frame_text_id: FrameTextId,

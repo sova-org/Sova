@@ -77,7 +77,7 @@ pub async fn on_message(
             ));
             ServerMessage::Success
         }
-        ClientMessage::SetName { name: new_name, .. } => {
+        ClientMessage::Login { name: new_name, .. } => {
             let mut clients_guard = state.clients.lock().await;
             let old_name = client_name.clone();
             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
@@ -110,8 +110,7 @@ pub async fn on_message(
         }
         ClientMessage::SchedulerControl(sched_msg) => send_and_relay(state, sched_msg),
         ClientMessage::GetClock => {
-            let clock = Clock::from(&state.clock_server);
-            ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
+            ServerMessage::ClockState(state.clock_server.snapshot().into())
         }
         ClientMessage::GetScene => ServerMessage::Notification(SovaNotification::UpdatedScene(
             state.scene_image.lock().await.clone(),
@@ -478,14 +477,7 @@ pub async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::EnableFeedback => {
-            let scene = state.scene_image.lock().await.clone();
-            let clock = Clock::from(&state.clock_server);
-            ServerMessage::FeedbackEnabled {
-                scene,
-                tempo: clock.tempo(),
-                quantum: clock.quantum(),
-                is_playing: state.is_playing.load(Ordering::Relaxed),
-            }
+            ServerMessage::FeedbackEnabled 
         }
         ClientMessage::Hush => {
             let _ = state
@@ -534,11 +526,7 @@ pub async fn on_message(
             state.clock_server.link.enable(enabled);
             broadcast_raw(
                 &state.client_registry,
-                &ServerMessage::LinkState {
-                    enabled,
-                    start_stop_sync: state.clock_server.link.is_start_stop_sync_enabled(),
-                    num_peers: state.clock_server.link.num_peers() as u32,
-                },
+                &ServerMessage::LinkState(state.clock_server.link_state()),
                 false,
             );
             ServerMessage::Success
@@ -547,11 +535,7 @@ pub async fn on_message(
             state.clock_server.link.enable_start_stop_sync(enabled);
             broadcast_raw(
                 &state.client_registry,
-                &ServerMessage::LinkState {
-                    enabled: state.clock_server.link.is_enabled(),
-                    start_stop_sync: enabled,
-                    num_peers: state.clock_server.link.num_peers() as u32,
-                },
+                &ServerMessage::LinkState(state.clock_server.link_state()),
                 false,
             );
             ServerMessage::Success

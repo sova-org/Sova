@@ -41,6 +41,14 @@ impl Palette {
         Style::default().fg(self.foreground)
     }
 
+    pub fn color_angle(&self, angle: f32) -> Color {
+        let Color::Rgb(r, g, b) = self.accent else {
+            return self.accent;
+        };
+        
+        todo!()
+    }
+
 }
 
 const fn surface(theme: &Theme) -> Color {
@@ -58,5 +66,6 @@ const fn surface(theme: &Theme) -> Color {
 }
 
 const fn midpoint(first: u8, second: u8) -> u8 {
-    ((first as u16 + second as u16) * 2 / 5) as u8
+    //((first as u16 + second as u16) * 2 / 5) as u8
+    ((first as u16 + second as u16) / 2) as u8
 }

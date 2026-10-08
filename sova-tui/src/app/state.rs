@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use arboard::Clipboard;
-use sova_core::{Scene, clock::Clock, device_map::DeviceMap, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, vm::LanguageCenter};
+use sova_core::{Scene, device_map::DeviceMap, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, vm::LanguageCenter};
+use sova_server::{SovaClient, client::ClientState};
+use tokio::{io, sync::Mutex, task::JoinHandle};
 
 use crate::{app::page::AppPage, event::EventHandler, theme::Palette};
 
@@ -13,11 +15,12 @@ pub struct AppState {
     pub selected: (usize, usize),
     pub clipboard: Option<Clipboard>,
     pub page: AppPage,
-    pub clock: Clock,
     pub devices: Vec<DeviceInfo>,
     pub device_map: Arc<DeviceMap>,
     pub languages: Arc<LanguageCenter>,
-    pub palette: Palette
+    pub palette: Palette,
+    pub client: Option<SovaClient>,
+    pub connection_task: Option<JoinHandle<(SovaClient, io::Result<()>)>>
 }
 
 impl AppState {
@@ -31,5 +34,9 @@ impl AppState {
 
     pub fn refresh_devices(&mut self) {
         self.devices = self.device_map.device_list();
+    }
+
+    pub fn client_state(&mut self) -> Arc<Mutex<ClientState>> {
+        self.client.as_ref().unwrap().client_state.clone()
     }
 }

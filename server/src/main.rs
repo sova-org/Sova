@@ -192,8 +192,6 @@ async fn main() {
         let initial = scene_image.lock().await;
         frame_text.rebuild_from_scene(&initial);
     }
-    let presence = std::sync::Arc::new(loro::awareness::EphemeralStore::new(30_000));
-    let next_peer_id = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1));
 
     #[cfg(feature = "audio")]
     let master_gain = audio_thread
@@ -219,8 +217,6 @@ async fn main() {
         cli.password,
         master_gain,
         frame_text,
-        presence,
-        next_peer_id,
     );
 
     println!("Starting Sova server on {}:{}...", server.ip, server.port);

@@ -12,6 +12,7 @@ pub mod ui;
 pub mod notification;
 pub mod popup;
 pub mod theme;
+pub mod network;
 
 const DEFAULT_TEMPO : f64 = 120.0; 
 const DEFAULT_QUANTUM : f64 = 4.0;
@@ -45,11 +46,12 @@ async fn main() -> color_eyre::Result<()> {
         selected: (0, 0),
         clipboard: None,
         page: AppPage::Connection,
-        clock: clock_server.into(),
         devices: Vec::new(),
         device_map: devices,
         languages,
-        palette: Theme::new(ThemeName::GruvboxDark).into()
+        palette: Theme::new(ThemeName::GruvboxDark).into(),
+        client: None,
+        connection_task: None
     };
 
     let result = App::new(state).run(terminal).await;

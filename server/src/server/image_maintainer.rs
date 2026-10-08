@@ -10,7 +10,7 @@ use crossbeam_channel::Receiver;
 use sova_core::{
     Scene,
     clock::Clock,
-    schedule::{SovaNotification, playback::PlaybackState},
+    schedule::SovaNotification,
 };
 
 use crate::{
@@ -27,15 +27,66 @@ fn notification_to_server_message(
         | SovaNotification::QuantumChanged(_)
         | SovaNotification::TempoChanged(_) => {
             clock.capture_app_state();
-            Some(ServerMessage::ClockState(
-                clock.tempo(),
-                clock.beat(),
-                clock.micros(),
-                clock.quantum(),
-            ))
+            Some(clock.snapshot().into())
         }
         notif => Some(ServerMessage::Notification(notif)),
     }
+}
+
+pub fn apply_notification(scene: &mut Scene, notif: &SovaNotification) {
+    match &notif {
+        SovaNotification::UpdatedScene(new_scene) => {
+            *scene = new_scene.clone();
+        }
+        SovaNotification::UpdatedSceneMode(mode) => {
+            scene.mode = *mode;
+        }
+        SovaNotification::UpdatedScenePrelude(prelude) => {
+            scene.prelude = prelude.clone();
+        }
+        SovaNotification::UpdatedLines(lines) => {
+            for (i, line) in lines {
+                scene.set_line(*i, line.clone());
+            }
+        }
+        SovaNotification::AddedLine(i, line) => {
+            scene.insert_line(*i, line.clone());
+        }
+        SovaNotification::RemovedLine(index) => {
+            scene.remove_line(*index);
+        }
+        SovaNotification::UpdatedFrames(frames) => {
+            for (line_id, frame_id, frame) in frames.iter() {
+                scene.line_mut(*line_id).set_frame(*frame_id, frame.clone());
+            }
+        }
+        SovaNotification::AddedFrame(line_id, frame_id, frame) => {
+            scene
+                .line_mut(*line_id)
+                .insert_frame(*frame_id, frame.clone());
+        }
+        SovaNotification::RemovedFrame(line_id, frame_id) => {
+            scene.line_mut(*line_id).remove_frame(*frame_id);
+        }
+        SovaNotification::UpdatedLineConfigurations(lines) => {
+            for (i, line) in lines {
+                scene.line_mut(*i).configure(line);
+            }
+        }
+        SovaNotification::CompilationUpdated(i, j, id, state) => {
+            scene.frame_mut(*i, *j).update_compilation_state(*id, state.clone());
+        }
+        SovaNotification::Tick
+        | SovaNotification::PlaybackStateChanged(_) 
+        | SovaNotification::TempoChanged(_) 
+        | SovaNotification::QuantumChanged(_) 
+        | SovaNotification::Log(_) 
+        | SovaNotification::FramePositionChanged(_) 
+        | SovaNotification::DeviceListChanged(_) 
+        | SovaNotification::GlobalVariablesChanged(_) 
+        | SovaNotification::Annotations(_) 
+        | SovaNotification::Error(_) => (),
+    };
 }
 
 pub fn start_image_maintainer(
@@ -56,48 +107,13 @@ pub fn start_image_maintainer(
                 Ok(p) => {
                     let mut guard = scene_image.blocking_lock();
                     match &p {
-                        SovaNotification::UpdatedScene(scene) => {
-                            *guard = scene.clone();
-                        }
-                        SovaNotification::UpdatedSceneMode(mode) => {
-                            guard.mode = *mode;
-                        }
-                        SovaNotification::UpdatedScenePrelude(prelude) => {
-                            guard.prelude = prelude.clone();
-                        }
-                        SovaNotification::UpdatedLines(lines) => {
-                            for (i, line) in lines {
-                                guard.set_line(*i, line.clone());
-                            }
-                        }
-                        SovaNotification::AddedLine(i, line) => {
-                            guard.insert_line(*i, line.clone());
-                        }
-                        SovaNotification::RemovedLine(index) => {
-                            guard.remove_line(*index);
-                        }
-                        SovaNotification::UpdatedFrames(frames) => {
-                            for (line_id, frame_id, frame) in frames.iter() {
-                                guard.line_mut(*line_id).set_frame(*frame_id, frame.clone());
-                            }
-                        }
-                        SovaNotification::AddedFrame(line_id, frame_id, frame) => {
-                            guard
-                                .line_mut(*line_id)
-                                .insert_frame(*frame_id, frame.clone());
-                        }
-                        SovaNotification::RemovedFrame(line_id, frame_id) => {
-                            guard.line_mut(*line_id).remove_frame(*frame_id);
-                        }
                         SovaNotification::PlaybackStateChanged(state) => {
-                            let playing = match state {
-                                PlaybackState::Stopped => false,
-                                PlaybackState::Starting(_) => false,
-                                PlaybackState::Playing => true,
-                            };
-                            is_playing.store(playing, Ordering::Relaxed);
+                            is_playing.store(state.is_playing(), Ordering::Relaxed);
                         }
-                        _ => (),
+                        notif => {
+                            apply_notification(&mut guard, notif);
+                        }
+
                     };
 
                     // Keep FrameTextStore layout in sync with structural changes.
