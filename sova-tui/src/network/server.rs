@@ -68,16 +68,16 @@ pub fn start_server(
     let scene_image = Arc::new(Mutex::new(demo.scene));
 
     let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
-    // let audio_thread = spawn_audio_thread(
-    //     initial_audio_config,
-    //     Arc::clone(&audio_engine_state),
-    //     Arc::clone(&devices),
-    //     Arc::clone(&clock_server),
-    //     client_registry.clone(),
-    // );
-    // let audio_restart_tx = Some(audio_thread.restart_tx.clone());
-    // let audio_cmd_tx = Some(audio_thread.cmd_tx.clone());
-    // let master_gain = Arc::clone(&audio_thread.master_gain);
+    let audio_thread = spawn_audio_thread(
+        initial_audio_config,
+        Arc::clone(&audio_engine_state),
+        Arc::clone(&devices),
+        Arc::clone(&clock_server),
+        client_registry.clone(),
+    );
+    let audio_restart_tx = Some(audio_thread.restart_tx.clone());
+    let audio_cmd_tx = Some(audio_thread.cmd_tx.clone());
+    let master_gain = Arc::clone(&audio_thread.master_gain);
 
     let token = CancellationToken::new();
     let task_token = token.clone();
@@ -95,14 +95,14 @@ pub fn start_server(
             scene_image,
             clock_server, 
             devices, 
-            log_sender, 
+            log_sender.subscribe(), 
             client_registry, 
             languages, 
             audio_engine_state, 
-            None, 
-            None, 
+            audio_restart_tx, 
+            audio_cmd_tx, 
             password, 
-            Default::default(), 
+            master_gain, 
             frame_text, 
         );
     

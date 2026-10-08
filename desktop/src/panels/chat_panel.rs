@@ -41,7 +41,7 @@ impl ChatPanel {
         }
 
         // Input bar pinned to bottom — claims fixed space
-        egui::TopBottomPanel::bottom(ui.id().with("chat_input_bar"))
+        egui::containers::TopBottomPanel::bottom(ui.id().with("chat_input_bar"))
             .show_separator_line(true)
             .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -104,7 +104,7 @@ impl ChatPanel {
         // available_height() circular dependency with the Resize ratchet.
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .auto_shrink(false)

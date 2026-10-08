@@ -108,7 +108,7 @@ async fn main() {
 
     sova_core::logger::init_standalone();
 
-    let (log_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+    let (log_sender, log_rx) = tokio::sync::broadcast::channel::<SovaNotification>(256);
     let client_registry = ClientRegistry::new();
     sova_core::logger::set_full_mode(log_sender.clone());
 
@@ -208,7 +208,7 @@ async fn main() {
         Arc::clone(&scene_image),
         clock_server.clone(),
         devices.clone(),
-        log_sender,
+        log_rx,
         client_registry.clone(),
         languages.clone(),
         audio_engine_state,

@@ -242,7 +242,7 @@ pub struct SovaCoreServer {
     pub clock_server: Arc<ClockServer>,
     pub devices: Arc<DeviceMap>,
     pub sched_iface: OnceLock<Arc<RwLock<Sender<SchedulerMessage>>>>,
-    pub log_sender: broadcast::Sender<SovaNotification>,
+    pub log_rx: broadcast::Receiver<SovaNotification>,
     pub client_registry: ClientRegistry,
     pub clients: Arc<Mutex<Vec<String>>>,
     pub scene_image: Arc<Mutex<Scene>>,
@@ -268,7 +268,7 @@ impl SovaCoreServer {
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
-        log_sender: broadcast::Sender<SovaNotification>,
+        log_rx: broadcast::Receiver<SovaNotification>,
         client_registry: ClientRegistry,
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
@@ -285,7 +285,7 @@ impl SovaCoreServer {
             clock_server,
             devices,
             sched_iface: OnceLock::new(),
-            log_sender,
+            log_rx,
             client_registry,
             clients: Default::default(),
             scene_image,
@@ -386,7 +386,7 @@ impl SovaCoreServer {
         let (mut world_handle, mut sched_handle, _) = self.start_core().await;
 
         // Bridge logger notifications (from core) to per-client channels
-        let mut log_rx = self.log_sender.subscribe();
+        let mut log_rx = self.log_rx.resubscribe();
         let bridge_registry = self.client_registry.clone();
         tokio::spawn(async move {
             loop {
