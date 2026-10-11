@@ -48,6 +48,7 @@ pub enum AppEvent {
     Connected(SovaClient),
     ConnectionFailed(String),
     UpdateClientState(ClientState),
+    Disconnected,
     Quit,
 }
 

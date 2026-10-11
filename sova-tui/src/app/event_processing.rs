@@ -9,12 +9,15 @@ impl App {
     pub async fn handle_app_event(&mut self, app_event: AppEvent) {
         match app_event {
             AppEvent::Quit => self.quit().await,
-            AppEvent::Popup(title, content, value, callback) => {
-                self.popup.open(title, content, value, callback, self.state.palette)
+            AppEvent::GoTo(app_page) => {
+                self.state.page = app_page;
             }
-            AppEvent::Info(text) => self.notification.info(text, self.state.palette),
-            AppEvent::Positive(text) => self.notification.positive(text, self.state.palette),
-            AppEvent::Negative(text) => self.notification.negative(text, self.state.palette),
+            AppEvent::Popup(title, content, value, callback) => {
+                self.popup.open(title, content, value, callback, &self.state.palette)
+            }
+            AppEvent::Info(text) => self.notification.info(text, &self.state.palette),
+            AppEvent::Positive(text) => self.notification.positive(text, &self.state.palette),
+            AppEvent::Negative(text) => self.notification.negative(text, &self.state.palette),
             AppEvent::Connect(ip, port, username, pass) => {
                 self.state.page = AppPage::Connecting;
                 let mut client = SovaClient::new(ip, port);
@@ -28,30 +31,45 @@ impl App {
             }
             AppEvent::Server(port, username, pass) => {
                 if self.state.server_task.is_some() {
-                    self.state.events.send(AppEvent::Negative("Unable to start server: already running!".to_string()));
+                    self.notification.negative("Unable to start server: already running!", &self.state.palette);
                 }
                 let pass = if pass.is_empty() { None } else { Some(pass) };
                 self.state.server_task = Some(start_server(port, pass.clone(), self.log_tx.clone()));
-                // self.state.page = AppPage::Connecting;
-                // let mut client = SovaClient::new("127.0.0.1".to_string(), port);
-                // client.name = username;
-                // client.password = pass;
-                // run_connection_task(client, Duration::from_secs(5), self.state.events.get_sender());
+                self.state.page = AppPage::Connecting;
+                let sender = self.state.events.get_sender();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    let mut client = SovaClient::new("127.0.0.1".to_string(), port);
+                    client.name = username;
+                    run_connection_task(client, Duration::from_secs(5), sender);
+                });
             }
             AppEvent::Connected(client) => {
+                // Lock should be immediate as no update task running
                 self.state.client = Some(client);
+                self.state.update_client_state().await;
                 self.state.run_client_update();
                 self.state.page = AppPage::Scene;
-                self.state.events.send(AppEvent::Positive("Connected !".to_string()));
+                self.notification.positive("Connected !", &self.state.palette);
             }
             AppEvent::ConnectionFailed(msg) => {
-                self.notification.negative(msg, self.state.palette);
+                self.notification.negative(msg, &self.state.palette);
                 self.state.page = AppPage::Connection;
             }
             AppEvent::UpdateClientState(client_state) => {
                 self.state.client_state = client_state;
             }
-            _ => ()
+            AppEvent::Disconnected => {
+                self.state.page = AppPage::Connection;
+                let err = self.state.client_state.server_errors
+                    .pop_back()
+                    .unwrap_or("Disconnected !".to_string());
+                if let Some(mut c) = self.state.client.take() {
+                    let _ = c.stop_task().await;
+                }
+                self.notification.negative(err, &self.state.palette);
+            }
+            AppEvent::RefreshScript => todo!(),
         }
     }
 

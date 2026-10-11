@@ -35,7 +35,7 @@ impl Popup {
         content: String,
         value: PopupValue,
         callback: Box<dyn FnOnce(&mut AppState, PopupValue)>,
-        palette: Palette,
+        palette: &Palette,
     ) {
         self.title = title;
         self.content = content;
@@ -62,7 +62,7 @@ impl Popup {
         self.showing = false;
     }
 
-    fn validate_input<T>(text_area: &mut TextArea, dst: &mut T, palette: Palette)
+    fn validate_input<T>(text_area: &mut TextArea, dst: &mut T, palette: &Palette)
     where
         T: FromStr,
     {
@@ -79,7 +79,7 @@ impl Popup {
         );
     }
 
-    fn update_textarea(text_area: &mut TextArea, value: &PopupValue, palette: Palette) {
+    fn update_textarea(text_area: &mut TextArea, value: &PopupValue, palette: &Palette) {
         match &value {
             PopupValue::Text(txt) => *text_area = vec![txt.clone()].into(),
             PopupValue::Float(f) => *text_area = vec![f.to_string()].into(),
@@ -133,33 +133,33 @@ impl Popup {
                     match event.code {
                         KeyCode::Up => {
                             *f += 1.0;
-                            Self::update_textarea(&mut self.text_area, &(*f).into(), state.palette);
+                            Self::update_textarea(&mut self.text_area, &(*f).into(), &state.palette);
                         }
                         KeyCode::Down => {
                             *f -= 1.0;
-                            Self::update_textarea(&mut self.text_area, &(*f).into(), state.palette);
+                            Self::update_textarea(&mut self.text_area, &(*f).into(), &state.palette);
                         }
                         _ => {
                             let _ = self.text_area.input(event);
                         }
                     }
-                    Self::validate_input(&mut self.text_area, f, state.palette);
+                    Self::validate_input(&mut self.text_area, f, &state.palette);
                 }
                 PopupValue::Int(i) => {
                     match event.code {
                         KeyCode::Up => {
                             *i += 1;
-                            Self::update_textarea(&mut self.text_area, &(*i).into(), state.palette);
+                            Self::update_textarea(&mut self.text_area, &(*i).into(), &state.palette);
                         }
                         KeyCode::Down => {
                             *i -= 1;
-                            Self::update_textarea(&mut self.text_area, &(*i).into(), state.palette);
+                            Self::update_textarea(&mut self.text_area, &(*i).into(), &state.palette);
                         }
                         _ => {
                             let _ = self.text_area.input(event);
                         }
                     }
-                    Self::validate_input(&mut self.text_area, i, state.palette);
+                    Self::validate_input(&mut self.text_area, i, &state.palette);
                 }
             },
         }

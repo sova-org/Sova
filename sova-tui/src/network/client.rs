@@ -10,8 +10,7 @@ pub fn run_connection_task(
     mut sender: EventSender, 
 ) {
     tokio::spawn(async move {
-        let res = client.connect_with_timeout(timeout).await;
-        match res {
+        match client.connect_with_timeout(timeout).await {
             Ok(_) => {
                 sender.send(AppEvent::Connected(client));
             }

@@ -49,8 +49,10 @@ impl ConnectionView {
             input.set_block(if selected { block.clone() } else { muted_block.clone() }.title(t));
             if selected {
                 input.set_cursor_style(palette.text().reversed());
+                input.set_style(palette.text().bold());
             } else {
                 input.set_cursor_style(input.cursor_line_style());
+                input.set_style(palette.text());
             }
         };
         select_block_for(0, "IP".to_owned(), &mut self.ip_field);
@@ -179,7 +181,7 @@ impl StatefulWidget for &mut ConnectionView {
             .unchecked_symbol(nerd_font_symbols::md::MD_CHECKBOX_BLANK_OUTLINE)
             .style(
                 if self.current_input == 4 {
-                    Style::default().fg(state.palette.accent).bg(state.palette.selection)
+                    Style::default().fg(state.palette.accent).bg(state.palette.selection).bold()
                 } else {
                     Style::default().bg(state.palette.surface).fg(if self.feedback {
                         state.palette.foreground
@@ -199,7 +201,7 @@ impl StatefulWidget for &mut ConnectionView {
                 .border_style(if selected { state.palette.accent } else { state.palette.foreground })
                 .bg(if selected { state.palette.selection } else { state.palette.surface });
             Paragraph::new(text).style(
-                if selected { state.palette.accent } else { state.palette.foreground }
+                if selected { Style::from(state.palette.accent).bold() } else { state.palette.foreground.into() }
             ).centered().block(block)
         };
         

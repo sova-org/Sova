@@ -393,8 +393,8 @@ fn handle_server_message(
         ServerMessage::PeersUpdated(peers) => {
             state.peers = peers;
         }
-        ServerMessage::PeerStartedEditing(_, _, _) => todo!(),
-        ServerMessage::PeerStoppedEditing(_, _, _) => todo!(),
+        ServerMessage::PeerStartedEditing(_, _, _) => (),
+        ServerMessage::PeerStoppedEditing(_, _, _) => (),
         ServerMessage::Chat(from, text) => {
             state.chat_messages.push_back((from, text));
         }
@@ -416,12 +416,12 @@ fn handle_server_message(
         ServerMessage::ClockState(clock_snapshot) => {
             state.clock = clock_snapshot;
         }
-        ServerMessage::DevicesRestored { missing_devices } => todo!(),
+        ServerMessage::DevicesRestored { missing_devices } => (),
         ServerMessage::AudioEngineState(audio_engine_state) => {
             state.audio_state = audio_engine_state
         }
-        ServerMessage::ScopeData(items) => todo!(),
-        ServerMessage::PeakData(items) => todo!(),
+        ServerMessage::ScopeData(items) => (),
+        ServerMessage::PeakData(items) => (),
         ServerMessage::FeedbackEnabled => {
             let Some(iface) = sched_iface else {
                 state.server_errors.push_back("Unable to enable feedback: no scheduler interface !".to_owned());
@@ -445,9 +445,9 @@ fn handle_server_message(
         ServerMessage::LinkState(link_state) => {
             state.link_state = link_state
         }
-        ServerMessage::ScriptEdit { sender, frame_text_id, update } => todo!(),
-        ServerMessage::Presence { update } => todo!(),
-        ServerMessage::FrameTextLayout { mapping, new_doc_snapshots } => todo!(),
+        ServerMessage::ScriptEdit { sender, frame_text_id, update } => (),
+        ServerMessage::Presence { update } => (),
+        ServerMessage::FrameTextLayout { mapping, new_doc_snapshots } => (),
         ServerMessage::Notification(notif) => {
             match notif {
                 SovaNotification::Tick => (),

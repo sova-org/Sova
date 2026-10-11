@@ -175,8 +175,8 @@ impl StatefulWidget for SceneView {
                 break;
             }
             let header_area = Rect::new(
-                LINE_HEADER_WIDTH + 1 + (j as u16) * (FRAME_WIDTH + 1), 
-                0, 
+                area.x + LINE_HEADER_WIDTH + 1 + (j as u16) * (FRAME_WIDTH + 1), 
+                area.y, 
                 FRAME_WIDTH, 
                 FRAME_HEADER_HEIGHT
             );
@@ -188,8 +188,8 @@ impl StatefulWidget for SceneView {
                 break;
             }
             let header_area = Rect::new(
-                0, 
-                FRAME_HEADER_HEIGHT + 1 + (i as u16) * (FRAME_HEIGHT + 1), 
+                area.x, 
+                area.y + FRAME_HEADER_HEIGHT + 1 + (i as u16) * (FRAME_HEIGHT + 1), 
                 LINE_HEADER_WIDTH, 
                 FRAME_HEIGHT
             );
@@ -203,8 +203,8 @@ impl StatefulWidget for SceneView {
                     break;
                 }
                 let frame_area = Rect::new(
-                    LINE_HEADER_WIDTH + 1 + (j as u16) * (FRAME_WIDTH + 1), 
-                    FRAME_HEADER_HEIGHT + 1 + (i as u16) * (FRAME_HEIGHT + 1), 
+                    area.x + LINE_HEADER_WIDTH + 1 + (j as u16) * (FRAME_WIDTH + 1), 
+                    area.y + FRAME_HEADER_HEIGHT + 1 + (i as u16) * (FRAME_HEIGHT + 1), 
                     FRAME_WIDTH, 
                     FRAME_HEIGHT
                 );

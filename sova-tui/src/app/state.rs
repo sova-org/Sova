@@ -26,7 +26,9 @@ impl AppState {
                 let guard = client.state().await;
                 self.client_state = ClientState::clone(&guard);
             }
-            None => (),
+            None => {
+                self.events.send(AppEvent::Negative("Unable to update client state !".to_string()));
+            }
         }
     }
 
@@ -34,6 +36,13 @@ impl AppState {
         match &self.client {
             Some(client) => client.state().await.connected,
             None => false
+        }
+    }
+
+    pub fn is_server_running(&self) -> bool {
+        match &self.server_task {
+            Some(task) => task.is_running(),
+            None => false,
         }
     }
 
@@ -65,6 +74,7 @@ impl AppState {
                     None => break,
                 }
             }
+            sender.send(AppEvent::Disconnected);
         });
     }
 }

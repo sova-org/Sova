@@ -38,16 +38,16 @@ impl Notification {
         self.bg = bg;
     }
 
-    pub fn info(&mut self, text: String, palette: Palette) {
-        self.show(text, palette.info, palette.text(), palette.surface);
+    pub fn info<T : ToString>(&mut self, text: T, palette: &Palette) {
+        self.show(text.to_string(), palette.info, palette.text(), palette.surface);
     }
 
-    pub fn positive(&mut self, text: String, palette: Palette) {
-        self.show(text, palette.success, palette.text(), palette.surface);
+    pub fn positive<T : ToString>(&mut self, text: T, palette: &Palette) {
+        self.show(text.to_string(), palette.success, palette.text(), palette.surface);
     }
 
-    pub fn negative(&mut self, text: String, palette: Palette) {
-        self.show(text, palette.error, palette.text(), palette.surface);
+    pub fn negative<T : ToString>(&mut self, text: T, palette: &Palette) {
+        self.show(text.to_string(), palette.error, palette.text(), palette.surface);
     }
 
     pub fn is_showing(&self) -> bool {
