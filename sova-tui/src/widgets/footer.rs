@@ -1,4 +1,4 @@
-use ratatui::{layout::{Constraint::Percentage, Layout, Margin}, prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span}, widgets::{Block, BorderType, StatefulWidget, Widget}};
+use ratatui::{layout::{Constraint::Percentage, Layout, Margin}, prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span}, widgets::{Block, StatefulWidget, Widget}};
 
 use crate::app::AppState;
 
@@ -33,5 +33,11 @@ impl StatefulWidget for Footer {
         });
 
         serv_status.render(layout[0], buf);
+
+        let lang = state.selected_frame().map(|f| f.script().lang()).unwrap_or_default();
+        let selected = Line::from(format!("({},{}) {}", state.selected.0, state.selected.1, lang))
+            .style(state.palette.text())
+            .right_aligned();
+        selected.render(layout[2], buf);
     }
 }

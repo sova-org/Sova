@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{prelude::{Buffer, Rect}, text::{Line, Span, Text}, widgets::{Paragraph, StatefulWidget, Widget}};
+use ratatui::{prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span, Text}, widgets::{Paragraph, StatefulWidget, Widget}};
+use ratatui_themes::Style;
 use ropey::Rope;
 
 use crate::{app::{AppPage, AppState}};
@@ -118,8 +119,12 @@ impl Editor {
             }
             KeyCode::Home => (),
             KeyCode::End => (),
-            KeyCode::PageUp => (),
-            KeyCode::PageDown => (),
+            KeyCode::PageUp => {
+                state.go_to_previous_frame();
+            }
+            KeyCode::PageDown => {
+                state.go_to_next_frame();
+            }
             KeyCode::Tab => {
                 self.buffer.insert(char_idx, "    ");
                 self.cursor.1 += 4;
@@ -143,20 +148,63 @@ impl Editor {
             _ => ()
         }
     }
-}
 
-impl StatefulWidget for &Editor {
-    type State = AppState;
+    fn render_line_numbers(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) -> u16 {
+        let first_col_len = self.buffer.len_lines().to_string().len() as u16;
+        for l in 0..self.buffer.len_lines() {
+            let line_index = Span::styled(
+                l.to_string(), 
+                Style::default().fg(
+                    if l as usize == self.cursor.0 { state.palette.foreground } else { state.palette.muted }
+                ).bg(state.palette.background)
+            );
+            let line_index = Line::from(line_index).right_aligned();
+            line_index.render(Rect { 
+                x: area.x, 
+                y: area.y + l as u16, 
+                width: first_col_len, 
+                height: 1
+            }, buf);
+        }
+        first_col_len
+    }
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let lines : Vec<Line> = self.buffer.lines().map(|line| {
-            let spans = vec![Span::styled(line.to_string(), state.palette.text())];
-            Line::from(spans)
-        }).collect();
+    fn render_buffer(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) {
+        let Some(frame) = state.selected_frame() else {
+            return;
+        };
+
+        let lang = frame.script().lang();
+        let mut lines : Vec<Line> = if let Some(syn) = state.compiled_syntax.get(lang) {
+            self.buffer.lines().map(|line| {
+                let line_str = line.to_string();
+                let split = syn.split(&line_str);
+                split.into_iter().map(|(sub, cat)| {
+                    Span::styled(sub, if let Some(cat) = cat { 
+                        state.palette.token_color(cat)
+                    } else { 
+                        state.palette.foreground 
+                    })
+                }).collect()
+            }).collect()
+        } else {
+            self.buffer.lines().map(|line| {
+                let spans = vec![Span::styled(line.to_string(), state.palette.text())];
+                Line::from(spans)
+            }).collect()
+        };
+
+        if self.cursor.0 < lines.len() {
+            let line = std::mem::take(&mut lines[self.cursor.0]);
+            lines[self.cursor.0] = line.bg(state.palette.selection);
+        }
+
         let text = Text::from(lines);
-        let p = Paragraph::new(text);
+        let p = Paragraph::new(text).bg(state.palette.surface);
         p.render(area, buf);
+    }
 
+    fn render_cursor(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) {
         let char_idx = self.cursor_char_idx();
         let char = if char_idx < self.buffer.len_chars() {
             let at_idx = self.buffer.char(char_idx);
@@ -170,5 +218,19 @@ impl StatefulWidget for &Editor {
             y: area.y + (self.cursor.0 as u16), 
             width: 1, height: 1 
         }, buf);
+    }
+}
+
+impl StatefulWidget for &Editor {
+    type State = AppState;
+
+    fn render(self, mut area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let first_col_len = self.render_line_numbers(area, buf, state);
+
+        area.x += first_col_len + 1;
+        area.width = area.width.saturating_sub(first_col_len + 2);
+        
+        self.render_buffer(area, buf, state);
+        self.render_cursor(area, buf, state);
     }
 }

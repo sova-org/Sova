@@ -1,5 +1,6 @@
 use ratatui::style::Color;
 use ratatui_themes::{Style, Theme};
+use sova_core::vm::language::TokenCategory;
 
 #[derive(Clone, Copy)]
 pub struct Palette {
@@ -47,6 +48,21 @@ impl Palette {
         };
         
         todo!()
+    }
+
+    pub fn token_color(&self, cat: TokenCategory) -> Color {
+        match cat {
+            TokenCategory::Keyword => self.secondary,
+            TokenCategory::Builtin => self.foreground,
+            TokenCategory::Operator => self.accent,
+            TokenCategory::Number => self.foreground,
+            TokenCategory::String => self.foreground,
+            TokenCategory::Comment => self.muted,
+            TokenCategory::Variable => self.foreground,
+            TokenCategory::Symbol => self.accent,
+            TokenCategory::Special => self.secondary,
+            TokenCategory::Punctuation => self.foreground,
+        }
     }
 
 }

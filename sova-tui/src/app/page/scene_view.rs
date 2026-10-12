@@ -109,7 +109,7 @@ impl SceneView {
             KeyCode::Esc => {
                 state.events.send(AppEvent::Popup(
                     "Disconnect ?".to_owned(),
-                    "Disconnect from server ?".to_owned(),
+                    "Quit session ?".to_owned(),
                     PopupValue::Bool(false),
                     Box::new(|state, x| {
                         if bool::from(x) {
@@ -140,6 +140,12 @@ impl SceneView {
                     state.selected.1, 
                     state.selected_line().map(|l| l.n_frames().saturating_sub(1)).unwrap_or_default()
                 );
+            }
+            KeyCode::PageUp => {
+                state.go_to_previous_frame();
+            }
+            KeyCode::PageDown => {
+                state.go_to_next_frame();
             }
             KeyCode::Enter => {
                 state.go_to(AppPage::Edit);

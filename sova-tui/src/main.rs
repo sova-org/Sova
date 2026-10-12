@@ -10,6 +10,7 @@ pub mod popup;
 pub mod theme;
 pub mod network;
 pub mod widgets;
+pub mod compiled_syntax;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {    
@@ -22,10 +23,11 @@ async fn main() -> color_eyre::Result<()> {
         selected: (0, 0),
         clipboard: None,
         page: AppPage::Connection,
-        palette: Theme::new(ThemeName::GruvboxDark).into(),
+        palette: Theme::new(ThemeName::Cyberpunk).into(),
         client: None,
         server_task: None,
-        logs: Default::default()
+        logs: Default::default(),
+        compiled_syntax: Default::default(),
     };
 
     let result = App::new(state).run(terminal).await;

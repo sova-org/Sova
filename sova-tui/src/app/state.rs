@@ -1,11 +1,11 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use arboard::Clipboard;
 use sova_core::{LogMessage, scene::{Frame, Line}, vm::interpreter::Annotation};
 use sova_server::{SovaClient, client::ClientState};
 use tokio::sync::mpsc;
 
-use crate::{app::page::AppPage, event::{AppEvent, EventHandler}, network::server::ServerTask, theme::Palette};
+use crate::{app::page::AppPage, compiled_syntax::CompiledSyntax, event::{AppEvent, EventHandler}, network::server::ServerTask, theme::Palette};
 
 pub struct AppState {
     pub client_state: ClientState,
@@ -16,7 +16,8 @@ pub struct AppState {
     pub palette: Palette,
     pub client: Option<SovaClient>,
     pub server_task: Option<ServerTask>,
-    pub logs: VecDeque<LogMessage>
+    pub logs: VecDeque<LogMessage>,
+    pub compiled_syntax: BTreeMap<String, CompiledSyntax>
 }
 
 impl AppState {
@@ -52,6 +53,37 @@ impl AppState {
 
     pub fn selected_frame(&self) -> Option<&Frame> {
         self.client_state.scene.frame(self.selected.0, self.selected.1)
+    }
+
+    pub fn go_to_next_frame(&mut self) {
+        let scene = &self.client_state.scene;
+        if scene.has_frame(self.selected.0, self.selected.1 + 1) {
+            self.selected.1 += 1;
+            self.events.send(AppEvent::RefreshScript);
+        } else if scene.has_frame(self.selected.0 + 1, 0) {
+            self.selected = (self.selected.0 + 1, 0);
+            self.events.send(AppEvent::RefreshScript);
+        }
+    }
+
+    pub fn go_to_previous_frame(&mut self) {
+        let scene = &self.client_state.scene;
+        if self.selected.1 > 0 {
+            self.selected.1 -= 1;
+            self.events.send(AppEvent::RefreshScript);
+        } else {
+            let mut i = self.selected.0;
+            while i > 0 {
+                i -= 1;
+                if scene.line(i).map(|l| !l.is_empty()).unwrap_or_default() {
+                    let j = scene.line(i).unwrap().n_frames() - 1;
+                    self.selected = (i, j);
+                    self.events.send(AppEvent::RefreshScript);
+                    break;
+                }
+            }
+            
+        }
     }
 
     pub fn current_annotations(&self) -> Vec<Annotation> {

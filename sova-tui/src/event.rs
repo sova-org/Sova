@@ -5,7 +5,7 @@ use sova_server::{SovaClient, client::ClientState};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::{app::{AppPage, AppState}, popup::PopupValue};
+use crate::{app::{AppPage, AppState}, compiled_syntax::CompiledSyntax, popup::PopupValue};
 
 /// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
@@ -48,6 +48,7 @@ pub enum AppEvent {
     Connected(SovaClient),
     ConnectionFailed(String),
     UpdateClientState(ClientState),
+    UpdateSyntax(String, CompiledSyntax),
     Disconnected,
     Quit,
 }

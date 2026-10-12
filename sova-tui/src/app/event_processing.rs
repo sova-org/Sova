@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use crossterm::event::{KeyCode, KeyEvent};
-use sova_server::{SovaClient, client::ClientState};
+use crossterm::event::KeyEvent;
+use sova_server::SovaClient;
 
-use crate::{app::{App, AppPage, scene_view::SceneView}, event::AppEvent, network::{client::run_connection_task, server::start_server}, popup::PopupValue};
+use crate::{app::{App, AppPage, scene_view::SceneView}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}};
 
 impl App {
     pub async fn handle_app_event(&mut self, app_event: AppEvent) {
@@ -49,6 +49,7 @@ impl App {
                 // Lock should be immediate as no update task running
                 self.state.client = Some(client);
                 self.state.update_client_state().await;
+                start_syntax_compilation(&self.state.client_state.languages, self.state.events.get_sender());
                 self.state.run_client_update();
                 self.state.page = AppPage::Scene;
                 self.editor.update_content(&self.state);
@@ -73,6 +74,9 @@ impl App {
             }
             AppEvent::RefreshScript => {
                 self.editor.update_content(&self.state);
+            }
+            AppEvent::UpdateSyntax(lang, syn) => {
+                self.state.compiled_syntax.insert(lang, syn);
             }
         }
     }

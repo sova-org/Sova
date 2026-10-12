@@ -1,4 +1,4 @@
-use crate::{app::{connection_view::ConnectionView, editor_view::Editor}, event::Event, notification::Notification, popup::Popup};
+use crate::{app::{connection_view::ConnectionView, editor::Editor}, event::Event, notification::Notification, popup::Popup};
 
 use ratatui::DefaultTerminal;
 

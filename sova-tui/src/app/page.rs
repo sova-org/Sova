@@ -1,7 +1,7 @@
 pub mod scene_view;
 pub mod connection_view;
 pub mod connecting_view;
-pub mod editor_view;
+pub mod editor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppPage {
