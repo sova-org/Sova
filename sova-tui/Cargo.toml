@@ -15,7 +15,8 @@ tui-checkbox = "0.4.6"
 sova_core = { path = "../core", package = "core" }
 sova_server = { path = "../server", package = "sova-server", features = ["audio"] }
 langs = { path = "../langs", package = "langs" }
-doux-sova = { git = "https://github.com/sova-org/doux", tag = "v0.0.35", package = "doux-sova", optional = true }
+doux-sova = { path = "../../doux/doux-sova", package = "doux-sova" }
+
 arboard = "3.6.1"
 ratatui-textarea = "0.9.2"
 tui-menu = "0.3.1"

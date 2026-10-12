@@ -69,7 +69,7 @@ impl App {
                 }
                 self.notification.negative(err, &self.state.palette);
             }
-            AppEvent::RefreshScript => todo!(),
+            AppEvent::RefreshScript => (),
         }
     }
 

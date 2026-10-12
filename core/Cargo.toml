@@ -9,7 +9,7 @@ midir = "0.11.0"
 rosc = "0.11.4"
 rusty_link = "0.4.9"
 thread-priority = { workspace = true }
-audio_thread_priority = "0.38"
+audio_thread_priority = "0.35.1"
 lalrpop-util = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
