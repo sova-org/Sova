@@ -77,8 +77,8 @@ impl Language for HydraInterpreterFactory {
         doc
     }
 
-    fn syntax(&self) -> Option<LanguageSyntax> {
-        Some(syntax::syntax())
+    fn syntax(&self) -> LanguageSyntax {
+        syntax::syntax()
     }
 }
 

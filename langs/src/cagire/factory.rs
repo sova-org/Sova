@@ -4,7 +4,7 @@ use sova_core::compiler::CompilationState;
 use sova_core::scene::script::Script;
 use sova_core::vm::Language;
 use sova_core::vm::interpreter::{Interpreter, InterpreterFactory};
-use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
+use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, LanguageSyntax, ReferenceEntry};
 
 use super::compiler::Dictionary;
 use super::interpreter::CagireInterpreter;
@@ -144,8 +144,8 @@ impl Language for CagireInterpreterFactory {
         doc
     }
 
-    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
-        use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
+    fn syntax(&self) -> LanguageSyntax {
+        use sova_core::vm::language::{SyntaxRule, TokenCategory::*};
 
         // Bucket words by highlight category
         let mut builtin_words = Vec::new();
@@ -261,7 +261,7 @@ impl Language for CagireInterpreterFactory {
             SyntaxRule::new(Operator, r"\?\B|\?\b|!\?\b"),
         ]);
 
-        Some(LanguageSyntax { rules })
+        LanguageSyntax { rules }
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
 
     fn categories_for(text: &str) -> Vec<(std::string::String, TokenCategory)> {
         let factory = CagireInterpreterFactory::new();
-        let syntax = factory.syntax().expect("syntax() returned None");
+        let syntax = factory.syntax();
         let mut parts = Vec::new();
         let mut cats = Vec::new();
         let mut names = Vec::new();

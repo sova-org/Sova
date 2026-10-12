@@ -108,8 +108,7 @@ impl ClientBridge {
                 let _ = self.presence.apply(&presence);
                 self.install_presence_wire();
                 for lang_def in &self.languages {
-                    if let Some(syn) = &lang_def.syntax
-                        && let Some(compiled) = CompiledSyntax::new(syn)
+                    if let Some(compiled) = CompiledSyntax::new(&lang_def.syntax)
                     {
                         self.syntax_map.insert(lang_def.name.to_owned(), compiled);
                     }

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use arboard::Clipboard;
-use sova_core::{LogMessage, scene::{Frame, Line}};
+use sova_core::{LogMessage, scene::{Frame, Line}, vm::interpreter::Annotation};
 use sova_server::{SovaClient, client::ClientState};
 use tokio::sync::mpsc;
 
@@ -52,6 +52,18 @@ impl AppState {
 
     pub fn selected_frame(&self) -> Option<&Frame> {
         self.client_state.scene.frame(self.selected.0, self.selected.1)
+    }
+
+    pub fn current_annotations(&self) -> Vec<Annotation> {
+        self.client_state.annotations
+            .get(self.selected.0)
+            .and_then(|line| line.get(self.selected.1))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn go_to(&mut self, page: AppPage) {
+        self.events.send(AppEvent::GoTo(page));
     }
 
     pub fn run_client_update(&mut self) {

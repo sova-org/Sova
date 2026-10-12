@@ -39,7 +39,7 @@ impl LanguageCenter {
         }
     }
 
-    pub fn syntax(&self, lang: &str) -> Option<LanguageSyntax> {
+    pub fn syntax(&self, lang: &str) -> LanguageSyntax {
         if self.transcoder.has_compiler(lang) {
             self.transcoder.get_compiler(lang).unwrap().syntax()
         } else if self.interpreters.has_interpreter(lang) {

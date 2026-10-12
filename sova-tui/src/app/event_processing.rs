@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use sova_server::SovaClient;
+use sova_server::{SovaClient, client::ClientState};
 
 use crate::{app::{App, AppPage, scene_view::SceneView}, event::AppEvent, network::{client::run_connection_task, server::start_server}, popup::PopupValue};
 
@@ -32,6 +32,7 @@ impl App {
             AppEvent::Server(port, username, pass) => {
                 if self.state.server_task.is_some() {
                     self.notification.negative("Unable to start server: already running!", &self.state.palette);
+                    return;
                 }
                 let pass = if pass.is_empty() { None } else { Some(pass) };
                 self.state.server_task = Some(start_server(port, pass.clone(), self.log_tx.clone()));
@@ -50,6 +51,7 @@ impl App {
                 self.state.update_client_state().await;
                 self.state.run_client_update();
                 self.state.page = AppPage::Scene;
+                self.editor.update_content(&self.state);
                 self.notification.positive("Connected !", &self.state.palette);
             }
             AppEvent::ConnectionFailed(msg) => {
@@ -69,7 +71,9 @@ impl App {
                 }
                 self.notification.negative(err, &self.state.palette);
             }
-            AppEvent::RefreshScript => (),
+            AppEvent::RefreshScript => {
+                self.editor.update_content(&self.state);
+            }
         }
     }
 
@@ -81,18 +85,7 @@ impl App {
         }
 
         match key_event.code {
-            KeyCode::Esc => {
-                self.state.events.send(AppEvent::Popup(
-                    "Exit Sova ?".to_owned(),
-                    "Are you sure you want to quit ?".to_owned(),
-                    PopupValue::Bool(false),
-                    Box::new(|state, x| {
-                        if bool::from(x) {
-                            state.events.send(AppEvent::Quit)
-                        }
-                    }),
-                ));
-            }
+            // General shortcuts here
             _ => {
                 match self.state.page {
                     AppPage::Connection => {
@@ -100,6 +93,9 @@ impl App {
                     }
                     AppPage::Scene => {
                         SceneView::on_key_event(key_event, &mut self.state);
+                    }
+                    AppPage::Edit => {
+                        self.editor.on_key_event(key_event, &mut self.state);
                     }
                     _ => ()
                 }

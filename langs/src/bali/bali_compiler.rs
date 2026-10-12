@@ -23,9 +23,9 @@ impl Language for BaliCompiler {
     fn version(&self) -> (usize, usize, usize) {
         (1, 0, 0)
     }
-    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
+    fn syntax(&self) -> sova_core::vm::language::LanguageSyntax {
         use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
-        Some(LanguageSyntax {
+        LanguageSyntax {
             rules: vec![
                 SyntaxRule::new(Comment, r";[^\n]*"),
                 SyntaxRule::new(String, r#""([^"\\]|\\.)*""#),
@@ -49,7 +49,7 @@ impl Language for BaliCompiler {
                 SyntaxRule::new(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
                 SyntaxRule::new(Punctuation, r"[(){}\[\]<>!]"),
             ],
-        })
+        }
     }
 }
 
@@ -119,7 +119,7 @@ mod tests {
 
     fn categories_for(text: &str) -> Vec<(String, TokenCategory)> {
         let compiler = BaliCompiler;
-        let syntax = compiler.syntax().expect("syntax() returned None");
+        let syntax = compiler.syntax();
         let mut parts = Vec::new();
         let mut cats = Vec::new();
         let mut names = Vec::new();

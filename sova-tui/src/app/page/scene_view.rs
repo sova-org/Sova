@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
 use sova_core::scene::Frame;
 
-use crate::{app::AppState, event::AppEvent, theme::Palette};
+use crate::{app::{AppPage, AppState}, event::AppEvent, popup::PopupValue, theme::Palette};
 
 const FRAME_WIDTH : u16 = 14;
 const FRAME_HEIGHT : u16 = 4;
@@ -106,6 +106,19 @@ impl SceneView {
     pub fn on_key_event(event: KeyEvent, state: &mut AppState) {
         let prev = state.selected;
         match event.code {
+            KeyCode::Esc => {
+                state.events.send(AppEvent::Popup(
+                    "Disconnect ?".to_owned(),
+                    "Disconnect from server ?".to_owned(),
+                    PopupValue::Bool(false),
+                    Box::new(|state, x| {
+                        if bool::from(x) {
+                            state.client_state = Default::default();
+                            state.events.send(AppEvent::Disconnected)
+                        }
+                    }),
+                ));
+            }
             KeyCode::Right => {
                 let max_f = state.selected_line().map(|l| l.n_frames().saturating_sub(1)).unwrap_or(0);
                 state.selected.1 = std::cmp::min(state.selected.1 + 1, max_f);
@@ -127,6 +140,9 @@ impl SceneView {
                     state.selected.1, 
                     state.selected_line().map(|l| l.n_frames().saturating_sub(1)).unwrap_or_default()
                 );
+            }
+            KeyCode::Enter => {
+                state.go_to(AppPage::Edit);
             }
             _ => ()
         }

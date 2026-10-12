@@ -335,9 +335,9 @@ impl Language for BoinxInterpreterFactory {
         make_documentation()
     }
 
-    fn syntax(&self) -> Option<LanguageSyntax> {
+    fn syntax(&self) -> LanguageSyntax {
         use sova_core::vm::language::{SyntaxRule, TokenCategory::*};
-        Some(LanguageSyntax {
+        LanguageSyntax {
             rules: vec![
                 SyntaxRule::new(Comment, r"//[^\n]*"),
                 SyntaxRule::new(String, r#""[^"]*"|'[^']*'"#),
@@ -354,7 +354,7 @@ impl Language for BoinxInterpreterFactory {
                 SyntaxRule::new(Symbol, r"\b[a-zA-Z_]\w*\s*:"),
                 SyntaxRule::new(Punctuation, r"[{}\[\]()<>@,]"),
             ],
-        })
+        }
     }
 }
 
@@ -385,7 +385,7 @@ mod tests {
 
     fn categories_for(text: &str) -> Vec<(String, TokenCategory)> {
         let factory = BoinxInterpreterFactory;
-        let syntax = factory.syntax().expect("syntax() returned None");
+        let syntax = factory.syntax();
         let mut parts = Vec::new();
         let mut cats = Vec::new();
         let mut names = Vec::new();

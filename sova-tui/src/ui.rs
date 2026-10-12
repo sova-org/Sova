@@ -33,6 +33,7 @@ impl Widget for &mut App {
             AppPage::Connection => self.connection_view.render(main_area, buf, &mut self.state),
             AppPage::Connecting => ConnectingView.render(main_area, buf, &mut self.state),
             AppPage::Scene => SceneView.render(main_area.inner(Margin::new(1, 0)), buf, &mut self.state),
+            AppPage::Edit => self.editor.render(main_area, buf, &mut self.state),
             _ => ()
         }
 

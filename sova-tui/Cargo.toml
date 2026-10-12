@@ -26,6 +26,7 @@ ratatui-themes = "0.3.0"
 tokio = { workspace = true, features = ["full"] }
 futures = "0.3.34"
 tokio-util.workspace = true
+ropey = "1.6.1"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

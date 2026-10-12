@@ -501,8 +501,8 @@ impl Language for BobCompiler {
         doc
     }
 
-    fn syntax(&self) -> Option<LanguageSyntax> {
-        Some(super::bob_syntax::syntax())
+    fn syntax(&self) -> LanguageSyntax {
+        super::bob_syntax::syntax()
     }
 }
 

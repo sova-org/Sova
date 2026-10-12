@@ -126,7 +126,7 @@ impl LanguageDocumentation {
 pub struct LanguageDefinition {
     pub name: String,
     pub documentation: LanguageDocumentation,
-    pub syntax: Option<LanguageSyntax>,
+    pub syntax: LanguageSyntax,
 }
 
 pub trait Language {
@@ -138,8 +138,8 @@ pub trait Language {
         Default::default()
     }
 
-    fn syntax(&self) -> Option<LanguageSyntax> {
-        None
+    fn syntax(&self) -> LanguageSyntax {
+        LanguageSyntax::default()
     }
 
     fn definition(&self) -> LanguageDefinition {
