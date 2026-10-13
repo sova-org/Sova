@@ -125,7 +125,6 @@ impl SceneView {
     }
 
     pub fn on_key_event(event: KeyEvent, state: &mut AppState) {
-        let prev = state.selected;
         match event.code {
             KeyCode::Esc => {
                 state.popup(
@@ -173,7 +172,10 @@ impl SceneView {
 
             KeyCode::Char('i') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 state.events.send(
-                    SchedulerMessage::AddLine(state.selected.0 + 1, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddLine(
+                        (state.selected.0 + 1).min(state.client_state.scene.n_lines()), 
+                        Default::default(), ActionTiming::Immediate
+                    )
                 );
             }
             KeyCode::Char('b') if event.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -223,7 +225,12 @@ impl SceneView {
 
             KeyCode::Char('i') => {
                 state.events.send(
-                    SchedulerMessage::AddFrame(state.selected.0, state.selected.1 + 1, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddFrame(
+                        state.selected.0, 
+                        (state.selected.1 + 1).min(state.client_state.scene.line(state.selected.0).map(|l| l.n_frames()).unwrap_or_default()), 
+                        Default::default(), 
+                        ActionTiming::Immediate
+                    )
                 );
             }
             KeyCode::Char('b') => {
@@ -340,9 +347,6 @@ impl SceneView {
                 state.go_to(AppPage::Edit);
             }
             _ => ()
-        }
-        if prev != state.selected {
-            state.events.send(AppEvent::RefreshScript);
         }
     }
 

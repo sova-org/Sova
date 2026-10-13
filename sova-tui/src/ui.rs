@@ -50,6 +50,7 @@ impl Widget for &mut App {
             AppPage::Connecting => ConnectingView.render(main_area, buf, &mut self.state),
             AppPage::Scene => SceneView.render(main_area, buf, &mut self.state),
             AppPage::Edit => self.editor.render(main_area, buf, &mut self.state),
+            AppPage::Prelude => self.prelude_view.render(main_area, buf, &mut self.state),
             _ => ()
         }
 

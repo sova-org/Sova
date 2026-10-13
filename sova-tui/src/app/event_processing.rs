@@ -14,6 +14,14 @@ impl App {
                 match app_page {
                     AppPage::Logs => self.floating.open("Logs", LogWidget::default()),
                     AppPage::Help => self.floating.open("Help", Help),
+                    AppPage::Edit => {
+                        self.editor.update_content(&self.state);
+                        self.state.page = AppPage::Edit;
+                    }
+                    AppPage::Prelude => {
+                        self.prelude_view.update_content(&self.state);
+                        self.state.page = AppPage::Prelude;
+                    }
                     _ => self.state.page = app_page
                 }
             }
@@ -57,7 +65,6 @@ impl App {
                 start_syntax_compilation(&self.state.client_state.languages, self.state.events.get_sender());
                 self.state.run_client_update();
                 self.state.page = AppPage::Scene;
-                self.editor.update_content(&self.state);
                 self.notification.positive("Connected !", &self.state.palette);
             }
             AppEvent::ConnectionFailed(msg) => {
@@ -128,6 +135,7 @@ impl App {
             {
                 let choices = vec![
                     AppPage::Scene.to_string(),
+                    AppPage::Prelude.to_string(),
                     AppPage::Devices.to_string(),
                     AppPage::Audio.to_string(),
                     AppPage::Chat.to_string(),
@@ -149,6 +157,9 @@ impl App {
                     }
                     AppPage::Edit => {
                         self.editor.on_key_event(key_event, &mut self.state);
+                    }
+                    AppPage::Prelude => {
+                        self.prelude_view.on_key_event(key_event, &mut self.state);
                     }
                     _ => ()
                 }

@@ -37,8 +37,7 @@ impl StatefulWidget for Footer {
         serv_status.render(layout[0], buf);
 
         if state.client.is_some() {
-            let lang = state.selected_frame().map(|f| f.script().lang()).unwrap_or_default();
-            let selected = Line::from(format!("({},{}) {}", state.selected.0, state.selected.1, lang))
+            let selected = Line::from(format!("({},{})", state.selected.0, state.selected.1))
                 .style(state.palette.text())
                 .right_aligned();
             selected.render(layout[2], buf);

@@ -100,6 +100,20 @@ impl AppState {
         }
     }
 
+    pub fn go_to_next_prelude(&mut self) {
+        let scene = &self.client_state.scene;
+        if scene.prelude.len() > self.selected_prelude + 1 {
+            self.selected_prelude += 1;
+        }
+    }
+
+    pub fn go_to_previous_prelude(&mut self) {
+        let scene = &self.client_state.scene;
+        self.selected_prelude = self.selected_prelude
+            .saturating_sub(1)
+            .min(scene.prelude.len().saturating_sub(1))
+    }
+
     pub fn popup<T, D, V, F>(&mut self, title: T, desc: D, value: V, callback: F) 
         where T: ToString, D: ToString, V: Into<PopupValue>, F: FnOnce(&mut AppState, PopupValue) + 'static + Send
     {

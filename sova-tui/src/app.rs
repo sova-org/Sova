@@ -1,4 +1,4 @@
-use crate::{app::{connection_view::ConnectionView, editor::Editor}, event::Event, notification::Notification, widgets::{Floating, popup::Popup}};
+use crate::{app::{connection_view::ConnectionView, editor::ScriptEditor, prelude_view::PreludeView}, event::Event, notification::Notification, widgets::{Floating, popup::Popup}};
 
 use ratatui::DefaultTerminal;
 
@@ -23,7 +23,8 @@ pub struct App {
     pub log_rx: broadcast::Receiver<SovaNotification>,
     
     pub connection_view: ConnectionView,
-    pub editor: Editor,
+    pub editor: ScriptEditor,
+    pub prelude_view: PreludeView
 }
 
 impl App {
@@ -40,7 +41,8 @@ impl App {
             log_rx,
 
             connection_view: ConnectionView::new(),
-            editor: Editor::new()
+            editor: ScriptEditor::new(),
+            prelude_view: PreludeView::new(),
         }
     }
 
