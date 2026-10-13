@@ -1,4 +1,4 @@
-use crate::{app::{connection_view::ConnectionView, editor::Editor}, event::Event, notification::Notification, popup::Popup};
+use crate::{app::{connection_view::ConnectionView, editor::Editor}, event::Event, notification::Notification, widgets::{Floating, popup::Popup}};
 
 use ratatui::DefaultTerminal;
 
@@ -17,6 +17,7 @@ pub struct App {
     pub state: AppState,
     pub popup: Popup,
     pub notification: Notification,
+    pub floating: Floating,
 
     pub log_tx: broadcast::Sender<SovaNotification>,
     pub log_rx: broadcast::Receiver<SovaNotification>,
@@ -34,6 +35,7 @@ impl App {
             state, 
             popup: Popup::default(),
             notification: Notification::new(),
+            floating: Floating::default(),
             log_tx,
             log_rx,
 

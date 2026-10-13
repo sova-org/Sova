@@ -1,8 +1,11 @@
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
-use sova_core::scene::Frame;
+use std::collections::BTreeMap;
 
-use crate::{app::{AppPage, AppState}, event::AppEvent, popup::PopupValue, theme::Palette};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
+use ratatui_themes::{Color, Style};
+use sova_core::{scene::{ExecutionMode, Frame}, schedule::{ActionTiming, SchedulerMessage}};
+
+use crate::{app::{AppPage, AppState}, event::AppEvent, theme::Palette, widgets::popup::PopupValue};
 
 const FRAME_WIDTH : u16 = 14;
 const FRAME_HEIGHT : u16 = 4;
@@ -13,7 +16,7 @@ pub struct SceneView;
 
 impl SceneView {
 
-    fn render_frame(area: Rect, buf: &mut Buffer, _j: usize, frame: &Frame, selected: bool, palette: &Palette) {
+    fn render_frame(area: Rect, buf: &mut Buffer, col: Color, frame: &Frame, selected: bool, rep: Option<usize>, palette: &Palette) {
         let b = if selected {
             Block::bordered()
                 .border_type(BorderType::Rounded)
@@ -25,6 +28,22 @@ impl SceneView {
 
         b.render(area, buf);
 
+        if let Some(curr_rep) = rep {
+            let active_layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
+                .split(area);
+            if frame.repetitions > 1 {
+                Paragraph::new(format!("{}/{}", curr_rep + 1, frame.repetitions))
+                    .right_aligned()
+                    .fg(palette.surface)
+                    .block(Block::default().bg(col))
+                    .render(active_layout[1], buf);
+            } else {
+                Block::default().bg(col)
+                    .fg(palette.surface)
+                    .render(active_layout[1], buf);
+            }
+        }
+
         let mut lines = Vec::new();
         lines.push(Line::from(format!("{}' x {}", frame.duration, frame.repetitions)));
         lines.push(Line::from(format!("{}", frame.script().lang())));
@@ -34,7 +53,9 @@ impl SceneView {
         ]).flex(Flex::Center).split(area.inner(Margin::new(2, 0)));
 
         let t = Text::from(lines);
-        let mut p = Paragraph::new(t).style(palette.text());
+        let mut p = Paragraph::new(t).style(
+            if frame.enabled { palette.text() } else { Style::default().fg(palette.muted).crossed_out() }
+        );
         if selected {
             p = p.bold()
         }
@@ -107,18 +128,186 @@ impl SceneView {
         let prev = state.selected;
         match event.code {
             KeyCode::Esc => {
-                state.events.send(AppEvent::Popup(
-                    "Disconnect ?".to_owned(),
-                    "Quit session ?".to_owned(),
-                    PopupValue::Bool(false),
-                    Box::new(|state, x| {
+                state.popup(
+                    "Disconnect ?", "Quit session ?", false,
+                    |state, x| {
                         if bool::from(x) {
                             state.client_state = Default::default();
                             state.events.send(AppEvent::Disconnected)
                         }
-                    }),
-                ));
+                    },
+                );
             }
+            KeyCode::Char('t') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let tempo = state.client_state.clock.tempo;
+                state.popup("Tempo", "Set tempo value", tempo, |state, value| {
+                    state.events.send(SchedulerMessage::SetTempo(value.into(), ActionTiming::Immediate));
+                });
+            }
+            KeyCode::Char('q') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let quantum = state.client_state.clock.quantum;
+                state.popup("Quantum", "Set quantum value", quantum, |state, value| {
+                    state.events.send(SchedulerMessage::SetQuantum(value.into(), ActionTiming::Immediate));
+                });
+            }
+
+            KeyCode::Char('m') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let mode = state.client_state.scene.mode;
+                let choices = vec![
+                    ExecutionMode::Free.to_string(), 
+                    ExecutionMode::AtQuantum.to_string(), 
+                    ExecutionMode::LongestLine.to_string()
+                ];
+                let index = match mode {
+                    ExecutionMode::Free => 0,
+                    ExecutionMode::AtQuantum => 1,
+                    ExecutionMode::LongestLine => 2,
+                };
+                state.popup("Mode", "Set execution mode", PopupValue::Choice(index, choices), |state, value| {
+                    let value = ExecutionMode::from(String::from(value));
+                    state.events.send(
+                        SchedulerMessage::SetSceneMode(value, ActionTiming::Immediate)
+                    );
+                });
+            }
+
+            KeyCode::Char('i') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                state.events.send(
+                    SchedulerMessage::AddLine(state.selected.0 + 1, Default::default(), ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('b') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                state.events.send(
+                    SchedulerMessage::AddLine(state.selected.0, Default::default(), ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('d') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let Some(line) = state.selected_line() else {
+                    return;
+                };
+                state.events.send(
+                    SchedulerMessage::AddLine(state.selected.0 + 1, line.clone(), ActionTiming::Immediate)
+                );
+            }
+
+            KeyCode::Char('L') => {
+                let Some(line) = state.selected_line() else {
+                    return;
+                };
+                let mut line = line.configuration();
+                line.trailing = !line.trailing;
+                state.events.send(
+                    SchedulerMessage::ConfigureLines(vec![(state.selected.0, line)], ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('l') => {
+                let Some(line) = state.selected_line() else {
+                    return;
+                };
+                let mut line = line.configuration();
+                line.looping = !line.looping;
+                state.events.send(
+                    SchedulerMessage::ConfigureLines(vec![(state.selected.0, line)], ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('m') => {
+                let Some(line) = state.selected_line() else {
+                    return;
+                };
+                let mut line = line.configuration();
+                line.manual = !line.manual;
+                state.events.send(
+                    SchedulerMessage::ConfigureLines(vec![(state.selected.0, line)], ActionTiming::Immediate)
+                );
+            }
+
+            KeyCode::Char('i') => {
+                state.events.send(
+                    SchedulerMessage::AddFrame(state.selected.0, state.selected.1 + 1, Default::default(), ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('b') => {
+                state.events.send(
+                    SchedulerMessage::AddFrame(state.selected.0, state.selected.1, Default::default(), ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Char('d') => {
+                let Some(frame) = state.selected_frame() else {
+                    return;
+                };
+                state.events.send(
+                    SchedulerMessage::AddFrame(state.selected.0, state.selected.1 + 1, frame.clone(), ActionTiming::Immediate)
+                );
+            }
+
+            KeyCode::Char('r') => {
+                let Some(frame) = state.selected_frame() else {
+                    return;
+                };
+                state.popup("Repetitions", "How many repetitions ?", frame.repetitions as i64, |state, value| {
+                    let value : i64 = value.into();
+                    if value < 1 {
+                        return;
+                    }
+                    let Some(frame) = state.selected_frame() else {
+                        return;
+                    };
+                    let mut frame = frame.clone();
+                    frame.repetitions = value as usize;
+                    state.events.send(
+                        SchedulerMessage::SetFrames(vec![(state.selected.0, state.selected.1, frame)], ActionTiming::Immediate)
+                    );
+                });
+            }
+            KeyCode::Char('t') => {
+                let Some(frame) = state.selected_frame() else {
+                    return;
+                };
+                state.popup("Duration", "Frame duration in beats", frame.duration, |state, value| {
+                    let value : f64 = value.into();
+                    if value < 0.0 {
+                        return;
+                    }
+                    let Some(frame) = state.selected_frame() else {
+                        return;
+                    };
+                    let mut frame = frame.clone();
+                    frame.duration = value;
+                    state.events.send(
+                        SchedulerMessage::SetFrames(vec![(state.selected.0, state.selected.1, frame)], ActionTiming::Immediate)
+                    );
+                });
+            }
+            KeyCode::Char('e') => {
+                let Some(frame) = state.selected_frame() else {
+                    return;
+                };
+                let mut frame = frame.clone();
+                frame.enabled = !frame.enabled;
+                state.events.send(
+                    SchedulerMessage::SetFrames(vec![(state.selected.0, state.selected.1, frame)], ActionTiming::Immediate)
+                );
+            }
+            
+            KeyCode::Delete if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                if state.selected_line().is_none() {
+                    state.events.send(AppEvent::Negative("No line to delete !".to_string()));
+                    return;
+                }
+                state.events.send(
+                    SchedulerMessage::RemoveLine(state.selected.0, ActionTiming::Immediate)
+                );
+            }
+            KeyCode::Delete => {
+                if state.selected_frame().is_none() {
+                    state.events.send(AppEvent::Negative("No frame to delete !".to_string()));
+                    return;
+                }
+                state.events.send(
+                    SchedulerMessage::RemoveFrame(state.selected.0, state.selected.1, ActionTiming::Immediate)
+                );
+            }
+
             KeyCode::Right => {
                 let max_f = state.selected_line().map(|l| l.n_frames().saturating_sub(1)).unwrap_or(0);
                 state.selected.1 = std::cmp::min(state.selected.1 + 1, max_f);
@@ -220,6 +409,14 @@ impl StatefulWidget for SceneView {
             if line.n_frames() <= first_frame {
                 continue;
             }
+
+            let line_pos : BTreeMap<usize, usize> = state.client_state.positions
+                .get(f_i)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
+
             for (j, frame) in line.frames[first_frame..].iter().enumerate() {
                 if j >= visible_frames {
                     break;
@@ -233,13 +430,16 @@ impl StatefulWidget for SceneView {
                 
                 let f_j = j + first_frame;
                 let selected = (f_i, f_j) == state.selected;
+                let rep = line_pos.get(&f_j).copied();
+                let color = state.palette.variations[f_i % state.palette.variations.len()];
                 Self::render_frame(
                     frame_area, 
                     buf, 
-                    f_j, 
+                    color, 
                     frame, 
                     selected,
-                    &state.palette
+                    rep,
+                    &state.palette,
                 );
             }
         }

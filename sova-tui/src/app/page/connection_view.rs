@@ -5,7 +5,7 @@ use ratatui_themes::Style;
 use tui_big_text::{BigText, PixelSize};
 use tui_checkbox::Checkbox;
 
-use crate::{app::AppState, event::AppEvent, popup::PopupValue, theme::Palette};
+use crate::{app::AppState, event::AppEvent, theme::Palette};
 
 pub struct ConnectionView {
     pub username_field: TextArea<'static>,
@@ -66,16 +66,16 @@ impl ConnectionView {
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
         match event.code {
             KeyCode::Esc => {
-                state.events.send(AppEvent::Popup(
-                    "Exit Sova ?".to_owned(),
-                    "Are you sure you want to quit ?".to_owned(),
-                    PopupValue::Bool(false),
-                    Box::new(|state, x| {
+                state.popup(
+                    "Exit Sova ?",
+                    "Are you sure you want to quit ?",
+                    false,
+                    |state, x| {
                         if bool::from(x) {
                             state.events.send(AppEvent::Quit)
                         }
-                    }),
-                ));
+                    },
+                );
             }
             KeyCode::Up => {
                 self.current_input = self.current_input.saturating_sub(1)

@@ -1,11 +1,12 @@
 use color_eyre::eyre::OptionExt;
 use crossterm::event::{Event as CrosstermEvent};
 use futures::{FutureExt, StreamExt};
-use sova_server::{SovaClient, client::ClientState};
+use sova_core::schedule::SchedulerMessage;
+use sova_server::{ClientMessage, SovaClient, client::ClientState};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::{app::{AppPage, AppState}, compiled_syntax::CompiledSyntax, popup::PopupValue};
+use crate::{app::{AppPage, AppState}, compiled_syntax::CompiledSyntax, widgets::popup::PopupValue};
 
 /// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
@@ -50,7 +51,21 @@ pub enum AppEvent {
     UpdateClientState(ClientState),
     UpdateSyntax(String, CompiledSyntax),
     Disconnected,
+    TogglePlayPause,
+    SendClientMessage(ClientMessage),
+    ShowHelp,
     Quit,
+}
+
+impl From<ClientMessage> for AppEvent {
+    fn from(value: ClientMessage) -> Self {
+        AppEvent::SendClientMessage(value)
+    }
+}
+impl From<SchedulerMessage> for AppEvent {
+    fn from(value: SchedulerMessage) -> Self {
+        AppEvent::SendClientMessage(value.into())
+    }
 }
 
 /// Terminal event handler.
@@ -86,10 +101,10 @@ impl EventHandler {
     ///
     /// This is useful for sending events to the event handler which will be processed by the next
     /// iteration of the application's event loop.
-    pub fn send(&mut self, app_event: AppEvent) {
+    pub fn send<T: Into<AppEvent>>(&mut self, app_event: T) {
         // Ignore the result as the reciever cannot be dropped while this struct still has a
         // reference to it
-        let _ = self.sender.send(Event::App(app_event));
+        let _ = self.sender.send(Event::App(app_event.into()));
     }
 
     pub fn get_sender(&self) -> EventSender {

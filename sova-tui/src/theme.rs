@@ -1,6 +1,11 @@
+use std::array;
+
+use palette::{Hsl, ShiftHue, Srgb, convert::FromColor};
 use ratatui::style::Color;
 use ratatui_themes::{Style, Theme};
 use sova_core::vm::language::TokenCategory;
+
+pub const VARIATIONS : usize = 7;
 
 #[derive(Clone, Copy)]
 pub struct Palette {
@@ -15,6 +20,7 @@ pub struct Palette {
     pub warning: Color,
     pub success: Color,
     pub info: Color,
+    pub variations: [Color ; VARIATIONS]
 }
 
 impl From<Theme> for Palette {
@@ -32,6 +38,10 @@ impl From<Theme> for Palette {
             warning: base.warning,
             success: base.success,
             info: base.info,
+            variations: Self::color_angles(base.accent, [
+                90.0, 180.0, 270.0,
+                45.0, 135.0, 225.0, 315.0
+            ])
         }
     }
 }
@@ -42,12 +52,16 @@ impl Palette {
         Style::default().fg(self.foreground)
     }
 
-    pub fn color_angle(&self, angle: f32) -> Color {
-        let Color::Rgb(r, g, b) = self.accent else {
-            return self.accent;
+    pub fn color_angles<const N: usize>(color: Color, angles: [f32 ; N]) -> [Color ; N] {
+        let Color::Rgb(r, g, b) = color else {
+            return [color ; N];
         };
-        
-        todo!()
+        let rgb : Srgb<f32> = Srgb::new(r, g, b).into_format();
+        let hsl = Hsl::from_color(rgb);
+        array::from_fn(|i| {
+            let shifted = hsl.shift_hue(angles[i]);
+            Color::from_hsl(shifted)
+        })
     }
 
     pub fn token_color(&self, cat: TokenCategory) -> Color {
@@ -55,13 +69,13 @@ impl Palette {
             TokenCategory::Keyword => self.secondary,
             TokenCategory::Builtin => self.foreground,
             TokenCategory::Operator => self.accent,
-            TokenCategory::Number => self.foreground,
-            TokenCategory::String => self.foreground,
+            TokenCategory::Number => self.variations[0],
+            TokenCategory::String => self.variations[0],
             TokenCategory::Comment => self.muted,
-            TokenCategory::Variable => self.foreground,
-            TokenCategory::Symbol => self.accent,
-            TokenCategory::Special => self.secondary,
-            TokenCategory::Punctuation => self.foreground,
+            TokenCategory::Variable => self.variations[1],
+            TokenCategory::Symbol => self.variations[2],
+            TokenCategory::Special => self.variations[3],
+            TokenCategory::Punctuation => self.variations[4],
         }
     }
 

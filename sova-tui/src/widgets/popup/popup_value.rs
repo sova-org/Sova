@@ -56,6 +56,7 @@ impl PopupValue {
     fn int(self) -> i64 {
         match self {
             Self::Int(x) => x,
+            Self::Choice(i, _) => i as i64,
             _ => Default::default(),
         }
     }

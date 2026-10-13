@@ -24,20 +24,24 @@ impl StatefulWidget for Footer {
                 Span::styled(nerd_font_symbols::cod::COD_CIRCLE_FILLED, state.palette.success),
                 Span::styled(" Server running", state.palette.text())
             ]
-        } else {
+        } else if state.client.is_some() {
             let ip = state.client.as_ref().unwrap().ip.clone();
             vec![
                 Span::styled(nerd_font_symbols::md::MD_WIFI, state.palette.success),
                 Span::styled(format!(" ({ip})"), state.palette.text())
             ]
+        } else {
+            vec![Span::styled("Not connected", state.palette.muted)]
         });
 
         serv_status.render(layout[0], buf);
 
-        let lang = state.selected_frame().map(|f| f.script().lang()).unwrap_or_default();
-        let selected = Line::from(format!("({},{}) {}", state.selected.0, state.selected.1, lang))
-            .style(state.palette.text())
-            .right_aligned();
-        selected.render(layout[2], buf);
+        if state.client.is_some() {
+            let lang = state.selected_frame().map(|f| f.script().lang()).unwrap_or_default();
+            let selected = Line::from(format!("({},{}) {}", state.selected.0, state.selected.1, lang))
+                .style(state.palette.text())
+                .right_aligned();
+            selected.render(layout[2], buf);
+        }
     }
 }

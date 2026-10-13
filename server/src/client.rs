@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io::ErrorKind;
@@ -421,8 +420,12 @@ fn handle_server_message(
         ServerMessage::AudioEngineState(audio_engine_state) => {
             state.audio_state = audio_engine_state
         }
-        ServerMessage::ScopeData(items) => (),
-        ServerMessage::PeakData(items) => (),
+        ServerMessage::ScopeData(data) => {
+            state.scope_data = data;
+        }
+        ServerMessage::PeakData(data) => {
+            state.peak_data = data;
+        }
         ServerMessage::FeedbackEnabled => {
             let Some(iface) = sched_iface else {
                 state.server_errors.push_back("Unable to enable feedback: no scheduler interface !".to_owned());

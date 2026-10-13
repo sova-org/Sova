@@ -186,10 +186,6 @@ impl Scene {
     /// or None if it doesn't exist.
     pub fn line(&self, index: usize) -> Option<&Line> {
         if index >= self.n_lines() {
-            log_eprintln!(
-                "Warning: Attempted to get line with invalid index {}. Ignoring.",
-                index
-            );
             return None;
         }
         Some(&self.lines[index])

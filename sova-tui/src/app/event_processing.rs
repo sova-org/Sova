@@ -1,16 +1,21 @@
 use std::time::Duration;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use sova_core::schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState};
 use sova_server::SovaClient;
 
-use crate::{app::{App, AppPage, scene_view::SceneView}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}};
+use crate::{app::{App, AppPage, scene_view::SceneView}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}, widgets::{Help, log_widget::LogWidget, popup::PopupValue}};
 
 impl App {
     pub async fn handle_app_event(&mut self, app_event: AppEvent) {
         match app_event {
             AppEvent::Quit => self.quit().await,
             AppEvent::GoTo(app_page) => {
-                self.state.page = app_page;
+                match app_page {
+                    AppPage::Logs => self.floating.open("Logs", LogWidget::default()),
+                    AppPage::Help => self.floating.open("Help", Help),
+                    _ => self.state.page = app_page
+                }
             }
             AppEvent::Popup(title, content, value, callback) => {
                 self.popup.open(title, content, value, callback, &self.state.palette)
@@ -67,9 +72,7 @@ impl App {
                 let err = self.state.client_state.server_errors
                     .pop_back()
                     .unwrap_or("Disconnected !".to_string());
-                if let Some(mut c) = self.state.client.take() {
-                    let _ = c.stop_task().await;
-                }
+                self.state.disconnect().await;
                 self.notification.negative(err, &self.state.palette);
             }
             AppEvent::RefreshScript => {
@@ -77,6 +80,20 @@ impl App {
             }
             AppEvent::UpdateSyntax(lang, syn) => {
                 self.state.compiled_syntax.insert(lang, syn);
+            }
+            AppEvent::TogglePlayPause => {
+                let msg = match self.state.client_state.playback_state {
+                    PlaybackState::Stopped => SchedulerMessage::TransportStart(ActionTiming::Immediate),
+                    PlaybackState::Starting(_) 
+                    | PlaybackState::Playing => SchedulerMessage::TransportStop(ActionTiming::Immediate),
+                };
+                let _ = self.state.send_message(msg).await;
+            }
+            AppEvent::SendClientMessage(msg) => {
+                let _ = self.state.send_message(msg).await;
+            }
+            AppEvent::ShowHelp => {
+                self.floating.open("Help", Help);
             }
         }
     }
@@ -87,9 +104,41 @@ impl App {
             self.popup.process_event(&mut self.state, key_event);
             return Ok(());
         }
+        if self.floating.is_showing() {
+            self.floating.process_event(&mut self.state, key_event);
+            return Ok(());
+        }
 
         match key_event.code {
-            // General shortcuts here
+            KeyCode::Char(' ') if 
+                key_event.modifiers.contains(KeyModifiers::CONTROL) && 
+                self.state.page.is_in_session() => 
+            {
+                self.state.events.send(AppEvent::TogglePlayPause);
+            }
+            KeyCode::Char('h') if 
+                key_event.modifiers.contains(KeyModifiers::CONTROL) && 
+                self.state.page.is_in_session() => 
+            {
+                self.state.events.send(AppEvent::ShowHelp);
+            }
+            KeyCode::Char('g') if 
+                key_event.modifiers.contains(KeyModifiers::CONTROL) && 
+                self.state.page.is_in_session() => 
+            {
+                let choices = vec![
+                    AppPage::Scene.to_string(),
+                    AppPage::Devices.to_string(),
+                    AppPage::Audio.to_string(),
+                    AppPage::Chat.to_string(),
+                    AppPage::Help.to_string(),
+                    AppPage::Logs.to_string(),
+                ];
+                self.state.popup("Go to", "Select the page to go to", PopupValue::Choice(0, choices), |state, value| {
+                    let page = AppPage::from(String::from(value).as_str());
+                    state.go_to(page);
+                });
+            }
             _ => {
                 match self.state.page {
                     AppPage::Connection => {

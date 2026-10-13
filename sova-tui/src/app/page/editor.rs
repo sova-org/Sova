@@ -1,15 +1,22 @@
+use std::time::Duration;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span, Text}, widgets::{Paragraph, StatefulWidget, Widget}};
 use ratatui_themes::Style;
 use ropey::Rope;
+use sova_core::{scene::script::Script, schedule::{ActionTiming, SchedulerMessage}};
 
-use crate::{app::{AppPage, AppState}};
+use crate::{app::{AppPage, AppState}, compiled_syntax::CompiledSyntax, flash::Flash, theme::Palette};
+
+const EDITOR_FLASH_MS : u64 = 100;
 
 pub struct Editor {
     buffer: Rope,
     cursor: (usize, usize),
     selection_begin: (usize, usize),
-    selection_end: (usize, usize)
+    selection_end: (usize, usize),
+    lang: String,
+    flash: Flash
 }
 
 impl Editor {
@@ -18,7 +25,9 @@ impl Editor {
             buffer: Rope::default(), 
             cursor: (0, 0),
             selection_begin: (0, 0),
-            selection_end: (0, 0)
+            selection_end: (0, 0),
+            lang: String::new(),
+            flash: Flash::new(Duration::from_millis(EDITOR_FLASH_MS))
         }
     }
 
@@ -28,6 +37,17 @@ impl Editor {
             return;
         };
         self.set_text(frame.script().content());
+        self.lang = frame.script().lang().to_string();
+    }
+
+    pub fn upload(&mut self, state: &mut AppState) {
+        self.flash.trigger();
+        state.events.send(SchedulerMessage::SetScript(
+            state.selected.0, 
+            state.selected.1, 
+            Script::new(self.buffer.to_string(), self.lang.clone()), 
+            ActionTiming::Immediate
+        ));
     }
 
     pub fn set_text(&mut self, text: &str) {
@@ -91,7 +111,7 @@ impl Editor {
         let char_idx = self.cursor_char_idx();
         match event.code {
             KeyCode::Enter if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                
+                self.upload(state);
             }
             KeyCode::Backspace => {
                 if char_idx > 0 {
@@ -149,14 +169,15 @@ impl Editor {
         }
     }
 
-    fn render_line_numbers(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) -> u16 {
-        let first_col_len = self.buffer.len_lines().to_string().len() as u16;
-        for l in 0..self.buffer.len_lines() {
+    fn render_line_numbers(&self, from: usize, area: Rect, buf: &mut Buffer, palette: &Palette) -> u16 {
+        let first_col_len = self.buffer.len_lines().to_string().len().max(2) as u16;
+        for l in 0..self.buffer.len_lines().min(area.height as usize) {
+            let real_l = from + l;
             let line_index = Span::styled(
-                l.to_string(), 
+                real_l.to_string(), 
                 Style::default().fg(
-                    if l as usize == self.cursor.0 { state.palette.foreground } else { state.palette.muted }
-                ).bg(state.palette.background)
+                    if real_l == self.cursor.0 { palette.foreground } else { palette.muted }
+                ).bg(palette.background)
             );
             let line_index = Line::from(line_index).right_aligned();
             line_index.render(Rect { 
@@ -169,42 +190,42 @@ impl Editor {
         first_col_len
     }
 
-    fn render_buffer(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) {
-        let Some(frame) = state.selected_frame() else {
-            return;
-        };
-
-        let lang = frame.script().lang();
-        let mut lines : Vec<Line> = if let Some(syn) = state.compiled_syntax.get(lang) {
+    fn render_buffer(&self, first_line: usize, first_col: usize, area: Rect, buf: &mut Buffer, palette: &Palette, syntax: Option<&CompiledSyntax>) {
+        let mut lines : Vec<Line> = if let Some(syn) = syntax {
             self.buffer.lines().map(|line| {
                 let line_str = line.to_string();
                 let split = syn.split(&line_str);
                 split.into_iter().map(|(sub, cat)| {
                     Span::styled(sub, if let Some(cat) = cat { 
-                        state.palette.token_color(cat)
+                        palette.token_color(cat)
                     } else { 
-                        state.palette.foreground 
+                        palette.foreground 
                     })
                 }).collect()
             }).collect()
         } else {
             self.buffer.lines().map(|line| {
-                let spans = vec![Span::styled(line.to_string(), state.palette.text())];
+                let spans = vec![Span::styled(line.to_string(), palette.text())];
                 Line::from(spans)
             }).collect()
         };
 
         if self.cursor.0 < lines.len() {
             let line = std::mem::take(&mut lines[self.cursor.0]);
-            lines[self.cursor.0] = line.bg(state.palette.selection);
+            lines[self.cursor.0] = line.bg(palette.selection);
         }
 
         let text = Text::from(lines);
-        let p = Paragraph::new(text).bg(state.palette.surface);
+        let mut p = Paragraph::new(text).bg(palette.surface).scroll((first_line as u16, first_col as u16));
+
+        if self.flash.is_active() {
+            p = p.reversed();
+        }
+
         p.render(area, buf);
     }
 
-    fn render_cursor(&self, area: Rect, buf: &mut Buffer, state: &mut AppState) {
+    fn render_cursor(&self, first_line: usize, first_col: usize, area: Rect, buf: &mut Buffer, palette: &Palette) {
         let char_idx = self.cursor_char_idx();
         let char = if char_idx < self.buffer.len_chars() {
             let at_idx = self.buffer.char(char_idx);
@@ -212,10 +233,10 @@ impl Editor {
         } else {
             ' '
         };
-        let cursor_render = Span::styled(char.to_string(), state.palette.text().reversed());
+        let cursor_render = Span::styled(char.to_string(), palette.text().reversed());
         cursor_render.render(Rect { 
-            x: area.x + (self.cursor.1 as u16), 
-            y: area.y + (self.cursor.0 as u16), 
+            x: area.x + (self.cursor.1.saturating_sub(first_col) as u16), 
+            y: area.y + (self.cursor.0.saturating_sub(first_line) as u16), 
             width: 1, height: 1 
         }, buf);
     }
@@ -225,12 +246,21 @@ impl StatefulWidget for &Editor {
     type State = AppState;
 
     fn render(self, mut area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let first_col_len = self.render_line_numbers(area, buf, state);
+        let height_us = area.height as usize;
+        let first_line = self.cursor.0
+            .saturating_sub(3 * height_us / 4)
+            .min(self.buffer.len_lines().saturating_sub(height_us));
+        let width_us = area.width as usize;
+        let first_col = self.cursor.1
+            .saturating_sub(3 * width_us / 4);
+
+        let first_col_len = self.render_line_numbers(first_line, area, buf, &state.palette);
 
         area.x += first_col_len + 1;
         area.width = area.width.saturating_sub(first_col_len + 2);
-        
-        self.render_buffer(area, buf, state);
-        self.render_cursor(area, buf, state);
+
+        let syn = state.compiled_syntax.get(&self.lang);
+        self.render_buffer(first_line, first_col, area, buf, &state.palette, syn);
+        self.render_cursor(first_line, first_col, area, buf, &state.palette);
     }
 }
