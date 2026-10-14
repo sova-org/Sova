@@ -18,6 +18,7 @@ pub use help::*;
 pub mod popup;
 pub mod log_widget;
 pub mod list_choice;
+pub mod editor;
 
 pub trait InteractiveWidget {
     fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState);

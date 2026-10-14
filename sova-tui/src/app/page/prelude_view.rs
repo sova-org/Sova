@@ -9,13 +9,13 @@ use ratatui::{
         StatefulWidget, Widget,
     },
 };
-use ropey::Rope;
 use sova_core::{scene::script::Script, schedule::SchedulerMessage};
 
 use crate::{
-    app::{AppPage, AppState, editor::Editor},
+    app::{AppPage, AppState},
     event::AppEvent,
     theme::Palette,
+    widgets::editor::Editor,
 };
 
 const FRAME_WIDTH: u16 = 14;
@@ -37,7 +37,7 @@ impl PreludeView {
 
     pub fn update_content(&mut self, state: &AppState) {
         let Some(script) = state.selected_prelude() else {
-            self.editor.buffer = Rope::default();
+            self.editor.set_text("");
             return;
         };
         self.editor.set_text(script.content());
@@ -47,7 +47,7 @@ impl PreludeView {
     pub fn upload(&mut self, state: &mut AppState) {
         self.editor.flash.trigger();
         let mut prelude = state.client_state.scene.prelude.clone();
-        let script = Script::new(self.editor.buffer.to_string(), self.editor.lang.clone());
+        let script = Script::new(self.editor.content(), self.editor.lang.clone());
         if state.selected_prelude < prelude.len() {
             prelude[state.selected_prelude] = script;
         } else {

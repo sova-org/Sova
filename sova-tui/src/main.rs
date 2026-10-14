@@ -1,3 +1,4 @@
+use arboard::Clipboard;
 use ratatui_themes::{Theme, ThemeName};
 
 use crate::{app::{App, AppPage, AppState}, event::EventHandler};
@@ -17,12 +18,14 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
 
+    let clipboard = Clipboard::new().ok();
+
     let state = AppState {
         client_state: Default::default(),
         events: EventHandler::new(),
         selected: (0, 0),
         selected_prelude: 0,
-        clipboard: None,
+        clipboard,
         page: AppPage::Connection,
         palette: Theme::new(ThemeName::Dracula).into(),
         client: None,

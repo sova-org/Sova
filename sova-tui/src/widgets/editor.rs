@@ -9,13 +9,9 @@ use ratatui::{
 };
 use ratatui_themes::Style;
 use ropey::Rope;
-use sova_core::{
-    scene::script::Script,
-    schedule::{ActionTiming, SchedulerMessage},
-};
 
 use crate::{
-    app::{AppPage, AppState},
+    app::AppState,
     compiled_syntax::CompiledSyntax,
     flash::Flash,
     theme::Palette,
@@ -24,15 +20,65 @@ use crate::{
 
 const EDITOR_FLASH_MS: u64 = 100;
 
+pub type CursorPos = (usize, usize);
+pub type EditorState = (String, CursorPos);
+
+#[derive(Debug, Default, Clone)]
+pub struct EditorHistory {
+    past: Vec<EditorState>,
+    future: Vec<EditorState>,
+}
+
+impl EditorHistory {
+    pub fn add(&mut self, state: EditorState) {
+        self.past.push(state);
+        self.future.clear();
+    }
+
+    pub fn current(&self) -> Option<&EditorState> {
+        self.past.last()
+    }
+
+    pub fn backward(&mut self) -> Option<&EditorState> {
+        let Some(state) = self.past.pop() else {
+            return None;
+        };
+        self.future.push(state);
+        self.past.last()
+    }
+
+    pub fn forward(&mut self) -> Option<&EditorState> {
+        let Some(state) = self.future.pop() else {
+            return None;
+        };
+        self.past.push(state);
+        self.past.last()
+    }
+
+    pub fn is_past_empty(&self) -> bool {
+        self.past.is_empty()
+    }
+
+    pub fn is_future_empty(&self) -> bool {
+        self.future.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.past.clear();
+        self.future.clear();
+    }
+}
+
 pub struct Editor {
-    pub buffer: Rope,
-    cursor: (usize, usize),
-    selection_anchor: Option<(usize, usize)>,
+    buffer: Rope,
+    cursor: CursorPos,
+    selection_anchor: Option<CursorPos>,
     pub lang: String,
     pub flash: Flash,
     pub show_cursor: bool,
     pub lang_popup: ListChoice,
     pub selecting: bool,
+    pub history: EditorHistory
 }
 
 impl Editor {
@@ -49,7 +95,21 @@ impl Editor {
             show_cursor: true,
             lang_popup: popup,
             selecting: false,
+            history: Default::default()
         }
+    }
+
+    pub fn cursor_pos(&self) -> CursorPos {
+        self.cursor
+    }
+
+    pub fn set_cursor_pos(&mut self, pos: CursorPos) {
+        self.cursor = pos;
+        self.sanitize_cursor();
+    }
+
+    pub fn content(&self) -> String {
+        self.buffer.to_string()
     }
 
     pub fn set_text(&mut self, text: &str) {
@@ -63,7 +123,7 @@ impl Editor {
         self.to_char_idx(self.cursor)
     }
 
-    pub fn to_char_idx(&self, (line, row): (usize, usize)) -> usize {
+    pub fn to_char_idx(&self, (line, row): CursorPos) -> usize {
         let line_begin = self.buffer.line_to_char(line);
         line_begin + row
     }
@@ -161,10 +221,26 @@ impl Editor {
         self.cursor = self.sanitize_pos(self.cursor);
     }
 
-    pub fn sanitize_pos(&self, pos: (usize, usize)) -> (usize, usize) {
+    pub fn sanitize_pos(&self, (mut y, mut x): CursorPos) -> CursorPos {
         let len_lines = self.buffer.len_lines();
-
-        todo!()
+        if len_lines == 0 {
+            return (0, 0);
+        }
+        let last_line = len_lines - 1;
+        if y >= len_lines {
+            y = last_line;
+        }
+        let line = self.buffer.line(y);
+        let len_chars = line.len_chars();
+        if len_chars == 0 {
+            return (y, 0);
+        }
+        if x >= len_chars && y == last_line {
+            x = len_chars;
+        } else if x >= len_chars {
+            x = len_chars - 1;
+        }
+        (y, x)
     }
 
     pub fn next_char(&mut self) {
@@ -206,6 +282,44 @@ impl Editor {
         self.cursor.1 = self.cursor.1.min(line.len_chars().saturating_sub(1));
     }
 
+    pub fn insert_text_before(&mut self, text: String) {
+        let text = text.replace("\t", "    ");
+        let idx = self.cursor_char_idx();
+        let mut first = true;
+        for line in text.lines() {
+            let len = line.len();
+            if !first {
+                self.cursor.0 += 1;
+                self.cursor.1 = len;
+            } else {
+                self.cursor.1 += len;
+            }
+            first = false;
+        }
+        self.buffer.insert(idx, &text);
+    }
+
+    pub fn insert_text_after(&mut self, text: String) {
+        let text = text.replace("\t", "    ");
+        self.buffer.insert(self.cursor_char_idx(), &text);
+    }
+
+    pub fn remove_next_char(&mut self) {
+        let char_idx = self.cursor_char_idx();
+        if char_idx < self.buffer.len_chars() {
+            self.buffer.remove(char_idx..(char_idx + 1));
+        }
+    }
+
+    pub fn remove_previous_char(&mut self) {
+        let char_idx = self.cursor_char_idx();
+        if char_idx > 0 {
+            self.previous_char();
+            let begin = char_idx - 1;
+            self.buffer.remove(begin..char_idx);
+        }
+    }
+
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
         if self.lang_popup.showing {
             self.lang_popup.process_event(event);
@@ -216,7 +330,6 @@ impl Editor {
         }
         //self.cursor = self.cursor.min(self.buffer.len_chars());
         let prev = self.cursor;
-        let char_idx = self.cursor_char_idx();
         match event.code {
             KeyCode::Char('l') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.lang_popup.choices = state
@@ -258,17 +371,13 @@ impl Editor {
                     state.negative("Unable to paste from clipboard !");
                     return;
                 };
-                self.buffer.insert(char_idx, &to_insert);
+                self.insert_text_before(to_insert);
             }
             KeyCode::Backspace => {
-                if char_idx > 0 {
-                    self.previous_char();
-                    let begin = char_idx - 1;
-                    self.buffer.remove(begin..char_idx);
-                }
+                self.remove_previous_char();
             }
             KeyCode::Enter => {
-                self.buffer.insert(char_idx, "\n");
+                self.buffer.insert(self.cursor_char_idx(), "\n");
                 self.cursor.0 += 1;
                 self.cursor.1 = 0;
             }
@@ -291,19 +400,17 @@ impl Editor {
                 self.end_of_line();
             }
             KeyCode::Tab => {
-                self.buffer.insert(char_idx, "    ");
+                self.buffer.insert(self.cursor_char_idx(), "    ");
                 self.cursor.1 += 4;
             }
             KeyCode::BackTab => (),
             KeyCode::Delete => {
-                if char_idx < self.buffer.len_chars() {
-                    self.buffer.remove(char_idx..(char_idx + 1));
-                }
+                self.remove_next_char();
             }
             KeyCode::Insert => (),
             KeyCode::F(_) => (),
             KeyCode::Char(c) => {
-                self.buffer.insert_char(char_idx, c);
+                self.buffer.insert_char(self.cursor_char_idx(), c);
                 self.cursor.1 += 1;
             }
             KeyCode::Null => (),
@@ -476,71 +583,5 @@ impl StatefulWidget for &Editor {
         if self.lang_popup.showing {
             self.lang_popup.render(area, buf, state);
         }
-    }
-}
-
-pub struct ScriptEditor {
-    pub editor: Editor,
-}
-
-impl ScriptEditor {
-    pub fn new() -> Self {
-        Self {
-            editor: Editor::new(),
-        }
-    }
-
-    pub fn update_content(&mut self, state: &AppState) {
-        let Some(frame) = state.selected_frame() else {
-            self.editor.buffer = Rope::default();
-            return;
-        };
-        self.editor.set_text(frame.script().content());
-        self.editor.lang = frame.script().lang().to_string();
-    }
-
-    pub fn upload(&mut self, state: &mut AppState) {
-        self.editor.flash.trigger();
-        state.events.send(SchedulerMessage::SetScript(
-            state.selected.0,
-            state.selected.1,
-            Script::new(self.editor.buffer.to_string(), self.editor.lang.clone()),
-            ActionTiming::Immediate,
-        ));
-    }
-
-    pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
-        match event.code {
-            KeyCode::Enter
-                if event.modifiers.intersects(
-                    KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT,
-                ) =>
-            {
-                self.upload(state);
-            }
-            KeyCode::Char('s') if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.upload(state);
-            }
-            KeyCode::PageUp => {
-                state.go_to_previous_frame();
-            }
-            KeyCode::PageDown => {
-                state.go_to_next_frame();
-            }
-            KeyCode::Esc => {
-                state.go_to(AppPage::Scene);
-            }
-            _ => {
-                self.editor.on_key_event(event, state);
-            }
-        }
-    }
-}
-
-impl StatefulWidget for &ScriptEditor {
-    type State = AppState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        self.editor.render(area, buf, state);
     }
 }
