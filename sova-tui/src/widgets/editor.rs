@@ -1,4 +1,4 @@
-use std::{ops::Range, time::Duration};
+use std::{collections::VecDeque, ops::Range, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -23,36 +23,63 @@ const EDITOR_FLASH_MS: u64 = 100;
 pub type CursorPos = (usize, usize);
 pub type EditorState = (String, CursorPos);
 
+const MAX_HISTORY : usize = 100;
+
 #[derive(Debug, Default, Clone)]
 pub struct EditorHistory {
-    past: Vec<EditorState>,
+    past: VecDeque<EditorState>,
     future: Vec<EditorState>,
 }
 
 impl EditorHistory {
     pub fn add(&mut self, state: EditorState) {
-        self.past.push(state);
+        self.past.push_back(state);
         self.future.clear();
+        while self.past.len() > MAX_HISTORY {
+            let init = self.past.pop_front().unwrap();
+            let _ = self.past.pop_front();
+            self.past.push_front(init);
+        }
     }
 
     pub fn current(&self) -> Option<&EditorState> {
-        self.past.last()
+        self.past.back()
+    }
+
+    pub fn current_mut(&mut self) -> Option<&mut EditorState> {
+        self.past.back_mut()
+    }
+
+    pub fn lens(&self) -> (usize, usize) {
+        (self.past.len(), self.future.len())
+    }
+
+    pub fn len(&self) -> usize {
+        self.past.len() + self.future.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.is_past_empty() && self.is_future_empty()
     }
 
     pub fn backward(&mut self) -> Option<&EditorState> {
-        let Some(state) = self.past.pop() else {
+        if self.past.is_empty() {
             return None;
-        };
-        self.future.push(state);
-        self.past.last()
+        } else if self.past.len() == 1 {
+            return self.past.back();
+        } else {
+            let state = self.past.pop_back().unwrap();
+            self.future.push(state);
+            self.past.back()
+        }
     }
 
     pub fn forward(&mut self) -> Option<&EditorState> {
         let Some(state) = self.future.pop() else {
             return None;
         };
-        self.past.push(state);
-        self.past.last()
+        self.past.push_back(state);
+        self.past.back()
     }
 
     pub fn is_past_empty(&self) -> bool {
@@ -112,11 +139,17 @@ impl Editor {
         self.buffer.to_string()
     }
 
+    pub fn save_state(&mut self) {
+        self.history.add((self.content(), self.cursor_pos()));
+    }
+
     pub fn set_text(&mut self, text: &str) {
         let text = text.replace("\t", "    ");
         self.buffer = Rope::from(text);
         self.cursor = (0, 0);
         self.selection_anchor = None;
+        self.history.clear();
+        self.save_state();
     }
 
     pub fn cursor_char_idx(&self) -> usize {
@@ -132,38 +165,6 @@ impl Editor {
         self.cursor = (0, 0);
     }
 
-    pub fn end(&mut self) {
-        let lines = self.buffer.len_lines();
-        if lines == 0 {
-            self.cursor = (0, 0);
-            return;
-        }
-        self.cursor.0 = lines - 1;
-        self.cursor.1 = self
-            .buffer
-            .line(self.cursor.0)
-            .len_chars()
-            .saturating_sub(1);
-    }
-
-    pub fn end_of_line(&mut self) {
-        let char_idx = self.cursor_char_idx();
-        let line = self.buffer.char_to_line(char_idx);
-        let line = self.buffer.line(line);
-        self.cursor.1 = line.len_chars().saturating_sub(1);
-    }
-
-    pub fn start_of_line(&mut self) {
-        self.cursor.1 = 0;
-    }
-
-    pub fn next_word(&mut self) {
-        let current = self.cursor_char_idx();
-        let mut dest = self.cursor;
-    }
-
-    pub fn previous_word(&mut self) {}
-
     pub fn start_selection(&mut self) {
         self.selection_anchor = Some(self.cursor);
         self.selecting = true;
@@ -176,6 +177,10 @@ impl Editor {
     pub fn cancel_selection(&mut self) {
         self.stop_selection();
         self.selection_anchor = None;
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.selection_anchor.is_some()
     }
 
     pub fn select_all(&mut self) {
@@ -206,10 +211,32 @@ impl Editor {
         if b < a {
             std::mem::swap(&mut a, &mut b);
         }
-        if b < self.buffer.len_chars() {
-            b += 1;
-        }
+        // if b < self.buffer.len_chars() {
+        //     b += 1;
+        // }
         a..b
+    }
+
+    pub fn selection_begin(&self) -> Option<CursorPos> {
+        let Some(anchor) = self.selection_anchor else {
+            return None;
+        };
+        if anchor < self.cursor {
+            Some(anchor)
+        } else {
+            Some(self.cursor)
+        }
+    }
+
+    pub fn selection_end(&self) -> Option<CursorPos> {
+        let Some(anchor) = self.selection_anchor else {
+            return None;
+        };
+        if anchor > self.cursor {
+            Some(anchor)
+        } else {
+            Some(self.cursor)
+        }
     }
 
     pub fn selected_text(&self) -> String {
@@ -217,8 +244,31 @@ impl Editor {
         self.buffer.slice(range).to_string()
     }
 
+    pub fn remove_selection(&mut self) {
+        let Some(begin) = self.selection_begin() else {
+            return;
+        };
+        let range = self.selection_range();
+        self.buffer.remove(range);
+        self.cursor = begin;
+        self.cancel_selection();
+    }
+
+    pub fn replace_selection(&mut self, text: String) {
+        self.remove_selection();
+        self.insert_text_before(text);
+    }
+
     pub fn sanitize_cursor(&mut self) {
         self.cursor = self.sanitize_pos(self.cursor);
+    }
+
+    pub fn current_char(&self) -> Option<char> {
+        let idx = self.cursor_char_idx();
+        if idx >= self.buffer.len_chars() {
+            return None;
+        }
+        Some(self.buffer.char(idx))
     }
 
     pub fn sanitize_pos(&self, (mut y, mut x): CursorPos) -> CursorPos {
@@ -282,6 +332,68 @@ impl Editor {
         self.cursor.1 = self.cursor.1.min(line.len_chars().saturating_sub(1));
     }
 
+    pub fn end(&mut self) {
+        let lines = self.buffer.len_lines();
+        if lines == 0 {
+            self.cursor = (0, 0);
+            return;
+        }
+        self.cursor.0 = lines - 1;
+        self.cursor.1 = self
+            .buffer
+            .line(self.cursor.0)
+            .len_chars()
+            .saturating_sub(1);
+    }
+
+    pub fn end_of_line(&mut self) {
+        let char_idx = self.cursor_char_idx();
+        let line = self.buffer.char_to_line(char_idx);
+        let line = self.buffer.line(line);
+        self.cursor.1 = line.len_chars().saturating_sub(1);
+    }
+
+    pub fn start_of_line(&mut self) {
+        self.cursor.1 = 0;
+    }
+
+    pub fn next_word(&mut self) -> bool {
+        let len = self.buffer.len_chars();
+        let mut current = self.cursor_char_idx();
+        if current == len {
+            return false;
+        }
+        let mut curr_whitespace = self.buffer.char(current).is_whitespace();
+        let init_whitespace = curr_whitespace;
+        while !(init_whitespace ^ curr_whitespace) {
+            self.next_char();
+            current = self.cursor_char_idx();
+            if current >= len {
+                break;
+            }
+            curr_whitespace = self.buffer.char(current).is_whitespace();
+        }
+        true
+    }
+
+    pub fn previous_word(&mut self) -> bool {
+        let mut current = self.cursor_char_idx();
+        if current == 0 {
+            return false;
+        }
+        let mut curr_whitespace = self.buffer.char(current - 1).is_whitespace();
+        let init_whitespace = curr_whitespace;
+        while !(init_whitespace ^ curr_whitespace) {
+            self.previous_char();
+            current = self.cursor_char_idx();
+            if current == 0 {
+                break;
+            }
+            curr_whitespace = self.buffer.char(current - 1).is_whitespace();
+        }
+        true
+    }
+
     pub fn insert_text_before(&mut self, text: String) {
         let text = text.replace("\t", "    ");
         let idx = self.cursor_char_idx();
@@ -304,20 +416,42 @@ impl Editor {
         self.buffer.insert(self.cursor_char_idx(), &text);
     }
 
-    pub fn remove_next_char(&mut self) {
+    pub fn remove_next_char(&mut self) -> bool {
         let char_idx = self.cursor_char_idx();
         if char_idx < self.buffer.len_chars() {
             self.buffer.remove(char_idx..(char_idx + 1));
+            return true;
         }
+        false
     }
 
-    pub fn remove_previous_char(&mut self) {
+    pub fn remove_previous_char(&mut self) -> bool {
         let char_idx = self.cursor_char_idx();
         if char_idx > 0 {
             self.previous_char();
             let begin = char_idx - 1;
             self.buffer.remove(begin..char_idx);
+            return true;
         }
+        false
+    }
+
+    pub fn undo(&mut self) {
+        let Some((content, cursor)) = self.history.backward() else {
+            return;
+        };
+        self.buffer = Rope::from_str(content);
+        self.cursor = *cursor;
+        self.cancel_selection();
+    }
+
+    pub fn redo(&mut self) {
+        let Some((content, cursor)) = self.history.forward() else {
+            return;
+        };
+        self.buffer = Rope::from_str(content);
+        self.cursor = *cursor;
+        self.cancel_selection();
     }
 
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
@@ -328,8 +462,6 @@ impl Editor {
             }
             return;
         }
-        //self.cursor = self.cursor.min(self.buffer.len_chars());
-        let prev = self.cursor;
         match event.code {
             KeyCode::Char('l') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.lang_popup.choices = state
@@ -342,11 +474,29 @@ impl Editor {
                 self.lang_popup.open();
                 return;
             }
+            KeyCode::Char('z') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.undo();
+            }
+            KeyCode::Char('y') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.redo();
+            }
             KeyCode::Char('w') if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.next_word();
+                if self.selecting {
+                    self.next_word();
+                } else {
+                    self.start_selection();
+                    self.next_word();
+                    self.stop_selection();
+                }
             }
             KeyCode::Char('b') if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.previous_word();
+                if self.selecting {
+                    self.previous_word();
+                } else {
+                    self.start_selection();
+                    self.previous_word();
+                    self.stop_selection();
+                }
             }
             KeyCode::Char('a') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.select_all();
@@ -371,26 +521,75 @@ impl Editor {
                     state.negative("Unable to paste from clipboard !");
                     return;
                 };
-                self.insert_text_before(to_insert);
+                if to_insert.is_empty() {
+                    return;
+                }
+                self.replace_selection(to_insert);
+                self.save_state();
+            }
+            KeyCode::Backspace if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.start_selection();
+                let moved = self.previous_word();
+                self.remove_selection();
+                if moved {
+                    self.save_state();
+                }
+            }
+            KeyCode::Delete if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.start_selection();
+                let moved = self.next_word();
+                self.remove_selection();
+                if moved {
+                    self.save_state();
+                }
             }
             KeyCode::Backspace => {
-                self.remove_previous_char();
+                if self.has_selection() {
+                    self.remove_selection();
+                    self.save_state();
+                } else if self.remove_previous_char() {
+                    self.save_state();
+                }
+            }
+            KeyCode::Delete => {
+                if self.has_selection() {
+                    self.remove_selection();
+                    self.save_state();
+                } else if self.remove_next_char() {
+                    self.save_state();
+                }
             }
             KeyCode::Enter => {
+                if self.has_selection() {
+                    self.remove_selection();
+                }
                 self.buffer.insert(self.cursor_char_idx(), "\n");
                 self.cursor.0 += 1;
                 self.cursor.1 = 0;
+                self.save_state();
             }
             KeyCode::Left => {
+                if !self.selecting {
+                    self.cancel_selection();
+                }
                 self.previous_char();
             }
             KeyCode::Right => {
+                if !self.selecting {
+                    self.cancel_selection();
+                }
                 self.next_char();
             }
             KeyCode::Up => {
+                if !self.selecting {
+                    self.cancel_selection();
+                }
                 self.previous_line();
             }
             KeyCode::Down => {
+                if !self.selecting {
+                    self.cancel_selection();
+                }
                 self.next_line();
             }
             KeyCode::Home => {
@@ -400,25 +599,30 @@ impl Editor {
                 self.end_of_line();
             }
             KeyCode::Tab => {
+                if self.has_selection() {
+                    self.remove_selection();
+                }
                 self.buffer.insert(self.cursor_char_idx(), "    ");
                 self.cursor.1 += 4;
+                self.save_state();
             }
             KeyCode::BackTab => (),
-            KeyCode::Delete => {
-                self.remove_next_char();
-            }
             KeyCode::Insert => (),
             KeyCode::F(_) => (),
             KeyCode::Char(c) => {
+                if self.has_selection() {
+                    self.remove_selection();
+                }
                 self.buffer.insert_char(self.cursor_char_idx(), c);
                 self.cursor.1 += 1;
+                self.save_state();
             }
             KeyCode::Null => (),
             _ => (),
         }
         self.sanitize_cursor();
-        if self.cursor != prev && !self.selecting && self.selection_anchor.is_some() {
-            self.cancel_selection();
+        if self.history.lens().0 == 1 {
+            self.history.current_mut().unwrap().1 = self.cursor;
         }
     }
 
