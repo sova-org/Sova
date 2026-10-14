@@ -122,6 +122,14 @@ impl AppState {
         ));
     }
 
+    pub fn positive<T: ToString>(&mut self, msg: T) {
+        self.events.send(AppEvent::Positive(msg.to_string()));
+    }
+
+    pub fn negative<T: ToString>(&mut self, msg: T) {
+        self.events.send(AppEvent::Negative(msg.to_string()));
+    }
+
     pub fn current_annotations(&self) -> Vec<Annotation> {
         self.client_state.annotations
             .get(self.selected.0)
