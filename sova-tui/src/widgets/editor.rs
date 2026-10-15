@@ -2,17 +2,18 @@ use std::{collections::VecDeque, ops::Range, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::Position, prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span}, widgets::{Fill, StatefulWidget, Widget},
+    layout::Position,
+    prelude::{Buffer, Rect},
+    style::Stylize,
+    text::{Line, Span},
+    widgets::{Fill, StatefulWidget, Widget},
 };
 use ratatui_themes::Style;
 use ropey::Rope;
 use sova_core::vm::language::TokenCategory;
 
 use crate::{
-    app::AppState,
-    compiled_syntax::CompiledSyntax,
-    flash::Flash,
-    theme::Palette,
+    app::AppState, compiled_syntax::CompiledSyntax, flash::Flash, theme::Palette,
     widgets::list_choice::ListChoice,
 };
 
@@ -21,7 +22,7 @@ const EDITOR_FLASH_MS: u64 = 100;
 pub type CursorPos = (usize, usize);
 pub type EditorState = (String, CursorPos);
 
-const MAX_HISTORY : usize = 100;
+const MAX_HISTORY: usize = 100;
 
 #[derive(Debug, Default, Clone)]
 pub struct EditorHistory {
@@ -103,7 +104,7 @@ pub struct Editor {
     pub show_cursor: bool,
     pub lang_popup: ListChoice,
     pub selecting: bool,
-    pub history: EditorHistory
+    pub history: EditorHistory,
 }
 
 impl Editor {
@@ -120,7 +121,7 @@ impl Editor {
             show_cursor: true,
             lang_popup: popup,
             selecting: false,
-            history: Default::default()
+            history: Default::default(),
         }
     }
 
@@ -337,11 +338,8 @@ impl Editor {
             return;
         }
         self.cursor.0 = lines - 1;
-        self.cursor.1 = self
-            .buffer
-            .line(self.cursor.0)
-            .len_chars();
-            //.saturating_sub(1);
+        self.cursor.1 = self.buffer.line(self.cursor.0).len_chars();
+        //.saturating_sub(1);
     }
 
     pub fn end_of_line(&mut self) {
@@ -450,6 +448,24 @@ impl Editor {
         self.buffer = Rope::from_str(content);
         self.cursor = *cursor;
         self.cancel_selection();
+    }
+
+    pub fn effective_cursor_pos(&self) -> CursorPos {
+        let line = self.buffer.line(self.cursor.0);
+        let mut shift = 0;
+        let mut index = 0;
+        for c in line.chars() {
+            if index == self.cursor.1 {
+                break;
+            }
+            if c == '\t' {
+                shift += 4;
+            } else {
+                shift += 1;
+            }
+            index += 1
+        }
+        return (self.cursor.0, shift);
     }
 
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
@@ -666,8 +682,8 @@ impl Editor {
     fn render_char(
         pos: CursorPos,
         c: char,
-        first_line: usize, 
-        first_col: usize, 
+        first_line: usize,
+        first_col: usize,
         area: Rect,
         buf: &mut Buffer,
         palette: &Palette,
@@ -675,17 +691,17 @@ impl Editor {
         is_selected: bool,
         is_cursor: bool,
     ) {
-        if  pos.0 >= first_line && 
-            pos.1 >= first_col &&
-            pos.0 - first_line < area.height as usize &&
-            pos.1 - first_col < area.width as usize
+        if pos.0 >= first_line
+            && pos.1 >= first_col
+            && pos.0 - first_line < area.height as usize
+            && pos.1 - first_col < area.width as usize
         {
             let cell_pos = Position {
                 x: (pos.1 - first_col) as u16 + area.x,
                 y: (pos.0 - first_line) as u16 + area.y,
             };
             if let Some(cell) = buf.cell_mut(cell_pos) {
-                let mut style = palette.text().bg(cell.bg);
+                let mut style = palette.text(); //.bg(cell.bg);
                 if let Some(cat) = cat {
                     style = style.fg(palette.token_color(cat));
                 }
@@ -705,32 +721,13 @@ impl Editor {
 
     fn render_iter(
         &self,
-        first_line: usize, 
-        first_col: usize, 
+        first_line: usize,
+        first_col: usize,
         area: Rect,
         buf: &mut Buffer,
         palette: &Palette,
         syntax: Option<&CompiledSyntax>,
     ) {
-        Fill::new(" ").bg(palette.surface).render(area, buf);
-        Fill::new(" ").bg(palette.selection).render(
-            area.intersection(Rect { 
-                x: area.x + self.cursor.1.saturating_sub(first_col) as u16, 
-                y: area.y, 
-                width: 1, 
-                height: area.height 
-            }), 
-            buf
-        );
-        Fill::new(" ").bg(palette.selection).render(
-            area.intersection(Rect { 
-                x: area.x, 
-                y: area.y + self.cursor.0.saturating_sub(first_line) as u16, 
-                width: area.width, 
-                height: 1 
-            }), 
-            buf
-        );
         let content = self.buffer.to_string();
         let select_range = self.selection_range();
         let cursor_idx = self.cursor_char_idx();
@@ -744,16 +741,16 @@ impl Editor {
                 let is_selected = select_range.contains(&index);
                 let is_cursor = index == cursor_idx;
                 Self::render_char(
-                    pos, 
-                    c, 
-                    first_line, 
-                    first_col, 
-                    area, 
-                    buf, 
-                    palette, 
-                    cat, 
-                    is_selected, 
-                    is_cursor
+                    pos,
+                    c,
+                    first_line,
+                    first_col,
+                    area,
+                    buf,
+                    palette,
+                    cat,
+                    is_selected,
+                    is_cursor,
                 );
                 if c == '\n' {
                     pos.0 += 1;
@@ -762,16 +759,16 @@ impl Editor {
                     pos.1 += 1;
                     for _ in 0..3 {
                         Self::render_char(
-                            pos, 
-                            c, 
-                            first_line, 
-                            first_col, 
-                            area, 
-                            buf, 
-                            palette, 
-                            cat, 
-                            is_selected, 
-                            false
+                            pos,
+                            c,
+                            first_line,
+                            first_col,
+                            area,
+                            buf,
+                            palette,
+                            cat,
+                            is_selected,
+                            false,
                         );
                         pos.1 += 1;
                     }
@@ -802,18 +799,40 @@ impl StatefulWidget for &Editor {
 
     fn render(self, mut area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let height_us = area.height as usize;
-        let first_line = self
-            .cursor
+
+        let cursor = self.effective_cursor_pos();
+
+        let first_line = cursor
             .0
             .saturating_sub(3 * height_us / 4)
             .min(self.buffer.len_lines().saturating_sub(height_us));
         let width_us = area.width as usize;
-        let first_col = self.cursor.1.saturating_sub(3 * width_us / 4);
+        let first_col = cursor.1.saturating_sub(3 * width_us / 4);
 
         let first_col_len = self.render_line_numbers(first_line, area, buf, &state.palette);
 
         area.x += first_col_len + 1;
         area.width = area.width.saturating_sub(first_col_len + 2);
+
+        Fill::new(" ").bg(state.palette.surface).render(area, buf);
+        Fill::new(" ").bg(state.palette.selection).render(
+            area.intersection(Rect {
+                x: area.x + cursor.1.saturating_sub(first_col) as u16,
+                y: area.y,
+                width: 1,
+                height: area.height,
+            }),
+            buf,
+        );
+        Fill::new(" ").bg(state.palette.selection).render(
+            area.intersection(Rect {
+                x: area.x,
+                y: area.y + cursor.0.saturating_sub(first_line) as u16,
+                width: area.width,
+                height: 1,
+            }),
+            buf,
+        );
 
         Line::from(Span::styled(
             self.lang.clone(),
