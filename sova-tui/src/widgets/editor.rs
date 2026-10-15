@@ -6,6 +6,7 @@ use ratatui::{
 };
 use ratatui_themes::Style;
 use ropey::Rope;
+use sova_core::vm::language::TokenCategory;
 
 use crate::{
     app::AppState,
@@ -662,6 +663,46 @@ impl Editor {
         first_col_len
     }
 
+    fn render_char(
+        pos: CursorPos,
+        c: char,
+        first_line: usize, 
+        first_col: usize, 
+        area: Rect,
+        buf: &mut Buffer,
+        palette: &Palette,
+        cat: Option<TokenCategory>,
+        is_selected: bool,
+        is_cursor: bool,
+    ) {
+        if  pos.0 >= first_line && 
+            pos.1 >= first_col &&
+            pos.0 - first_line < area.height as usize &&
+            pos.1 - first_col < area.width as usize
+        {
+            let mut style = palette.text();
+            if let Some(cat) = cat {
+                style = style.fg(palette.token_color(cat));
+            }
+            if is_selected {
+                style = style.bg(palette.secondary);
+            }
+            if is_cursor {
+                style = style.reversed();
+            }
+            let cell_pos = Position {
+                x: (pos.1 - first_col) as u16 + area.x,
+                y: (pos.0 - first_line) as u16 + area.y,
+            };
+            if let Some(cell) = buf.cell_mut(cell_pos) {
+                cell.set_style(style);
+                if !c.is_control() {
+                    cell.set_char(c);
+                }
+            }
+        }
+    }
+
     fn render_iter(
         &self,
         first_line: usize, 
@@ -681,37 +722,40 @@ impl Editor {
         let mut index = 0;
         for (group, cat) in slices {
             for c in group.chars() {
-                if pos.0 >= first_line && 
-                    pos.1 >= first_col &&
-                    pos.0 - first_line < area.height as usize &&
-                    pos.1 - first_col < area.width as usize
-                {
-                    let mut style = palette.text();
-                    if let Some(cat) = cat {
-                        style = style.fg(palette.token_color(cat));
-                    }
-                    if select_range.contains(&index) {
-                        style = style.bg(palette.secondary);
-                    }
-                    if index == cursor_idx {
-                        style = style.reversed();
-                    }
-                    let cell_pos = Position {
-                        x: (pos.1 - first_col) as u16 + area.x,
-                        y: (pos.0 - first_line) as u16 + area.y,
-                    };
-                    if let Some(cell) = buf.cell_mut(cell_pos) {
-                        cell.set_style(style);
-                        if !c.is_control() {
-                            cell.set_char(c);
-                        }
-                    }
-                }
+                let is_selected = select_range.contains(&index);
+                let is_cursor = index == cursor_idx;
+                Self::render_char(
+                    pos, 
+                    c, 
+                    first_line, 
+                    first_col, 
+                    area, 
+                    buf, 
+                    palette, 
+                    cat, 
+                    is_selected, 
+                    is_cursor
+                );
                 if c == '\n' {
                     pos.0 += 1;
                     pos.1 = 0;
                 } else if c == '\t' {
-                    pos.1 += 4;
+                    pos.1 += 1;
+                    for _ in 0..3 {
+                        Self::render_char(
+                            pos, 
+                            c, 
+                            first_line, 
+                            first_col, 
+                            area, 
+                            buf, 
+                            palette, 
+                            cat, 
+                            is_selected, 
+                            false
+                        );
+                        pos.1 += 1;
+                    }
                 } else {
                     pos.1 += 1;
                 }
