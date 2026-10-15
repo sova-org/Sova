@@ -342,8 +342,8 @@ impl Editor {
         self.cursor.1 = self
             .buffer
             .line(self.cursor.0)
-            .len_chars()
-            .saturating_sub(1);
+            .len_chars();
+            //.saturating_sub(1);
     }
 
     pub fn end_of_line(&mut self) {
