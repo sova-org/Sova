@@ -511,6 +511,24 @@ impl Editor {
         true
     }
 
+    pub fn is_anchor_forward(&self) -> bool {
+        match self.selection_anchor {
+            Some(anchor) => {
+                anchor > self.cursor
+            }
+            None => false,
+        }
+    }
+
+    pub fn is_anchor_backward(&self) -> bool {
+        match self.selection_anchor {
+            Some(anchor) => {
+                anchor <= self.cursor
+            }
+            None => false,
+        }
+    }
+
     pub fn toggle_selection(&mut self) {
         if self.selecting {
             self.stop_selection();
@@ -573,7 +591,11 @@ impl Editor {
             }
             KeyCode::Char('q') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.selecting {
-                    self.end_of_line();
+                    if self.is_anchor_forward() {
+                        self.start_of_line();
+                    } else {
+                        self.end_of_line();
+                    }
                 } else {
                     self.select_line();
                     self.stop_selection();
