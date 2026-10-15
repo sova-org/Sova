@@ -5,6 +5,7 @@ pub mod connection_view;
 pub mod connecting_view;
 pub mod script_editor;
 pub mod prelude_view;
+pub mod devices_view;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppPage {

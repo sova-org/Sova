@@ -161,6 +161,9 @@ impl App {
                     AppPage::Prelude => {
                         self.prelude_view.on_key_event(key_event, &mut self.state);
                     }
+                    AppPage::Devices => {
+                        self.devices_view.on_key_event(key_event, &mut self.state);
+                    }
                     _ => ()
                 }
             }

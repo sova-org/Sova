@@ -1,4 +1,4 @@
-use crate::{app::{connection_view::ConnectionView, script_editor::ScriptEditor, prelude_view::PreludeView}, event::Event, notification::Notification, widgets::{Floating, popup::Popup}};
+use crate::{app::{connection_view::ConnectionView, devices_view::DevicesView, prelude_view::PreludeView, script_editor::ScriptEditor}, event::Event, notification::Notification, widgets::{Floating, popup::Popup}};
 
 use ratatui::DefaultTerminal;
 
@@ -24,7 +24,8 @@ pub struct App {
     
     pub connection_view: ConnectionView,
     pub editor: ScriptEditor,
-    pub prelude_view: PreludeView
+    pub prelude_view: PreludeView,
+    pub devices_view: DevicesView
 }
 
 impl App {
@@ -43,6 +44,7 @@ impl App {
             connection_view: ConnectionView::new(),
             editor: ScriptEditor::new(),
             prelude_view: PreludeView::new(),
+            devices_view: Default::default()
         }
     }
 
