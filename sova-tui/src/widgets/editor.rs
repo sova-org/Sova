@@ -4,9 +4,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::Position,
     prelude::{Buffer, Rect},
-    style::Stylize,
     text::{Line, Span},
-    widgets::{Fill, StatefulWidget, Widget},
+    widgets::{StatefulWidget, Widget},
 };
 use ratatui_themes::Style;
 use ropey::Rope;
@@ -468,6 +467,47 @@ impl Editor {
         return (self.cursor.0, shift);
     }
 
+    pub fn move_line_up(&mut self) -> bool {
+        if self.cursor.0 == 0 {
+            return false;
+        }
+        let line = self.buffer.line(self.cursor.0);
+        let line_len = line.len_chars();
+        let mut to_insert = line.to_string();
+        let begin = self.to_char_idx((self.cursor.0, 0));
+        let range = begin..(begin + line_len);
+        self.buffer.remove(range);
+        let new_index = self.to_char_idx((self.cursor.0 - 1, 0));
+        if !to_insert.ends_with('\n') {
+            to_insert.push('\n');
+        }
+        self.buffer.insert(new_index, &to_insert);
+        self.cursor.0 -= 1;
+        true
+    }
+
+    pub fn move_line_down(&mut self) -> bool {
+        if self.cursor.0 + 1 == self.buffer.len_lines() {
+            return false;
+        }
+        let line = self.buffer.line(self.cursor.0);
+        let line_len = line.len_chars();
+        let mut to_insert = line.to_string();
+        let begin = self.to_char_idx((self.cursor.0, 0));
+        let range = begin..(begin + line_len);
+        self.buffer.remove(range);
+        let new_index = self.to_char_idx((self.cursor.0 + 1, 0));
+        if self.cursor.0 + 1 == self.buffer.len_lines() {
+            to_insert.insert(0, '\n');
+            if to_insert.ends_with('\n') {
+                to_insert.pop();
+            }
+        }
+        self.buffer.insert(new_index, &to_insert);
+        self.cursor.0 += 1;
+        true
+    }
+
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
         if self.lang_popup.showing {
             self.lang_popup.process_event(event);
@@ -559,6 +599,18 @@ impl Editor {
                 let moved = self.next_word();
                 self.remove_selection();
                 if moved {
+                    self.save_state();
+                }
+            }
+            KeyCode::Up if event.modifiers.contains(KeyModifiers::ALT) => {
+                self.cancel_selection();
+                if self.move_line_up() {
+                    self.save_state();
+                }
+            }
+            KeyCode::Down if event.modifiers.contains(KeyModifiers::ALT) => {
+                self.cancel_selection();
+                if self.move_line_down() {
                     self.save_state();
                 }
             }

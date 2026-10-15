@@ -43,7 +43,7 @@ impl App {
                 run_connection_task(client, Duration::from_secs(5), self.state.events.get_sender());
             }
             AppEvent::Server(port, username, pass) => {
-                if self.state.server_task.is_some() {
+                if self.state.is_server_running() {
                     self.notification.negative("Unable to start server: already running!", &self.state.palette);
                     return;
                 }
