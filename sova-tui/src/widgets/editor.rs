@@ -683,8 +683,8 @@ impl Editor {
             for c in group.chars() {
                 if pos.0 >= first_line && 
                     pos.1 >= first_col &&
-                    pos.0 + first_line < area.height as usize &&
-                    pos.1 + first_col < area.width as usize
+                    pos.0 - first_line < area.height as usize &&
+                    pos.1 - first_col < area.width as usize
                 {
                     let mut style = palette.text();
                     if let Some(cat) = cat {
@@ -697,8 +697,8 @@ impl Editor {
                         style = style.reversed();
                     }
                     let cell_pos = Position {
-                        x: pos.1 as u16 + area.x,
-                        y: pos.0 as u16 + area.y,
+                        x: (pos.1 - first_col) as u16 + area.x,
+                        y: (pos.0 - first_line) as u16 + area.y,
                     };
                     if let Some(cell) = buf.cell_mut(cell_pos) {
                         cell.set_style(style);
@@ -715,7 +715,7 @@ impl Editor {
                 } else {
                     pos.1 += 1;
                 }
-                if pos.0 + first_line >= area.height as usize {
+                if pos.0 >= first_line + area.height as usize {
                     return;
                 }
                 index += 1;
