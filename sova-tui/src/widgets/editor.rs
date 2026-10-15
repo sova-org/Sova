@@ -680,6 +680,7 @@ impl Editor {
     }
 
     fn render_char(
+        &self,
         pos: CursorPos,
         c: char,
         first_line: usize,
@@ -709,6 +710,9 @@ impl Editor {
                     style = style.bg(palette.secondary);
                 }
                 if is_cursor {
+                    style = style.reversed();
+                }
+                if self.flash.is_active() {
                     style = style.reversed();
                 }
                 cell.set_style(style);
@@ -743,7 +747,7 @@ impl Editor {
             for c in group.chars() {
                 let is_selected = select_range.contains(&index);
                 let is_cursor = index == cursor_idx;
-                Self::render_char(
+                self.render_char(
                     pos,
                     c,
                     first_line,
@@ -761,7 +765,7 @@ impl Editor {
                 } else if c == '\t' {
                     pos.1 += 1;
                     for _ in 0..3 {
-                        Self::render_char(
+                        self.render_char(
                             pos,
                             ' ',
                             first_line,
@@ -817,25 +821,20 @@ impl StatefulWidget for &Editor {
         area.x += first_col_len + 1;
         area.width = area.width.saturating_sub(first_col_len + 2);
 
-        Fill::new(" ").bg(state.palette.surface).render(area, buf);
-        Fill::new(" ").bg(state.palette.selection).render(
-            area.intersection(Rect {
-                x: area.x + cursor.1.saturating_sub(first_col) as u16,
-                y: area.y,
-                width: 1,
-                height: area.height,
-            }),
-            buf,
-        );
-        Fill::new(" ").bg(state.palette.selection).render(
-            area.intersection(Rect {
-                x: area.x,
-                y: area.y + cursor.0.saturating_sub(first_line) as u16,
-                width: area.width,
-                height: 1,
-            }),
-            buf,
-        );
+        let c_y = cursor.0.saturating_sub(first_line) as u16;
+        let c_x = cursor.1.saturating_sub(first_col) as u16;
+        for i in 0..area.height {
+            for j in 0..area.width {
+                let Some(cell) = buf.cell_mut((area.x + j, area.y + i)) else {
+                    continue;
+                };
+                if i == c_y || j == c_x {
+                    cell.set_bg(state.palette.selection);
+                } else {
+                    cell.set_bg(state.palette.surface);
+                }
+            }
+        }
 
         Line::from(Span::styled(
             self.lang.clone(),
