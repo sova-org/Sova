@@ -145,7 +145,7 @@ impl Editor {
         //let text = text.replace("\t", "    ");
         self.buffer = Rope::from(text);
         self.cursor = (0, 0);
-        self.selection_anchor = None;
+        self.cancel_selection();
         self.history.clear();
         self.save_state();
     }
@@ -259,6 +259,9 @@ impl Editor {
 
     pub fn sanitize_cursor(&mut self) {
         self.cursor = self.sanitize_pos(self.cursor);
+        if let Some(anchor) = self.selection_anchor {
+            self.selection_anchor = Some(self.sanitize_pos(anchor))
+        }
     }
 
     pub fn current_char(&self) -> Option<char> {
@@ -508,6 +511,14 @@ impl Editor {
         true
     }
 
+    pub fn toggle_selection(&mut self) {
+        if self.selecting {
+            self.stop_selection();
+        } else {
+            self.start_selection();
+        }
+    }
+
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
         if self.lang_popup.showing {
             self.lang_popup.process_event(event);
@@ -560,6 +571,17 @@ impl Editor {
                     self.stop_selection();
                 }
             }
+            KeyCode::Char('q') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.selecting {
+                    self.end_of_line();
+                } else {
+                    self.select_line();
+                    self.stop_selection();
+                }
+            }
+            KeyCode::Char('e') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.toggle_selection();
+            }
             KeyCode::Char('c') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 let selection = self.selected_text();
                 if let Some(cb) = &mut state.clipboard
@@ -569,6 +591,18 @@ impl Editor {
                         Ok(_) => state.positive("Copied text to clipboard!"),
                         Err(_) => state.negative("Unable to copy text!"),
                     }
+                }
+            }
+            KeyCode::Char('x') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let selection = self.selected_text();
+                if let Some(cb) = &mut state.clipboard
+                    && !selection.is_empty()
+                {
+                    match cb.set_text(selection) {
+                        Ok(_) => state.positive("Copied text to clipboard!"),
+                        Err(_) => state.negative("Unable to copy text!"),
+                    }
+                    self.remove_selection();
                 }
             }
             KeyCode::Char('v') if event.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -758,11 +792,10 @@ impl Editor {
                 if let Some(cat) = cat {
                     style = style.fg(palette.token_color(cat));
                 }
-                if is_selected {
-                    style = style.bg(palette.secondary);
-                }
                 if is_cursor {
                     style = style.reversed();
+                } else if is_selected {
+                    style = style.fg(palette.surface).bg(palette.secondary);
                 }
                 if self.flash.is_active() {
                     style = style.reversed();
