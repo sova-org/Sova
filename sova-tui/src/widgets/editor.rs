@@ -2,10 +2,7 @@ use std::{collections::VecDeque, ops::Range, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    prelude::{Buffer, Rect},
-    style::Stylize,
-    text::{Line, Span, Text},
-    widgets::{Paragraph, StatefulWidget, Widget},
+    layout::Position, prelude::{Buffer, Rect}, text::{Line, Span}, widgets::{StatefulWidget, Widget},
 };
 use ratatui_themes::Style;
 use ropey::Rope;
@@ -144,7 +141,7 @@ impl Editor {
     }
 
     pub fn set_text(&mut self, text: &str) {
-        let text = text.replace("\t", "    ");
+        //let text = text.replace("\t", "    ");
         self.buffer = Rope::from(text);
         self.cursor = (0, 0);
         self.selection_anchor = None;
@@ -395,7 +392,7 @@ impl Editor {
     }
 
     pub fn insert_text_before(&mut self, text: String) {
-        let text = text.replace("\t", "    ");
+        //let text = text.replace("\t", "    ");
         let idx = self.cursor_char_idx();
         let mut first = true;
         for line in text.lines() {
@@ -412,7 +409,7 @@ impl Editor {
     }
 
     pub fn insert_text_after(&mut self, text: String) {
-        let text = text.replace("\t", "    ");
+        //let text = text.replace("\t", "    ");
         self.buffer.insert(self.cursor_char_idx(), &text);
     }
 
@@ -499,7 +496,12 @@ impl Editor {
                 }
             }
             KeyCode::Char('a') if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.select_all();
+                if self.selecting {
+                    self.select_all();
+                } else {
+                    self.select_all();
+                    self.stop_selection();
+                }
             }
             KeyCode::Char('c') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 let selection = self.selected_text();
@@ -602,8 +604,8 @@ impl Editor {
                 if self.has_selection() {
                     self.remove_selection();
                 }
-                self.buffer.insert(self.cursor_char_idx(), "    ");
-                self.cursor.1 += 4;
+                self.buffer.insert(self.cursor_char_idx(), "\t");
+                self.cursor.1 += 1;
                 self.save_state();
             }
             KeyCode::BackTab => (),
@@ -660,88 +662,75 @@ impl Editor {
         first_col_len
     }
 
-    fn render_buffer(
+    fn render_iter(
         &self,
-        first_line: usize,
-        first_col: usize,
+        first_line: usize, 
+        first_col: usize, 
         area: Rect,
         buf: &mut Buffer,
         palette: &Palette,
         syntax: Option<&CompiledSyntax>,
     ) {
-        let mut lines: Vec<Line> = if let Some(syn) = syntax {
-            self.buffer
-                .lines()
-                .map(|line| {
-                    let line_str = line.to_string();
-                    let split = syn.split(&line_str);
-                    split
-                        .into_iter()
-                        .map(|(sub, cat)| {
-                            Span::styled(
-                                sub,
-                                if let Some(cat) = cat {
-                                    palette.token_color(cat)
-                                } else {
-                                    palette.foreground
-                                },
-                            )
-                        })
-                        .collect()
-                })
-                .collect()
-        } else {
-            self.buffer
-                .lines()
-                .map(|line| {
-                    let spans = vec![Span::styled(line.to_string(), palette.text())];
-                    Line::from(spans)
-                })
-                .collect()
-        };
-
-        if self.cursor.0 < lines.len() {
-            let line = std::mem::take(&mut lines[self.cursor.0]);
-            lines[self.cursor.0] = line.bg(palette.selection);
+        let content = self.buffer.to_string();
+        let select_range = self.selection_range();
+        let cursor_idx = self.cursor_char_idx();
+        let slices = syntax
+            .map(|syn| syn.split(&content))
+            .unwrap_or(vec![(content, None)]);
+        let mut pos = (0, 0);
+        let mut index = 0;
+        for (group, cat) in slices {
+            for c in group.chars() {
+                if pos.0 >= first_line && 
+                    pos.1 >= first_col &&
+                    pos.0 + first_line < area.height as usize &&
+                    pos.1 + first_col < area.width as usize
+                {
+                    let mut style = palette.text();
+                    if let Some(cat) = cat {
+                        style = style.fg(palette.token_color(cat));
+                    }
+                    if select_range.contains(&index) {
+                        style = style.bg(palette.secondary);
+                    }
+                    if index == cursor_idx {
+                        style = style.reversed();
+                    }
+                    let cell_pos = Position {
+                        x: pos.1 as u16 + area.x,
+                        y: pos.0 as u16 + area.y,
+                    };
+                    if let Some(cell) = buf.cell_mut(cell_pos) {
+                        cell.set_style(style);
+                        if !c.is_control() {
+                            cell.set_char(c);
+                        }
+                    }
+                }
+                if c == '\n' {
+                    pos.0 += 1;
+                    pos.1 = 0;
+                } else if c == '\t' {
+                    pos.1 += 4;
+                } else {
+                    pos.1 += 1;
+                }
+                if pos.0 + first_line >= area.height as usize {
+                    return;
+                }
+                index += 1;
+            }
         }
-
-        let text = Text::from(lines);
-        let mut p = Paragraph::new(text)
-            .bg(palette.surface)
-            .scroll((first_line as u16, first_col as u16));
-
-        if self.flash.is_active() {
-            p = p.reversed();
+        if index == cursor_idx {
+            let style = Style::default().reversed();
+            let cell_pos = Position {
+                x: pos.1 as u16 + area.x,
+                y: pos.0 as u16 + area.y,
+            };
+            if let Some(cell) = buf.cell_mut(cell_pos) {
+                cell.set_style(style);
+            }
         }
-
-        p.render(area, buf);
-    }
-
-    fn render_cursor(
-        &self,
-        first_line: usize,
-        first_col: usize,
-        area: Rect,
-        buf: &mut Buffer,
-        palette: &Palette,
-    ) {
-        let char_idx = self.cursor_char_idx();
-        let char = if char_idx < self.buffer.len_chars() {
-            let at_idx = self.buffer.char(char_idx);
-            if at_idx.is_control() { ' ' } else { at_idx }
-        } else {
-            ' '
-        };
-        let cursor_render = Span::styled(char.to_string(), palette.text().reversed());
-        cursor_render.render(
-            Rect {
-                x: area.x + (self.cursor.1.saturating_sub(first_col) as u16),
-                y: area.y + (self.cursor.0.saturating_sub(first_line) as u16),
-                width: 1,
-                height: 1,
-            },
-            buf,
-        );
     }
 }
 
@@ -779,10 +768,7 @@ impl StatefulWidget for &Editor {
         );
 
         let syn = state.compiled_syntax.get(&self.lang);
-        self.render_buffer(first_line, first_col, area, buf, &state.palette, syn);
-        if self.show_cursor {
-            self.render_cursor(first_line, first_col, area, buf, &state.palette);
-        }
+        self.render_iter(first_line, first_col, area, buf, &state.palette, syn);
 
         if self.lang_popup.showing {
             self.lang_popup.render(area, buf, state);

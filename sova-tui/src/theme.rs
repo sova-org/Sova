@@ -66,16 +66,16 @@ impl Palette {
 
     pub fn token_color(&self, cat: TokenCategory) -> Color {
         match cat {
-            TokenCategory::Keyword => self.secondary,
+            TokenCategory::Keyword => self.variations[1],
             TokenCategory::Builtin => self.foreground,
             TokenCategory::Operator => self.accent,
             TokenCategory::Number => self.variations[0],
             TokenCategory::String => self.variations[0],
             TokenCategory::Comment => self.muted,
-            TokenCategory::Variable => self.variations[1],
-            TokenCategory::Symbol => self.variations[2],
-            TokenCategory::Special => self.variations[3],
-            TokenCategory::Punctuation => self.variations[4],
+            TokenCategory::Variable => self.variations[2],
+            TokenCategory::Symbol => self.variations[3],
+            TokenCategory::Special => self.variations[4],
+            TokenCategory::Punctuation => self.variations[5],
         }
     }
 
