@@ -603,6 +603,7 @@ impl Editor {
                         Err(_) => state.negative("Unable to copy text!"),
                     }
                     self.remove_selection();
+                    self.save_state();
                 }
             }
             KeyCode::Char('v') if event.modifiers.contains(KeyModifiers::CONTROL) => {
