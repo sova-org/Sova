@@ -712,7 +712,10 @@ impl Editor {
                     style = style.reversed();
                 }
                 cell.set_style(style);
-                if !c.is_control() {
+                if c == '\t' {
+                    cell.set_fg(palette.muted);
+                    cell.set_symbol("\u{23d0}");
+                } else if !c.is_control() {
                     cell.set_char(c);
                 }
             }
@@ -760,7 +763,7 @@ impl Editor {
                     for _ in 0..3 {
                         Self::render_char(
                             pos,
-                            c,
+                            ' ',
                             first_line,
                             first_col,
                             area,
