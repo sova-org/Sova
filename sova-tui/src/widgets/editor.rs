@@ -2,7 +2,7 @@ use std::{collections::VecDeque, ops::Range, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::Position, prelude::{Buffer, Rect}, text::{Line, Span}, widgets::{StatefulWidget, Widget},
+    layout::Position, prelude::{Buffer, Rect}, style::Stylize, text::{Line, Span}, widgets::{Fill, StatefulWidget, Widget},
 };
 use ratatui_themes::Style;
 use ropey::Rope;
@@ -680,21 +680,21 @@ impl Editor {
             pos.0 - first_line < area.height as usize &&
             pos.1 - first_col < area.width as usize
         {
-            let mut style = palette.text();
-            if let Some(cat) = cat {
-                style = style.fg(palette.token_color(cat));
-            }
-            if is_selected {
-                style = style.bg(palette.secondary);
-            }
-            if is_cursor {
-                style = style.reversed();
-            }
             let cell_pos = Position {
                 x: (pos.1 - first_col) as u16 + area.x,
                 y: (pos.0 - first_line) as u16 + area.y,
             };
             if let Some(cell) = buf.cell_mut(cell_pos) {
+                let mut style = palette.text().bg(cell.bg);
+                if let Some(cat) = cat {
+                    style = style.fg(palette.token_color(cat));
+                }
+                if is_selected {
+                    style = style.bg(palette.secondary);
+                }
+                if is_cursor {
+                    style = style.reversed();
+                }
                 cell.set_style(style);
                 if !c.is_control() {
                     cell.set_char(c);
@@ -712,6 +712,25 @@ impl Editor {
         palette: &Palette,
         syntax: Option<&CompiledSyntax>,
     ) {
+        Fill::new(" ").bg(palette.surface).render(area, buf);
+        Fill::new(" ").bg(palette.selection).render(
+            area.intersection(Rect { 
+                x: area.x + self.cursor.1.saturating_sub(first_col) as u16, 
+                y: area.y, 
+                width: 1, 
+                height: area.height 
+            }), 
+            buf
+        );
+        Fill::new(" ").bg(palette.selection).render(
+            area.intersection(Rect { 
+                x: area.x, 
+                y: area.y + self.cursor.0.saturating_sub(first_line) as u16, 
+                width: area.width, 
+                height: 1 
+            }), 
+            buf
+        );
         let content = self.buffer.to_string();
         let select_range = self.selection_range();
         let cursor_idx = self.cursor_char_idx();
@@ -768,8 +787,8 @@ impl Editor {
         if index == cursor_idx {
             let style = Style::default().reversed();
             let cell_pos = Position {
-                x: pos.1 as u16 + area.x,
-                y: pos.0 as u16 + area.y,
+                x: pos.1.saturating_sub(first_col) as u16 + area.x,
+                y: pos.0.saturating_sub(first_line) as u16 + area.y,
             };
             if let Some(cell) = buf.cell_mut(cell_pos) {
                 cell.set_style(style);
