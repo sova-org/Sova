@@ -1,3 +1,5 @@
+use std::iter;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
@@ -289,6 +291,6 @@ impl StatefulWidget for &mut PreludeView {
         .split(area);
         self.render_scripts(layout[0], buf, state);
         self.editor.show_cursor = self.editing;
-        self.editor.render(layout[1], buf, state);
+        self.editor.render_with(layout[1], buf, &state.palette, &state.compiled_syntax, iter::empty());
     }
 }

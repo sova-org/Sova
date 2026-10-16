@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::Range, time::Duration};
+use std::{collections::{BTreeMap, VecDeque}, ops::Range, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -9,7 +9,7 @@ use ratatui::{
 };
 use ratatui_themes::Style;
 use ropey::Rope;
-use sova_core::vm::language::TokenCategory;
+use sova_core::vm::{interpreter::Annotation, language::TokenCategory};
 
 use crate::{
     app::AppState, compiled_syntax::CompiledSyntax, flash::Flash, theme::Palette,
@@ -104,6 +104,7 @@ pub struct Editor {
     pub lang_popup: ListChoice,
     pub selecting: bool,
     pub history: EditorHistory,
+    edited: bool,
 }
 
 impl Editor {
@@ -121,7 +122,16 @@ impl Editor {
             lang_popup: popup,
             selecting: false,
             history: Default::default(),
+            edited: false
         }
+    }
+
+    pub fn has_been_edited(&self) -> bool {
+        self.edited
+    }
+
+    pub fn mark_unedited(&mut self) {
+        self.edited = false
     }
 
     pub fn cursor_pos(&self) -> CursorPos {
@@ -138,6 +148,7 @@ impl Editor {
     }
 
     pub fn save_state(&mut self) {
+        self.edited = true;
         self.history.add((self.content(), self.cursor_pos()));
     }
 
@@ -148,6 +159,7 @@ impl Editor {
         self.cancel_selection();
         self.history.clear();
         self.save_state();
+        self.edited = false;
     }
 
     pub fn cursor_char_idx(&self) -> usize {
@@ -440,6 +452,9 @@ impl Editor {
         };
         self.buffer = Rope::from_str(content);
         self.cursor = *cursor;
+        if self.history.lens().0 == 1 {
+            self.edited = false;
+        }
         self.cancel_selection();
     }
 
@@ -447,6 +462,7 @@ impl Editor {
         let Some((content, cursor)) = self.history.forward() else {
             return;
         };
+        self.edited = true;
         self.buffer = Rope::from_str(content);
         self.cursor = *cursor;
         self.cancel_selection();
@@ -800,6 +816,7 @@ impl Editor {
         cat: Option<TokenCategory>,
         is_selected: bool,
         is_cursor: bool,
+        is_highlight: bool
     ) {
         if pos.0 >= first_line
             && pos.1 >= first_col
@@ -815,10 +832,12 @@ impl Editor {
                 if let Some(cat) = cat {
                     style = style.fg(palette.token_color(cat));
                 }
-                if is_cursor {
+                if is_cursor && self.show_cursor {
                     style = style.reversed();
                 } else if is_selected {
                     style = style.fg(palette.surface).bg(palette.secondary);
+                } else if is_highlight {
+                    style = style.fg(palette.surface).bg(palette.accent)
                 }
                 if self.flash.is_active() {
                     style = style.reversed();
@@ -842,6 +861,8 @@ impl Editor {
         buf: &mut Buffer,
         palette: &Palette,
         syntax: Option<&CompiledSyntax>,
+        highlights: Vec<Range<usize>>,
+        line_annotations: BTreeMap<usize, String>
     ) {
         let content = self.buffer.to_string();
         let select_range = self.selection_range();
@@ -855,6 +876,7 @@ impl Editor {
             for c in group.chars() {
                 let is_selected = select_range.contains(&index);
                 let is_cursor = index == cursor_idx;
+                let is_highlight = highlights.iter().any(|r| r.contains(&index));
                 self.render_char(
                     pos,
                     c,
@@ -866,7 +888,27 @@ impl Editor {
                     cat,
                     is_selected,
                     is_cursor,
+                    is_highlight,
                 );
+                if let Some(txt) = line_annotations.get(&index) {
+                    let txt = format!("{txt} ");
+                    for c_a in txt.chars() {
+                        pos.1 += 1;
+                        self.render_char(
+                            pos,
+                            c_a,
+                            first_line,
+                            first_col,
+                            area,
+                            buf,
+                            palette,
+                            Some(TokenCategory::Comment),
+                            is_selected,
+                            is_cursor,
+                            is_highlight,
+                        );
+                    }
+                }
                 if c == '\n' {
                     pos.0 += 1;
                     pos.1 = 0;
@@ -884,6 +926,7 @@ impl Editor {
                             cat,
                             is_selected,
                             false,
+                            is_highlight
                         );
                         pos.1 += 1;
                     }
@@ -896,7 +939,7 @@ impl Editor {
                 index += 1;
             }
         }
-        if index == cursor_idx {
+        if index == cursor_idx && self.show_cursor {
             let style = Style::default().reversed();
             let cell_pos = Position {
                 x: pos.1.saturating_sub(first_col) as u16 + area.x,
@@ -907,13 +950,38 @@ impl Editor {
             }
         }
     }
-}
 
-impl StatefulWidget for &Editor {
-    type State = AppState;
-
-    fn render(self, mut area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    pub fn render_with(
+        &self, 
+        mut area: Rect, 
+        buf: &mut Buffer, 
+        palette: &Palette,
+        syntax_map: &BTreeMap<String, CompiledSyntax>,
+        annotations: impl Iterator<Item = Annotation>
+    ) {
         let height_us = area.height as usize;
+
+        let mut highlights = Vec::new();
+        let mut line_annotations = BTreeMap::new();
+        if !self.has_been_edited() {
+            for a in annotations {
+                match a {
+                    Annotation::Highlight(from, to) => {
+                        let idx1 = self.sanitize_pos(from.into());
+                        let idx1 = self.to_char_idx(idx1);
+                        let idx2 = self.sanitize_pos(to.into());
+                        let idx2 = self.to_char_idx(idx2);
+                        highlights.push(idx1..idx2);
+                    }
+                    Annotation::InsertText(txt, code_position) => {
+                        let idx = self.sanitize_pos(code_position.into());
+                        let idx = self.to_char_idx(idx);
+                        line_annotations.insert(idx, txt);
+                    }
+                    Annotation::InsertBitmap(_, _) => (),
+                }
+            }
+        }
 
         let cursor = self.effective_cursor_pos();
 
@@ -924,7 +992,7 @@ impl StatefulWidget for &Editor {
         let width_us = area.width as usize;
         let first_col = cursor.1.saturating_sub(3 * width_us / 4);
 
-        let first_col_len = self.render_line_numbers(first_line, area, buf, &state.palette);
+        let first_col_len = self.render_line_numbers(first_line, area, buf, palette);
 
         area.x += first_col_len + 1;
         area.width = area.width.saturating_sub(first_col_len + 2);
@@ -936,17 +1004,17 @@ impl StatefulWidget for &Editor {
                 let Some(cell) = buf.cell_mut((area.x + j, area.y + i)) else {
                     continue;
                 };
-                if i == c_y || j == c_x {
-                    cell.set_bg(state.palette.selection);
+                if (i == c_y || j == c_x) && self.show_cursor {
+                    cell.set_bg(palette.selection);
                 } else {
-                    cell.set_bg(state.palette.surface);
+                    cell.set_bg(palette.surface);
                 }
             }
         }
 
         Line::from(Span::styled(
             self.lang.clone(),
-            Style::default().fg(state.palette.muted),
+            Style::default().fg(palette.muted),
         ))
         .right_aligned()
         .render(
@@ -959,11 +1027,31 @@ impl StatefulWidget for &Editor {
             buf,
         );
 
-        let syn = state.compiled_syntax.get(&self.lang);
-        self.render_iter(first_line, first_col, area, buf, &state.palette, syn);
+        let syn = syntax_map.get(&self.lang);
+        self.render_iter(
+            first_line, first_col, 
+            area, buf, 
+            &palette, 
+            syn,
+            highlights, line_annotations
+        );
 
         if self.lang_popup.showing {
-            self.lang_popup.render(area, buf, state);
+            self.lang_popup.render(area, buf, palette);
         }
+    }
+}
+
+impl StatefulWidget for &Editor {
+    type State = AppState;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        self.render_with(
+            area, 
+            buf, 
+            &state.palette, 
+            &state.compiled_syntax, 
+            state.current_annotations().cloned()
+        );
     }
 }

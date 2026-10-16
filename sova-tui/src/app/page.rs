@@ -16,9 +16,9 @@ pub enum AppPage {
     Edit,
     Logs,
     Help,
+    Devices,
     Chat,
     Network,
-    Devices,
     Audio,
     Samples,
 }

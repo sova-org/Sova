@@ -41,6 +41,7 @@ impl ScriptEditor {
             Script::new(self.editor.content(), self.editor.lang.clone()),
             ActionTiming::Immediate,
         ));
+        self.editor.mark_unedited();
     }
 
     pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {

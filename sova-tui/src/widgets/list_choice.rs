@@ -11,7 +11,7 @@ use ratatui::{
     },
 };
 
-use crate::{app::AppState};
+use crate::theme::Palette;
 
 #[derive(Default)]
 pub struct ListChoice {
@@ -91,18 +91,14 @@ impl ListChoice {
         let [area] = vertical.areas(area);
         area
     }
-}
 
-impl StatefulWidget for &ListChoice {
-    type State = AppState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    pub fn render(&self, area: Rect, buf: &mut Buffer, palette: &Palette) {
         if !self.showing {
             return;
         }
         let selected_style = Style::default()
-            .bg(state.palette.selection)
-            .fg(state.palette.accent)
+            .bg(palette.selection)
+            .fg(palette.accent)
             .bold();
         let additional_lines = std::cmp::min(10, self.choices.len() as u16);
         let area = ListChoice::popup_area(area, 30, self.content.len(), additional_lines);
@@ -110,8 +106,8 @@ impl StatefulWidget for &ListChoice {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .title(self.title.as_str())
-            .bg(state.palette.surface)
-            .fg(state.palette.foreground);
+            .bg(palette.surface)
+            .fg(palette.foreground);
         let layout = Layout::vertical([Constraint::Min(0), Constraint::Length(additional_lines)]);
         let [text_area, input_area] = layout.areas(block.inner(area));
         block.render(area, buf);
@@ -120,7 +116,7 @@ impl StatefulWidget for &ListChoice {
             .render(text_area, buf);
         let items: Vec<ListItem> = self.choices.iter().map(|s| ListItem::from(s.as_str())).collect();
         let list = List::new(items)
-            .style(state.palette.text())
+            .style(palette.text())
             .highlight_style(selected_style)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);

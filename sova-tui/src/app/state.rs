@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::ErrorKind};
+use std::{collections::BTreeMap, io::ErrorKind, iter};
 
 use arboard::Clipboard;
 use sova_core::{scene::{Frame, Line, script::Script}, vm::interpreter::Annotation};
@@ -130,12 +130,14 @@ impl AppState {
         self.events.send(AppEvent::Negative(msg.to_string()));
     }
 
-    pub fn current_annotations(&self) -> Vec<Annotation> {
-        self.client_state.annotations
+    pub fn current_annotations<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Annotation> + 'a> {
+        let annots = self.client_state.annotations
             .get(self.selected.0)
-            .and_then(|line| line.get(self.selected.1))
-            .cloned()
-            .unwrap_or_default()
+            .and_then(|line| line.get(self.selected.1));
+        match annots {
+            Some(a) => Box::new(a.iter()),
+            None => Box::new(iter::empty()),
+        }
     }
 
     pub fn go_to(&mut self, page: AppPage) {

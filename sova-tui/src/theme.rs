@@ -68,7 +68,7 @@ impl Palette {
         match cat {
             TokenCategory::Keyword => self.variations[1],
             TokenCategory::Builtin => self.foreground,
-            TokenCategory::Operator => self.accent,
+            TokenCategory::Operator => self.variations[6],
             TokenCategory::Number => self.variations[0],
             TokenCategory::String => self.variations[0],
             TokenCategory::Comment => self.muted,

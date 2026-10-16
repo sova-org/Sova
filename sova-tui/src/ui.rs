@@ -2,7 +2,7 @@ use ratatui::{
     buffer::Buffer, layout::{Constraint, Layout, Rect}, style::Stylize, widgets::{Fill, StatefulWidget, Widget},
 };
 
-use crate::{app::{App, AppPage, connecting_view::ConnectingView, scene_view::SceneView}, widgets::{Footer, Header, Scope, VUMeter}};
+use crate::{app::{App, AppPage, connecting_view::ConnectingView, scene_view::SceneView}, widgets::{Footer, Header, Scope}};
 
 impl Widget for &mut App {
     /// Renders the user interface widgets.
@@ -25,7 +25,8 @@ impl Widget for &mut App {
                 .spacing(1)
                 .split(layout[2]);
 
-            VUMeter(2).render(layout[0], buf, &mut self.state);
+            self.vu_meter.add_data(self.state.client_state.peak_data.clone());
+            self.vu_meter.render(layout[0], buf, &mut self.state);
 
             let layout = Layout::vertical([Constraint::Min(0), Constraint::Length(5)])
                 //.spacing(1)

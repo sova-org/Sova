@@ -24,6 +24,12 @@ impl CodePosition {
     }
 }
 
+impl From<CodePosition> for (usize, usize) {
+    fn from(value: CodePosition) -> Self {
+        (value.line, value.col.unwrap_or_default())
+    }
+}
+
 impl Display for CodePosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Line {}", self.line)?;

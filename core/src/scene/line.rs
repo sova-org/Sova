@@ -534,10 +534,13 @@ impl Line {
 
     pub fn annotations(&self) -> Vec<Vec<Annotation>> {
         let mut res = vec![Vec::new(); self.n_frames()];
+        for state in self.states.iter() {
+            let f_i = state.current_frame;
+            res[f_i] = self.frame(f_i).unwrap().annotations();
+        }
         for (i, frame) in self.frames.iter().enumerate() {
-            let annotations = frame.annotations();
-            if !annotations.is_empty() {
-                res[i] = annotations;
+            if frame.has_executions() && res[i].is_empty() {
+                res[i] = frame.annotations();
             }
         }
         res
