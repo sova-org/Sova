@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
+use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Margin, Rect}, style::Stylize, text::{Line, Span, Text}, widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget}};
 use ratatui_themes::{Color, Style};
 use sova_core::{scene::{ExecutionMode, Frame}, schedule::{ActionTiming, SchedulerMessage}};
 
@@ -42,6 +42,17 @@ impl SceneView {
                     .fg(palette.surface)
                     .render(active_layout[1], buf);
             }
+        }
+
+        let comp_state = frame.script().compilation_state();
+        if comp_state.is_ok() {
+            Span::styled(nerd_font_symbols::oct::OCT_DOT, palette.success).render(Rect { 
+                x: area.x + area.width - 1, y: area.y, width: 1, height: 1 
+            }, buf);
+        } else if comp_state.is_err() {
+            Span::styled("!", palette.error).render(Rect { 
+                x: area.x + area.width - 1, y: area.y, width: 1, height: 1 
+            }, buf);
         }
 
         let mut lines = Vec::new();
@@ -295,7 +306,16 @@ impl SceneView {
                     SchedulerMessage::SetFrames(vec![(state.selected.0, state.selected.1, frame)], ActionTiming::Immediate)
                 );
             }
-            
+
+            KeyCode::Backspace if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                if state.selected.0 == 0 {
+                    state.events.send(AppEvent::Negative("No line to delete !".to_string()));
+                    return;
+                }
+                state.events.send(
+                    SchedulerMessage::RemoveLine(state.selected.0 - 1, ActionTiming::Immediate)
+                );
+            }
             KeyCode::Delete if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 if state.selected_line().is_none() {
                     state.events.send(AppEvent::Negative("No line to delete !".to_string()));
@@ -303,6 +323,16 @@ impl SceneView {
                 }
                 state.events.send(
                     SchedulerMessage::RemoveLine(state.selected.0, ActionTiming::Immediate)
+                );
+            }
+
+            KeyCode::Backspace => {
+                if state.selected.1 == 0 {
+                    state.events.send(AppEvent::Negative("No frame to delete !".to_string()));
+                    return;
+                }
+                state.events.send(
+                    SchedulerMessage::RemoveFrame(state.selected.0, state.selected.1 - 1, ActionTiming::Immediate)
                 );
             }
             KeyCode::Delete => {

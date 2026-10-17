@@ -194,6 +194,8 @@ impl StatefulWidget for &mut DevicesView {
             })
             .collect();
         let bar = " > ";
+        let mut t_area = area;
+        t_area.width = t_area.width.saturating_sub(1);
         let t = Table::new(
             rows,
             [
@@ -212,8 +214,9 @@ impl StatefulWidget for &mut DevicesView {
         .row_highlight_style(selected_row_style)
         .highlight_symbol(bar)
         .highlight_spacing(HighlightSpacing::Always);
-        t.render(area, buf, &mut self.state);
+        t.render(t_area, buf, &mut self.state);
         Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .style(state.palette.surface)
             .symbols(scrollbar::VERTICAL)
             .render(
                 area.inner(Margin {

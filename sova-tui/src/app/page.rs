@@ -6,6 +6,8 @@ pub mod connecting_view;
 pub mod script_editor;
 pub mod prelude_view;
 pub mod devices_view;
+pub mod audio_view;
+pub mod samples_view;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppPage {

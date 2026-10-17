@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use sova_core::schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState};
-use sova_server::SovaClient;
+use sova_core::schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState};
+use sova_server::{ServerMessage, SovaClient};
 
 use crate::{app::{App, AppPage, scene_view::SceneView}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}, widgets::{Help, log_widget::LogWidget, popup::PopupValue}};
 
@@ -102,6 +102,66 @@ impl App {
             AppEvent::ShowHelp => {
                 self.floating.open("Help", Help);
             }
+            AppEvent::ServerMessage(msg) => {
+                self.handle_server_message(msg);
+            }
+        }
+    }
+
+    pub fn handle_server_message(&mut self, msg: ServerMessage) {
+        match msg {
+            ServerMessage::Chat(from, txt) => {
+
+            }
+            ServerMessage::Notification(notif) => {
+                self.handle_notification(notif);
+            }
+            _ => ()
+        }
+    }
+
+    pub fn handle_notification(&mut self, notif: SovaNotification) {
+        match notif {
+            SovaNotification::UpdatedScene(scene) => (),
+            SovaNotification::UpdatedScenePrelude(scripts) => (),
+            SovaNotification::UpdatedLines(items) => (),
+            SovaNotification::AddedLine(i, _) => {
+                if self.state.selected.0 >= i {
+                    self.state.selected.0 += 1;
+                }
+            }
+            SovaNotification::RemovedLine(i) => {
+                if self.state.selected.0 > i {
+                    self.state.selected.0 -= 1;
+                } else if self.state.selected.0 == i {
+                    self.state.selected.0 = self.state.selected.0.min(
+                        self.state.client_state.scene.n_lines().saturating_sub(1)
+                    );
+                }
+            }
+            SovaNotification::UpdatedFrames(items) => (),
+            SovaNotification::AddedFrame(i, j, _) => {
+                if self.state.selected.0 == i && self.state.selected.1 >= j {
+                    self.state.selected.1 += 1;
+                }
+            }
+            SovaNotification::RemovedFrame(i, j) => {
+                if self.state.selected.0 == i && self.state.selected.1 > j {
+                    self.state.selected.1 -= 1;
+                } else if self.state.selected.0 == i && self.state.selected.1 == j {
+                    self.state.selected.1 = self.state.selected.1
+                        .min(
+                            self.state.client_state.scene
+                            .line(i)
+                            .map(|l| l.n_frames().saturating_sub(1))
+                            .unwrap_or_default()
+                        );
+                }
+            }
+            SovaNotification::CompilationUpdated(_, _, _, _) => (),
+            SovaNotification::Log(log_message) => (),
+            SovaNotification::Error(sova_error) => (),
+            _ => ()
         }
     }
 

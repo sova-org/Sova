@@ -2,7 +2,7 @@ use color_eyre::eyre::OptionExt;
 use crossterm::event::{Event as CrosstermEvent};
 use futures::{FutureExt, StreamExt};
 use sova_core::schedule::SchedulerMessage;
-use sova_server::{ClientMessage, SovaClient, client::ClientState};
+use sova_server::{ClientMessage, ServerMessage, SovaClient, client::ClientState};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -54,6 +54,7 @@ pub enum AppEvent {
     TogglePlayPause,
     SendClientMessage(ClientMessage),
     ShowHelp,
+    ServerMessage(ServerMessage),
     Quit,
 }
 
@@ -65,6 +66,11 @@ impl From<ClientMessage> for AppEvent {
 impl From<SchedulerMessage> for AppEvent {
     fn from(value: SchedulerMessage) -> Self {
         AppEvent::SendClientMessage(value.into())
+    }
+}
+impl From<ServerMessage> for AppEvent {
+    fn from(value: ServerMessage) -> Self {
+        AppEvent::ServerMessage(value.into())
     }
 }
 
@@ -117,8 +123,8 @@ pub struct EventSender {
 }
 
 impl EventSender {
-    pub fn send(&mut self, app_event: AppEvent) {
-        let _ = self.sender.send(Event::App(app_event));
+    pub fn send<T: Into<AppEvent>>(&mut self, app_event: T) {
+        let _ = self.sender.send(Event::App(app_event.into()));
     }
 }
 

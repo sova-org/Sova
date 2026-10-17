@@ -58,6 +58,7 @@ impl PreludeView {
         state
             .events
             .send(SchedulerMessage::SetScenePrelude(prelude));
+        self.editor.mark_unedited();
     }
 
     fn render_frame(

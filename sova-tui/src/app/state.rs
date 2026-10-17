@@ -166,7 +166,7 @@ impl AppState {
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
-                    Some(_) => {
+                    Some(msg) => {
                         let mut guard = client_state.lock().await;
                         while guard.logs.len() > MAX_LOGS {
                             let delta = guard.logs.len() - MAX_LOGS;
@@ -174,6 +174,7 @@ impl AppState {
                         }
                         let new_state = ClientState::clone(&guard);
                         sender.send(AppEvent::UpdateClientState(new_state));
+                        sender.send(msg);
                     },
                     None => break,
                 }
