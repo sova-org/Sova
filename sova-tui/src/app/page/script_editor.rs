@@ -62,7 +62,7 @@ impl ScriptEditor {
             KeyCode::PageDown => {
                 state.go_to_next_frame();
             }
-            KeyCode::Esc => {
+            KeyCode::Esc if !self.editor.lang_popup.showing => {
                 state.go_to(AppPage::Scene);
             }
             _ => {

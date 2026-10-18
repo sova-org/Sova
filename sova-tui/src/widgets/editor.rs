@@ -539,7 +539,7 @@ impl Editor {
     pub fn is_anchor_backward(&self) -> bool {
         match self.selection_anchor {
             Some(anchor) => {
-                anchor <= self.cursor
+                anchor < self.cursor
             }
             None => false,
         }
@@ -713,16 +713,24 @@ impl Editor {
                 self.save_state();
             }
             KeyCode::Left => {
+                if self.has_selection() && self.is_anchor_backward() && !self.selecting {
+                    self.cursor = self.selection_anchor.unwrap();
+                } else {
+                    self.previous_char();
+                }
                 if !self.selecting {
                     self.cancel_selection();
                 }
-                self.previous_char();
             }
             KeyCode::Right => {
+                if self.has_selection() && self.is_anchor_forward() && !self.selecting {
+                    self.cursor = self.selection_anchor.unwrap();
+                } else {
+                    self.next_char();
+                }
                 if !self.selecting {
                     self.cancel_selection();
                 }
-                self.next_char();
             }
             KeyCode::Up => {
                 if !self.selecting {

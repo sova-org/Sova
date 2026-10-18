@@ -123,11 +123,15 @@ impl PreludeView {
         match event.code {
             KeyCode::Esc => {
                 if self.editing {
-                    self.editor.on_key_event(event, state);
-                    self.editing = false;
-                    return;
+                    if self.editor.lang_popup.showing {
+                        self.editor.on_key_event(event, state);
+                    } else {
+                        self.editor.on_key_event(event, state);
+                        self.editing = false;
+                    }
+                } else {
+                    state.go_to(AppPage::Scene);
                 }
-                state.go_to(AppPage::Scene);
             }
 
             KeyCode::Char('i') if !self.editing => {
