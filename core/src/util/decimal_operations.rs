@@ -180,6 +180,15 @@ pub fn float64_from_decimal(sign: i8, num: u64, den: u64) -> f64 {
     as_float
 }
 
+// get float from decimal number
+pub fn float32_from_decimal(sign: i8, num: u64, den: u64) -> f32 {
+    let mut as_float = (num as f32) / (den as f32);
+    if sign < 0 {
+        as_float = -as_float;
+    }
+    as_float
+}
+
 // Display decimal number
 pub fn string_from_decimal(sign: i8, num: u64, den: u64) -> String {
     let sign = if sign < 0 { "-" } else { "" };

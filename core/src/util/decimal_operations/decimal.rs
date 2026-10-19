@@ -7,8 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::util::decimal_operations::{
-    add_decimal, decimal_from_float64, div_decimal, eq_decimal, float64_from_decimal, lt_decimal,
-    mul_decimal, rem_decimal, simplify_decimal, string_from_decimal, sub_decimal,
+    add_decimal, decimal_from_float64, div_decimal, eq_decimal, float32_from_decimal, float64_from_decimal, lt_decimal, mul_decimal, rem_decimal, simplify_decimal, string_from_decimal, sub_decimal,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -158,6 +157,12 @@ impl From<i64> for Decimal {
 impl From<Decimal> for f64 {
     fn from(value: Decimal) -> Self {
         float64_from_decimal(value.sign, value.num, value.den)
+    }
+}
+
+impl From<Decimal> for f32 {
+    fn from(value: Decimal) -> Self {
+        float32_from_decimal(value.sign, value.num, value.den)
     }
 }
 
