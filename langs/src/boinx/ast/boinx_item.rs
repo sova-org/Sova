@@ -126,7 +126,7 @@ impl BoinxItem {
                 let i2 = i2.evaluate(ctx);
                 let mut item = arithmetic_op(ctx, i1, *op, i2);
                 if item.is_primitive() && pos.is_some() && !item.has_annotation() {
-                    let annotation = Annotation::InsertText(item.to_string(), pos.clone().unwrap());
+                    let annotation = Annotation::InsertText(format!("{item:.2}"), pos.clone().unwrap());
                     item = item.with_annotation(annotation);
                 }
                 item
@@ -138,7 +138,7 @@ impl BoinxItem {
                 let args = args.iter().map(|i| i.evaluate(ctx)).collect();
                 let mut item = execute_boinx_function(ctx, &name, args);
                 if item.is_primitive() && pos.is_some() && !item.has_annotation() {
-                    let annotation = Annotation::InsertText(item.to_string(), pos.clone().unwrap());
+                    let annotation = Annotation::InsertText(format!("{item:.2}"), pos.clone().unwrap());
                     item = item.with_annotation(annotation);
                 }
                 item
@@ -156,7 +156,7 @@ impl BoinxItem {
             Self::Identity(x, pos) => {
                 let mut item = x.load_item(ctx, forbidden);
                 if item.is_primitive() && pos.is_some() && !item.has_annotation() {
-                    let annotation = Annotation::InsertText(item.to_string(), pos.clone().unwrap());
+                    let annotation = Annotation::InsertText(format!("{item:.2}"), pos.clone().unwrap());
                     item = item.with_annotation(annotation);
                 }
                 item
@@ -207,7 +207,7 @@ impl BoinxItem {
                     let mut res = execute_boinx_function(ctx, &name[1..], args);
                     if res.is_primitive() && pos.is_some() && !res.has_annotation() {
                         let annotation =
-                            Annotation::InsertText(res.to_string(), pos.clone().unwrap());
+                            Annotation::InsertText(format!("{res:.2}"), pos.clone().unwrap());
                         res = res.with_annotation(annotation);
                     }
                     *option = Some(Box::new(res.clone()));

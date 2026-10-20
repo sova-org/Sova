@@ -42,7 +42,7 @@ impl Scale {
             + (delta as f64) * self.increment()
     }
 
-    pub fn major(note: i16, octave: i16) -> Scale {
+    pub fn major<T: Into<f64>>(note: T, octave: i16) -> Scale {
         Scale {
             tonic: midi_to_freq(note, octave),
             deviation: 0.0,
@@ -51,7 +51,7 @@ impl Scale {
         }
     }
 
-    pub fn minor(note: i16, octave: i16) -> Scale {
+    pub fn minor<T: Into<f64>>(note: T, octave: i16) -> Scale {
         Scale {
             tonic: midi_to_freq(note, octave),
             deviation: 0.0,
@@ -60,7 +60,7 @@ impl Scale {
         }
     }
 
-    pub fn chromatic(note: i16, octave: i16) -> Self {
+    pub fn chromatic<T: Into<f64>>(note: T, octave: i16) -> Self {
         Scale {
             tonic: midi_to_freq(note, octave),
             deviation: 0.0,

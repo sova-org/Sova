@@ -20,13 +20,13 @@ pub const DEFAULT_C_TUNING: f64 = 261.6255653006;
 
 const TUNING_OCTAVE: i16 = 4;
 
-pub fn note_freq_with_tune(note: i16, octave: i16, tuning: f64, tuning_octave: i16) -> f64 {
+pub fn note_freq_with_tune(note: f64, octave: i16, tuning: f64, tuning_octave: i16) -> f64 {
     let incr_factor = f64::powf(2.0, 1.0 / 12.0);
     let delta_octave = (octave - tuning_octave) as i32;
-    tuning * incr_factor.powi(note as i32) * f64::powi(2.0, delta_octave)
+    tuning * incr_factor.powf(note) * f64::powi(2.0, delta_octave)
 }
 
 /// Use default C4 tuning 261.6255... Hz to get note frequency
-pub fn midi_to_freq(note: i16, octave: i16) -> f64 {
-    note_freq_with_tune(note, octave, DEFAULT_C_TUNING, TUNING_OCTAVE)
+pub fn midi_to_freq<T: Into<f64>>(note: T, octave: i16) -> f64 {
+    note_freq_with_tune(note.into(), octave, DEFAULT_C_TUNING, TUNING_OCTAVE)
 }
