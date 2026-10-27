@@ -2,7 +2,7 @@ use ratatui::{
     buffer::Buffer, layout::{Constraint, Layout, Rect}, style::Stylize, widgets::{Fill, StatefulWidget, Widget},
 };
 
-use crate::{app::{App, AppPage, connecting_view::ConnectingView, scene_view::SceneView}, widgets::{Footer, Header, Scope}};
+use crate::{app::{App, AppPage, connecting_view::ConnectingView}, widgets::{Footer, Header, Scope}};
 
 impl Widget for &mut App {
     /// Renders the user interface widgets.
@@ -49,7 +49,7 @@ impl Widget for &mut App {
         match self.state.page {
             AppPage::Connection => self.connection_view.render(main_area, buf, &mut self.state),
             AppPage::Connecting => ConnectingView.render(main_area, buf, &mut self.state),
-            AppPage::Scene => SceneView.render(main_area, buf, &mut self.state),
+            AppPage::Scene => self.scene_view.render(main_area, buf, &mut self.state),
             AppPage::Edit => self.editor.render(main_area, buf, &mut self.state),
             AppPage::Prelude => self.prelude_view.render(main_area, buf, &mut self.state),
             AppPage::Devices => self.devices_view.render(main_area, buf, &mut self.state),

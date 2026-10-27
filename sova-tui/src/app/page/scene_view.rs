@@ -12,6 +12,7 @@ const FRAME_HEIGHT : u16 = 4;
 const FRAME_HEADER_HEIGHT : u16 = 1;
 const LINE_HEADER_WIDTH : u16 = 5;
 
+#[derive(Debug, Default)]
 pub struct SceneView;
 
 impl SceneView {
@@ -135,7 +136,7 @@ impl SceneView {
         p.render(layout[0], buf);
     }
 
-    pub fn on_key_event(event: KeyEvent, state: &mut AppState) {
+    pub fn on_key_event(&mut self, event: KeyEvent, state: &mut AppState) {
         match event.code {
             KeyCode::Esc => {
                 state.popup(
@@ -382,7 +383,7 @@ impl SceneView {
 
 }
 
-impl StatefulWidget for SceneView {
+impl StatefulWidget for &SceneView {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
@@ -426,7 +427,7 @@ impl StatefulWidget for SceneView {
                 FRAME_HEADER_HEIGHT
             );
             let f_j = j + first_frame;
-            Self::render_frame_header(header_area, buf, f_j, f_j == state.selected.1, &state.palette);
+            SceneView::render_frame_header(header_area, buf, f_j, f_j == state.selected.1, &state.palette);
         }
         for (i, line) in scene_image.lines[first_line..].iter().enumerate() {
             if i >= visible_lines {
@@ -439,7 +440,7 @@ impl StatefulWidget for SceneView {
                 FRAME_HEIGHT
             );
             let f_i = i + first_line;
-            Self::render_line_header(header_area, buf, f_i, line, f_i == state.selected.0, &state.palette);
+            SceneView::render_line_header(header_area, buf, f_i, line, f_i == state.selected.0, &state.palette);
             if line.n_frames() <= first_frame {
                 continue;
             }
@@ -466,7 +467,7 @@ impl StatefulWidget for SceneView {
                 let selected = (f_i, f_j) == state.selected;
                 let rep = line_pos.get(&f_j).copied();
                 let color = state.palette.variations[f_i % state.palette.variations.len()];
-                Self::render_frame(
+                SceneView::render_frame(
                     frame_area, 
                     buf, 
                     color, 

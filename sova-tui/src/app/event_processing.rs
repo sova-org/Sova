@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use sova_core::schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState};
 use sova_server::{ServerMessage, SovaClient};
 
-use crate::{app::{App, AppPage, scene_view::SceneView}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}, widgets::{Help, log_widget::LogWidget, popup::PopupValue}};
+use crate::{app::{App, AppPage}, compiled_syntax::start_syntax_compilation, event::AppEvent, network::{client::run_connection_task, server::start_server}, widgets::{Help, log_widget::LogWidget, popup::PopupValue}};
 
 impl App {
     pub async fn handle_app_event(&mut self, app_event: AppEvent) {
@@ -213,7 +213,7 @@ impl App {
                         self.connection_view.on_key_event(key_event, &mut self.state);
                     }
                     AppPage::Scene => {
-                        SceneView::on_key_event(key_event, &mut self.state);
+                        self.scene_view.on_key_event(key_event, &mut self.state);
                     }
                     AppPage::Edit => {
                         self.editor.on_key_event(key_event, &mut self.state);

@@ -1,4 +1,4 @@
-use crate::{app::{connection_view::ConnectionView, devices_view::DevicesView, prelude_view::PreludeView, script_editor::ScriptEditor}, event::Event, notification::Notification, widgets::{Floating, VUMeter, popup::Popup}};
+use crate::{app::{connection_view::ConnectionView, devices_view::DevicesView, prelude_view::PreludeView, scene_view::SceneView, script_editor::ScriptEditor}, event::Event, notification::Notification, widgets::{Floating, VUMeter, popup::Popup}};
 
 use ratatui::DefaultTerminal;
 
@@ -23,6 +23,7 @@ pub struct App {
     pub log_rx: broadcast::Receiver<SovaNotification>,
     
     pub connection_view: ConnectionView,
+    pub scene_view: SceneView,
     pub editor: ScriptEditor,
     pub prelude_view: PreludeView,
     pub devices_view: DevicesView,
@@ -44,6 +45,7 @@ impl App {
             log_rx,
 
             connection_view: ConnectionView::new(),
+            scene_view: Default::default(),
             editor: ScriptEditor::new(),
             prelude_view: PreludeView::new(),
             devices_view: Default::default(),
